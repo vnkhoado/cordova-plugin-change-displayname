@@ -40,19 +40,19 @@ module.exports = function (context) {
         var BUILDJSONPATH = path.join(PROJECTROOT, "build.json");
         var buildJsonText = fs.readFileSync(BUILDJSONPATH, 'utf8');
         var buildJsonObj = JSON.parse(buildJsonText);        
-        /*buildJsonObj.ios.debug.buildFlag = [
-            "CFBundleExecutable = \"" + obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '') + "\""
+        buildJsonObj.ios.debug.buildFlag = [
+            "PRODUCT_NAME = " + obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '');
         ]
 
         buildJsonObj.ios.release.buildFlag = [
-            "CFBundleExecutable = \"" + obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '') + "\""
+            "PRODUCT_NAME = " + obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '');
         ]
 
         console.log(JSON.stringify(buildJsonObj));
 
-        fs.writeFileSync(BUILDJSONPATH, JSON.stringify(buildJsonObj), { encoding: 'utf8' });*/
+        fs.writeFileSync(BUILDJSONPATH, JSON.stringify(buildJsonObj), { encoding: 'utf8' });
 
-        delete obj.CFBundleExecutable;
+        //delete obj.CFBundleExecutable;
 
         /**
          * FIRST APPROACH
