@@ -39,14 +39,14 @@ module.exports = function (context) {
          * FIRST APPROACH
          * Set the CFBundleDisplayName only, using the variable set via the plugin instalation
          */
-        //var name = getConfigParser(context, path.join(PLATFORMPATH, PROJECTNAME, 'config.xml')).getPreference('AppName');
-        //obj.CFBundleDisplayName = name;
+        var name = getConfigParser(context, path.join(PLATFORMPATH, PROJECTNAME, 'config.xml')).getPreference('AppName');
+        obj.CFBundleDisplayName = name;
         
          /**
          * SECOND APPROACH
          * Clean the CFBundleExecutable so it does not have any invalid chars
          */
-        obj.CFBundleExecutable = obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '');
+        //obj.CFBundleExecutable = obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '');
     
         xml = plist.build(obj);
         fs.writeFileSync(INFOPLISTPATH, xml, { encoding: 'utf8' });
