@@ -46,7 +46,7 @@ module.exports = function (context) {
          * SECOND APPROACH
          * Clean the CFBundleExecutable so it does not have any invalid chars
          */
-        obj.CFBundleExecutable = obj.CFBundleExecutable.replace(/[/\\?%*:|"<>\+]/g, '');
+        obj.CFBundleExecutable = obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '');
     
         xml = plist.build(obj);
         fs.writeFileSync(INFOPLISTPATH, xml, { encoding: 'utf8' });
