@@ -40,7 +40,7 @@ module.exports = function (context) {
         var BUILDJSONPATH = path.join(PROJECTROOT, "build.json");
         var buildJsonText = fs.readFileSync(BUILDJSONPATH, 'utf8');
         var buildJsonObj = JSON.parse(buildJsonText);        
-        buildJsonObj.ios.debug.buildFlag = [
+        /*buildJsonObj.ios.debug.buildFlag = [
             "CFBundleExecutable = \"" + obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '') + "\""
         ]
 
@@ -50,7 +50,9 @@ module.exports = function (context) {
 
         console.log(JSON.stringify(buildJsonObj));
 
-        fs.writeFileSync(BUILDJSONPATH, JSON.stringify(buildJsonObj), { encoding: 'utf8' });
+        fs.writeFileSync(BUILDJSONPATH, JSON.stringify(buildJsonObj), { encoding: 'utf8' });*/
+
+        delete obj.CFBundleExecutable;
 
         /**
          * FIRST APPROACH
@@ -63,10 +65,10 @@ module.exports = function (context) {
          * SECOND APPROACH
          * Clean the CFBundleExecutable so it does not have any invalid chars
          */
-        /*obj.CFBundleExecutable = obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '');
+        /*obj.CFBundleExecutable = obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '');*/
     
         xml = plist.build(obj);
-        fs.writeFileSync(INFOPLISTPATH, xml, { encoding: 'utf8' });*/
+        fs.writeFileSync(INFOPLISTPATH, xml, { encoding: 'utf8' });
     });
 };
 
