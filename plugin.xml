@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0" id="cordova-plugin-change-displayname" version="1.0.0">
+    <name>Change Display Name Plugin</name>
+    <author>André Gonçalves @ OutSystems</author>
+    <description>
+        Cordova plugin that allows you to change the display name of your app
+    </description>
+    <keywords>cordova, ios, app, display name</keywords>
+    <license>MIT</license>
+    <engines>
+        <engine name="cordova" version="&gt;=3.0.0"/>
+    </engines>
+
+    <preference name="APP_NAME"/>
+    <hook type="after_prepare" src="scripts/update-ios-app-name.js"/>
+
+    <platform name="android">
+        <config-file target="config.xml" parent="/*">
+            <preference name="AppName" value="$APP_NAME"/>
+        </config-file>
+    </platform>
+
+    <platform name="ios">
+        <config-file target="config.xml" parent="/*">
+            <preference name="AppName" value="$APP_NAME"/>
+        </config-file>
+    </platform>
+</plugin>

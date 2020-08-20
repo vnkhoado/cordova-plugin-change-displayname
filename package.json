@@ -1,0 +1,38 @@
+{
+  "name": "cordova-plugin-change-displayname",
+  "version": "1.0.0",
+  "description": "Cordova plugin that allows you to change the display name of your app.",
+  "cordova": {
+    "id": "cordova-plugin-change-displayname",
+    "platforms": [
+      "ios"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agoncalvesos/cordova-plugin-change-displayname.git"
+  },
+  "bugs": {
+    "url": "https://github.com/agoncalvesos/cordova-plugin-change-displayname/issues"
+  },
+  "homepage": "https://github.com/agoncalvesos/cordova-plugin-change-displayname",
+  "keywords": [
+    "ecosystem:cordova",
+    "cordova-android",
+    "cordova-ios",
+    "cordova:plugin",
+    "spaces",
+    "app",
+    "name",
+    "rename"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "semver": "^6.3.0",
+    "xml2js": "^0.4.16"
+  },
+  "devDependencies": {
+    "libxmljs": "^0.18.4"
+  },
+  "scripts": {}
+}
