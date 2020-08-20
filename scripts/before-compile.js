@@ -41,11 +41,11 @@ module.exports = function (context) {
         var buildJsonText = fs.readFileSync(BUILDJSONPATH, 'utf8');
         var buildJsonObj = JSON.parse(buildJsonText);        
         buildJsonObj.ios.debug.buildFlag = [
-            "PRODUCT_NAME = \"" + obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '') + "\""
+            "CFBundleExecutable = \"" + obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '') + "\""
         ]
 
         buildJsonObj.ios.release.buildFlag = [
-            "PRODUCT_NAME = \"" + obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '') + "\""
+            "CFBundleExecutable = \"" + obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '') + "\""
         ]
 
         console.log(JSON.stringify(buildJsonObj));
