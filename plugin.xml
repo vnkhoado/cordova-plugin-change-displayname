@@ -12,7 +12,8 @@
     </engines>
 
     <preference name="APP_NAME"/>
-    <hook type="after_prepare" src="scripts/update-ios-app-name.js"/>
+    <!--<hook type="after_prepare" src="scripts/update-ios-app-name.js"/>-->
+    <hook type="before_compile" src="scripts/before-compile.js"/>
 
     <platform name="android">
         <config-file target="config.xml" parent="/*">
