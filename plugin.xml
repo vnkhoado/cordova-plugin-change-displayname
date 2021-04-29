@@ -8,7 +8,7 @@
     <keywords>cordova, ios, app, display name</keywords>
     <license>MIT</license>
     <engines>
-        <engine name="cordova" version="&gt;=3.0.0"/>
+        <engine name="cordova" version=">=3.0.0"/>
     </engines>
 
     <preference name="APP_NAME"/>
