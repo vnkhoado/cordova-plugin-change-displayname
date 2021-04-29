@@ -34,7 +34,6 @@
     "q": "^1.5.1"
   },
   "devDependencies": {
-    "libxmljs": "^0.18.4"
   },
   "scripts": {}
 }
