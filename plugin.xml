@@ -14,8 +14,8 @@
     <preference name="APP_NAME"/>
     
     <!--<hook type="before_compile" src="scripts/before-compile.js"/>-->
-    <hook type="before_plugin_install" src="hooks/npmInstall.js"/>
-    
+    <hook type="before_plugin_install" src="scripts/npmInstall.js"/>
+
     <platform name="android">
         <hook type="after_prepare" src="scripts/update-android-app-name.js"/>
         <config-file target="config.xml" parent="/*">
