@@ -18,5 +18,6 @@ module.exports = function (context) {
       return deferral.promise;
     }
     return;
+}
 
 	
