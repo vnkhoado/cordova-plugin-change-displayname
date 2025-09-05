@@ -28,8 +28,8 @@ module.exports = function (ctx) {
   ];
 
   densities.forEach(dpi => {
-    const src = path.join(resSrc, `drawable-${dpi}`, "icon.png");
-    const dest = path.join(resDest, `drawable-${dpi}`, "ic_launcher.png`);
+    const src = path.join(resSrc, `drawable-${dpi}`, `icon.png`);
+    const dest = path.join(resDest, `drawable-${dpi}`, `ic_launcher.png`);
 
     if (fs.existsSync(src)) {
       try {
