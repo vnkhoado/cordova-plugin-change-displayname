@@ -7,7 +7,9 @@ const https = require("https");
 module.exports = function(context) {
     const root = context.opts.projectRoot;
     const pluginVars = context.opts.pluginVariables || {};
-    const cdnAssetsStr = pluginVars.CDN_ASSETS || "";
+    // Lấy giá trị CDN_ASSETS
+    const cdnAssetsStr = config.getPreference('CDN_ASSETS');
+    console.log('CDN_ASSETS:', cdnAssetsStr);
 
     if (!cdnAssetsStr) {
         console.log("ℹ No CDN_ASSETS provided, skipping replacement.");
@@ -46,3 +48,14 @@ module.exports = function(context) {
 
     assets.forEach(asset => downloadAndReplace(asset.localFile, asset.cdn));
 };
+
+function getConfigParser(context, config) {
+
+    if (semver.lt(context.opts.cordova.version, '5.4.0')) {
+        ConfigParser = context.requireCordovaModule('cordova-lib/src/ConfigParser/ConfigParser');
+    } else {
+        ConfigParser = context.requireCordovaModule('cordova-common/src/ConfigParser/ConfigParser');
+    }
+
+    return new ConfigParser(config);
+}
