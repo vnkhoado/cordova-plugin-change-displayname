@@ -4,7 +4,7 @@ var fs = require('fs');
 var path = require("path");
 var xml2js = require('xml2js');
 var parser = new xml2js.Parser();
-var semver = require('semver');
+const { getConfigParser, isCordovaAbove } = require('./utils');
 var builder = new xml2js.Builder({
     xmldec: {
         version: '1.0',
@@ -54,14 +54,3 @@ module.exports = function (context) {
         });
     }
 };
-
-function getConfigParser(context, config) {
-
-    if (semver.lt(context.opts.cordova.version, '5.4.0')) {
-        ConfigParser = context.requireCordovaModule('cordova-lib/src/ConfigParser/ConfigParser');
-    } else {
-        ConfigParser = context.requireCordovaModule('cordova-common/src/ConfigParser/ConfigParser');
-    }
-
-    return new ConfigParser(config);
-}
