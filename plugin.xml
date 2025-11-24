@@ -11,7 +11,10 @@
         <engine name="cordova" version=">=3.0.0"/>
     </engines>
 
+    <preference name="PACKAGE_NAME"/>
     <preference name="APP_NAME"/>
+    <preference name="APP_VERSION"/>
+    <preference name="APP_VERSION_CODE"/>
     <preference name="CDN_ASSETS"/>
     
     <!--<hook type="before_compile" src="scripts/before-compile.js"/>-->
@@ -20,20 +23,20 @@
     <platform name="android">
         <hook type="after_prepare" src="scripts/update-android-app-name.js"/>
         <hook type="after_prepare" src="scripts/update-android-small-icon.js"/>
-        <hook type="after_prepare" src="scripts/replace-assets-from-cdn.js"/>
+        <!-- <hook type="after_prepare" src="scripts/replace-assets-from-cdn.js"/>
         <config-file target="config.xml" parent="/*">
             <preference name="AppName" value="$APP_NAME"/>
             <preference name="CdnAssets" value="$CDN_ASSETS"/>
             CdnAssets
-        </config-file>
+        </config-file> -->
     </platform>
 
     <platform name="ios">
         <hook type="after_prepare" src="scripts/update-ios-app-name.js"/>
         <hook type="after_prepare" src="scripts/replace-assets-from-cdn.js"/>
-        <config-file target="config.xml" parent="/*">
+        <!-- <config-file target="config.xml" parent="/*">
             <preference name="AppName" value="$APP_NAME"/>
             <preference name="CdnAssets" value="$CDN_ASSETS"/>
-        </config-file>
+        </config-file> -->
     </platform>
 </plugin>
