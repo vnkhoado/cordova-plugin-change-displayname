@@ -3,24 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
-const semver = require("semver");
-
-//
-// Load Cordova config.xml parser
-//
-function getConfigParser(context, filePath) {
-    let ConfigParser;
-    if (semver.lt(context.opts.cordova.version, "5.4.0")) {
-        ConfigParser = context.requireCordovaModule(
-            "cordova-lib/src/ConfigParser/ConfigParser"
-        );
-    } else {
-        ConfigParser = context.requireCordovaModule(
-            "cordova-common/src/ConfigParser/ConfigParser"
-        );
-    }
-    return new ConfigParser(filePath);
-}
+const { getConfigParser, isCordovaAbove } = require('./utils');
 
 //
 // Download CDN file content
