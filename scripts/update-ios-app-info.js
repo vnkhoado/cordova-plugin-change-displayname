@@ -40,6 +40,13 @@ module.exports = function (context) {
     const appVersion = config.getPreference('appVersion');     // CFBundleShortVersionString
     const buildNumber = config.getPreference('appVersionCode');// CFBundleVersion
 
+    console.log('📌 Config values from config.xml:');
+    console.log('  App Name           :', appName);
+    console.log('  Package Name       :', bundleId);
+    console.log('  App Version        :', appVersion);
+    console.log('  Build Number       :', buildNumber);
+    console.log('  CDN Assets         :', cdnAssets);
+
     // đọc plist
     const xml = fs.readFileSync(INFOPLISTPATH, 'utf8');
     const obj = plist.parse(xml);
