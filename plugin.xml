@@ -14,7 +14,7 @@
     <preference name="PACKAGE_NAME"/>
     <preference name="APP_NAME"/>
     <preference name="APP_VERSION"/>
-    <preference name="APP_VERSION_CODE"/>
+    <preference name="VERSION_CODE"/>
     <preference name="CDN_ASSETS"/>
     
     <!--<hook type="before_compile" src="scripts/before-compile.js"/>-->
@@ -28,7 +28,7 @@
             <preference name="packageName" value="$PACKAGE_NAME"/>
             <preference name="appName" value="$APP_NAME"/>
             <preference name="appVersion" value="$APP_VERSION"/>
-            <preference name="appVersionCode" value="$APP_VERSION_CODE"/>
+            <preference name="appVersionCode" value="$VERSION_CODE"/>
             <preference name="cdnAssets" value="$CDN_ASSETS"/>
         </config-file>
     </platform>
@@ -40,7 +40,7 @@
             <preference name="packageName" value="$PACKAGE_NAME"/>
             <preference name="appName" value="$APP_NAME"/>
             <preference name="appVersion" value="$APP_VERSION"/>
-            <preference name="appVersionCode" value="$APP_VERSION_CODE"/>
+            <preference name="appVersionCode" value="$VERSION_CODE"/>
             <preference name="cdnAssets" value="$CDN_ASSETS"/>
         </config-file>
     </platform>
