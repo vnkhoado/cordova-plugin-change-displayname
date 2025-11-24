@@ -57,36 +57,47 @@ module.exports = function (context) {
         });
     }
 
-    // --------- AndroidManifest.xml (package, versionName, versionCode) ---------
-    if (fs.existsSync(manifestPath)) {
-        const manifestXml = fs.readFileSync(manifestPath, 'utf-8');
-        parser.parseString(manifestXml, (err, data) => {
-            if (err) return;
-            if (data.manifest && data.manifest.$) {
-                if (packageName) {
-                    console.log('➡ Setting Package Name: ', packageName);
-                    data.manifest.$.package = packageName;
-                }
-                if (appVersion) {
-                    console.log('➡ Setting Version Name: ', appVersion);
-                    data.manifest.$['android:versionName'] = appVersion;
-                }
-                if (appVersionCode) {
-                    console.log('➡ Setting Version Code: ', appVersionCode);
-                    data.manifest.$['android:versionCode'] = appVersionCode;
-                }
-                fs.writeFileSync(manifestPath, builder.buildObject(data));
+    // --------- Update build.gradle (namespace / version / versionCode) --------- 
+    if (fs.existsSync(buildGradlePath)) {
+        let gradle = fs.readFileSync(buildGradlePath, 'utf8');
+
+        // Update namespace / package
+        if (packageName) {
+            if (gradle.match(/namespace\s+'[^']*'/)) {
+                gradle = gradle.replace(/namespace\s+'[^']*'/, `namespace '${packageName}'`);
+            } else {
+                gradle = gradle.replace(/android\s*{/, `android {\n    namespace '${packageName}'`);
             }
-        });
+            console.log('✅ Updated namespace in build.gradle');
+        }
+
+        // Update versionName
+        if (appVersion) {
+            if (gradle.match(/versionName\s+"[^"]*"/)) {
+                gradle = gradle.replace(/versionName\s+"[^"]*"/, `versionName "${appVersion}"`);
+            } else {
+                gradle = gradle.replace(/android\s*{/, `android {\n    defaultConfig {\n        versionName "${appVersion}"\n    }`);
+            }
+            console.log('✅ Updated versionName in build.gradle');
+        }
+
+        // Update versionCode
+        if (appVersionCode) {
+            let numericCode = parseInt(appVersionCode, 10);
+            if (isNaN(numericCode)) {
+                console.warn(`⚠ Invalid APP_VERSION_CODE ('${appVersionCode}'), fallback to 1`);
+                numericCode = 1;
+            }
+            if (gradle.match(/versionCode\s+\d+/)) {
+                gradle = gradle.replace(/versionCode\s+\d+/, `versionCode ${numericCode}`);
+            } else {
+                gradle = gradle.replace(/android\s*{/, `android {\n    defaultConfig {\n        versionCode ${numericCode}\n    }`);
+            }
+            console.log('✅ Updated versionCode in build.gradle');
+        }
+
+        fs.writeFileSync(buildGradlePath, gradle, 'utf8');
     }
 
-    // --------- build.gradle (applicationId) ---------
-    if (fs.existsSync(buildGradlePath) && packageName) {
-        let gradleText = fs.readFileSync(buildGradlePath, 'utf-8');
-        gradleText = gradleText.replace(/applicationId\s+"[^"]+"/, `applicationId "${packageName}"`);
-        fs.writeFileSync(buildGradlePath, gradleText);
-        console.log('➡ build.gradle updated with applicationId');
-    }
-
-    console.log('✅ Android app info updated');
+    console.log('✅ Android app info update completed.');
 };
