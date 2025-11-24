@@ -18,7 +18,7 @@ module.exports = function(context) {
     const root = context.opts.projectRoot;
     const configPath = path.join(root, 'config.xml');
     const config = getConfigParser(context, configPath);
-    const cdnConfigUrl = config.getPreference('CDN_ASSETS');
+    const cdnConfigUrl = config.getPreference('CdnAssets');
 
     if (!cdnConfigUrl) {
         console.log('ℹ No CDN_ASSETS URL provided, skipping replacement.');
