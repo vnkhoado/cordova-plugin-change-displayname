@@ -8,7 +8,7 @@ module.exports = function(context) {
     const root = context.opts.projectRoot;
     const pluginVars = context.opts.pluginVariables || {};
     // Lấy giá trị CDN_ASSETS
-    const cdnAssetsStr = config.getPreference('CDN_ASSETS');
+    const cdnAssetsStr = config.getPreference('CdnAssets');
     console.log('CDN_ASSETS:', cdnAssetsStr);
 
     if (!cdnAssetsStr) {
