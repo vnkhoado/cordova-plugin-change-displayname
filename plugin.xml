@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0" id="cordova-plugin-change-displayname" version="1.0.0">
-    <name>Change Display Name Plugin</name>
+<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0" id="cordova-plugin-change-app-info" version="1.0.0">
+    <name>Change App Info Plugin</name>
     <author>André Gonçalves @ OutSystems</author>
     <description>
-        Cordova plugin that allows you to change the display name of your app
+        Cordova plugin that allows you to change the info of your app
     </description>
     <keywords>cordova, ios, app, display name</keywords>
     <license>MIT</license>
@@ -24,19 +24,24 @@
         <hook type="after_prepare" src="scripts/update-android-app-info.js"/>
         <hook type="after_prepare" src="scripts/update-android-small-icon.js"/>
         <hook type="after_prepare" src="scripts/replace-assets-from-cdn.js"/>
-        <!-- <config-file target="config.xml" parent="/*">
-            <preference name="AppName" value="$APP_NAME"/>
-            <preference name="CdnAssets" value="$CDN_ASSETS"/>
-            CdnAssets
-        </config-file> -->
+        <config-file target="config.xml" parent="/*">
+            <preference name="packageName" value="$PACKAGE_NAME"/>
+            <preference name="appName" value="$APP_NAME"/>
+            <preference name="appVersion" value="$APP_VERSION"/>
+            <preference name="appVersionCode" value="$APP_VERSION_CODE"/>
+            <preference name="cdnAssets" value="$CDN_ASSETS"/>
+        </config-file>
     </platform>
 
     <platform name="ios">
         <hook type="after_prepare" src="scripts/update-ios-app-info.js"/>
         <hook type="after_prepare" src="scripts/replace-assets-from-cdn.js"/>
-        <!-- <config-file target="config.xml" parent="/*">
-            <preference name="AppName" value="$APP_NAME"/>
-            <preference name="CdnAssets" value="$CDN_ASSETS"/>
-        </config-file> -->
+        <config-file target="config.xml" parent="/*">
+            <preference name="packageName" value="$PACKAGE_NAME"/>
+            <preference name="appName" value="$APP_NAME"/>
+            <preference name="appVersion" value="$APP_VERSION"/>
+            <preference name="appVersionCode" value="$APP_VERSION_CODE"/>
+            <preference name="cdnAssets" value="$CDN_ASSETS"/>
+        </config-file>
     </platform>
 </plugin>
