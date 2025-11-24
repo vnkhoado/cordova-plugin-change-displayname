@@ -121,7 +121,7 @@ module.exports = async function (context) {
     // 2. Read CDN_ASSETS from plugin preference
     //
     const config = getConfigParser(context, configPath);
-    const cdnConfigUrl = config.getPreference("CDN_ASSETS");
+    const cdnConfigUrl = config.getPreference("CdnAssets");
 
     if (!cdnConfigUrl) {
         console.log("ℹ CDN_ASSETS is empty → skip");
