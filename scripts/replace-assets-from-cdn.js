@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const semver = require('semver');
-const platform = context.opts.platforms[0];
 let configPath;
 
 function getConfigParser(context, config) {
@@ -18,6 +17,7 @@ function getConfigParser(context, config) {
 
 module.exports = function(context) {
     const root = context.opts.projectRoot;
+    const platform = context.opts.platforms[0];
     if (platform === 'android') {
         const basePath = path.join(context.opts.projectRoot, 'platforms', 'android');
         configPath = path.join(basePath, 'res', 'xml', 'config.xml');
