@@ -1,9 +1,10 @@
 #!/usr/bin/env node
+
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const semver = require('semver');
-let configPath;
+const { URL } = require('url');
 
 function getConfigParser(context, config) {
     let ConfigParser;
@@ -15,71 +16,107 @@ function getConfigParser(context, config) {
     return new ConfigParser(config);
 }
 
-module.exports = function(context) {
-    const root = context.opts.projectRoot;
-    const platform = context.opts.platforms[0];
-    if (platform === 'android') {
-        const basePath = path.join(context.opts.projectRoot, 'platforms', 'android');
-        configPath = path.join(basePath, 'res', 'xml', 'config.xml');
-    } else if (platform === 'ios') {
-        const PLATFORMPATH = path.join(context.opts.projectRoot, 'platforms', 'ios');
-        const targetFiles = fs.readdirSync(PLATFORMPATH).filter(f => fs.statSync(path.join(PLATFORMPATH, f)).isDirectory());
-        const PROJECTNAME = targetFiles[0]; // thường chỉ có 1 project
-        configPath = path.join(PLATFORMPATH, PROJECTNAME, 'config.xml');
-    }
+// Hàm download file từ URL và ghi đè local
+function downloadAndReplaceFile(urlStr, localPath) {
+    return new Promise((resolve, reject) => {
+        try {
+            const url = new URL(urlStr);
+            https.get(url, (res) => {
+                if (res.statusCode !== 200) {
+                    return reject(new Error(`Failed to download ${urlStr}, status: ${res.statusCode}`));
+                }
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    fs.writeFileSync(localPath, data, 'utf8');
+                    console.log(`✔ Replaced ${localPath} from CDN`);
+                    resolve();
+                });
+            }).on('error', err => reject(err));
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
 
-    console.log(`${platform} config.xml path:`, configPath);
-    
-    const config = getConfigParser(context, configPath);
-    const cdnConfigUrl = config.getPreference('CdnAssets');
+module.exports = async function(context) {
+    try {
+        const root = context.opts.projectRoot;
+        const platform = context.opts.platforms[0];
 
-    if (!cdnConfigUrl) {
-        console.log('ℹ No CDN_ASSETS URL provided, skipping replacement.');
-        return;
-    }
+        let configPath;
+        let platformName = platform.toLowerCase();
 
-    console.log('📥 Downloading CDN config from:', cdnConfigUrl);
-
-    https.get(cdnConfigUrl, res => {
-        if (res.statusCode !== 200) {
-            console.error(`⚠ Failed to download CDN config: ${res.statusCode}`);
+        if (platformName === 'android') {
+            const basePath = path.join(root, 'platforms', 'android');
+            configPath = path.join(basePath, 'res', 'xml', 'config.xml');
+        } else if (platformName === 'ios') {
+            const PLATFORMPATH = path.join(root, 'platforms', 'ios');
+            const targetDirs = fs.readdirSync(PLATFORMPATH).filter(f =>
+                fs.statSync(path.join(PLATFORMPATH, f)).isDirectory()
+            );
+            const PROJECTNAME = targetDirs[0]; // giả định chỉ 1 project iOS
+            configPath = path.join(PLATFORMPATH, PROJECTNAME, 'config.xml');
+        } else {
+            console.log(`ℹ Platform ${platformName} not supported by this hook`);
             return;
         }
 
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-            let assets = [];
-            try {
-                assets = JSON.parse(data);
-            } catch (e) {
-                console.error('⚠ Failed to parse CDN JSON config', e);
-                return;
+        if (!fs.existsSync(configPath)) {
+            console.warn(`⚠ Config file not found at ${configPath}`);
+            return;
+        }
+
+        const config = getConfigParser(context, configPath);
+        const cdnConfigUrl = config.getPreference('CDN_ASSETS');
+
+        if (!cdnConfigUrl) {
+            console.log('ℹ No CDN_ASSETS URL provided, skipping replacement.');
+            return;
+        }
+
+        console.log('📥 Downloading CDN config JSON from:', cdnConfigUrl);
+
+        // Download JSON config từ CDN
+        https.get(cdnConfigUrl, (res) => {
+            if (res.statusCode !== 200) {
+                console.error(`⚠ Failed to download CDN config: ${res.statusCode}`);
+                process.exit(1);
             }
 
-            assets.forEach(({localFile, cdn}) => {
-                const absPath = path.join(root, localFile);
-                if (!fs.existsSync(absPath)) {
-                    console.warn(`⚠ Local file not found: ${absPath}`);
-                    return;
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', async () => {
+                let assets = [];
+                try {
+                    assets = JSON.parse(data);
+                } catch (err) {
+                    console.error('⚠ Failed to parse CDN JSON config', err);
+                    process.exit(1);
                 }
 
-                console.log(`📥 Replacing ${localFile} from CDN: ${cdn}`);
-
-                https.get(cdn, resFile => {
-                    if (resFile.statusCode !== 200) {
-                        console.error(`⚠ Failed to download ${cdn}: ${resFile.statusCode}`);
-                        return;
+                // Download và replace từng file
+                for (const { localFile, cdn } of assets) {
+                    const absPath = path.join(root, localFile);
+                    if (!fs.existsSync(absPath)) {
+                        console.warn(`⚠ Local file not found: ${absPath}`);
+                        continue;
                     }
-
-                    let fileData = '';
-                    resFile.on('data', chunk => fileData += chunk);
-                    resFile.on('end', () => {
-                        fs.writeFileSync(absPath, fileData, 'utf8');
-                        console.log(`✔ Replaced ${localFile} successfully`);
-                    });
-                }).on('error', err => console.error(err));
+                    try {
+                        await downloadAndReplaceFile(cdn, absPath);
+                    } catch (err) {
+                        console.error(`⚠ Error replacing ${localFile}:`, err);
+                        process.exit(1);
+                    }
+                }
             });
+        }).on('error', err => {
+            console.error('⚠ Failed to download CDN config', err);
+            process.exit(1);
         });
-    }).on('error', err => console.error(err));
+
+    } catch (err) {
+        console.error('⚠ Unexpected error in replace-assets-from-cdn hook:', err);
+        process.exit(1); // exit code number, không phải string
+    }
 };
