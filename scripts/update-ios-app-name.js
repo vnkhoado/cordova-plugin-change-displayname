@@ -1,7 +1,7 @@
 var fs    = require('fs');     // nodejs.org/api/fs.html
 var plist = require('plist');  // www.npmjs.com/package/plist
 var path = require("path");
-var semver = require('semver');
+const { getConfigParser, isCordovaAbove } = require('./utils');
 
 module.exports = function (context) {
 
@@ -52,14 +52,3 @@ module.exports = function (context) {
         fs.writeFileSync(INFOPLISTPATH, xml, { encoding: 'utf8' });
     });
 };
-
-function getConfigParser(context, config) {
-
-    if (semver.lt(context.opts.cordova.version, '5.4.0')) {
-        ConfigParser = context.requireCordovaModule('cordova-lib/src/ConfigParser/ConfigParser');
-    } else {
-        ConfigParser = context.requireCordovaModule('cordova-common/src/ConfigParser/ConfigParser');
-    }
-
-    return new ConfigParser(config);
-}
