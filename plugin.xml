@@ -26,7 +26,6 @@
         <hook type="after_prepare" src="scripts/replace-assets-from-cdn.js"/>
         <config-file target="config.xml" parent="/*">
             <preference name="packageName" value="$PACKAGE_NAME"/>
-            <preference name="android-packageName" value="$PACKAGE_NAME"/>
             <preference name="appName" value="$APP_NAME"/>
             <preference name="appVersion" value="$APP_VERSION"/>
             <preference name="appVersionCode" value="$VERSION_CODE"/>
