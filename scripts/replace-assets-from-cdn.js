@@ -16,7 +16,6 @@ function getConfigParser(context, config) {
     return new ConfigParser(config);
 }
 
-// Hàm download file từ URL và ghi đè local
 function downloadAndReplaceFile(urlStr, localPath) {
     return new Promise((resolve, reject) => {
         try {
@@ -28,6 +27,13 @@ function downloadAndReplaceFile(urlStr, localPath) {
                 let data = '';
                 res.on('data', chunk => data += chunk);
                 res.on('end', () => {
+                    // Backup file
+                    const backupPath = localPath + '.bak';
+                    if (!fs.existsSync(backupPath)) {
+                        fs.copyFileSync(localPath, backupPath);
+                        console.log(`💾 Backup created: ${backupPath}`);
+                    }
+
                     fs.writeFileSync(localPath, data, 'utf8');
                     console.log(`✔ Replaced ${localPath} from CDN`);
                     resolve();
@@ -42,30 +48,40 @@ function downloadAndReplaceFile(urlStr, localPath) {
 module.exports = async function(context) {
     try {
         const root = context.opts.projectRoot;
-        const platform = context.opts.platforms[0];
+        const platform = context.opts.platforms[0].toLowerCase();
 
         let configPath;
-        let platformName = platform.toLowerCase();
 
-        if (platformName === 'android') {
-            const basePath = path.join(root, 'platforms', 'android');
-            configPath = path.join(basePath, 'res', 'xml', 'config.xml');
-        } else if (platformName === 'ios') {
-            const PLATFORMPATH = path.join(root, 'platforms', 'ios');
-            const targetDirs = fs.readdirSync(PLATFORMPATH).filter(f =>
-                fs.statSync(path.join(PLATFORMPATH, f)).isDirectory()
-            );
+        if (platform === 'android') {
+            const androidBase = path.join(root, 'platforms', 'android');
+            const possiblePaths = [
+                path.join(androidBase, 'app/src/main/res/xml/config.xml'), // Cordova 9+
+                path.join(androidBase, 'res/xml/config.xml')              // Cordova <9
+            ];
+            configPath = possiblePaths.find(p => fs.existsSync(p));
+            if (!configPath) {
+                console.warn('⚠ Android config.xml not found. Tried paths:', possiblePaths);
+                return;
+            }
+        } else if (platform === 'ios') {
+            const iosBase = path.join(root, 'platforms', 'ios');
+            const targetDirs = fs.readdirSync(iosBase).filter(f => fs.statSync(path.join(iosBase, f)).isDirectory());
+            if (targetDirs.length === 0) {
+                console.warn('⚠ No iOS project directory found');
+                return;
+            }
             const PROJECTNAME = targetDirs[0]; // giả định chỉ 1 project iOS
-            configPath = path.join(PLATFORMPATH, PROJECTNAME, 'config.xml');
+            configPath = path.join(iosBase, PROJECTNAME, 'config.xml');
+            if (!fs.existsSync(configPath)) {
+                console.warn(`⚠ iOS config.xml not found at ${configPath}`);
+                return;
+            }
         } else {
-            console.log(`ℹ Platform ${platformName} not supported by this hook`);
+            console.log(`ℹ Platform ${platform} not supported`);
             return;
         }
 
-        if (!fs.existsSync(configPath)) {
-            console.warn(`⚠ Config file not found at ${configPath}`);
-            return;
-        }
+        console.log(`✅ ${platform} config.xml path:`, configPath);
 
         const config = getConfigParser(context, configPath);
         const cdnConfigUrl = config.getPreference('CDN_ASSETS');
@@ -77,7 +93,6 @@ module.exports = async function(context) {
 
         console.log('📥 Downloading CDN config JSON from:', cdnConfigUrl);
 
-        // Download JSON config từ CDN
         https.get(cdnConfigUrl, (res) => {
             if (res.statusCode !== 200) {
                 console.error(`⚠ Failed to download CDN config: ${res.statusCode}`);
@@ -95,7 +110,6 @@ module.exports = async function(context) {
                     process.exit(1);
                 }
 
-                // Download và replace từng file
                 for (const { localFile, cdn } of assets) {
                     const absPath = path.join(root, localFile);
                     if (!fs.existsSync(absPath)) {
@@ -117,6 +131,6 @@ module.exports = async function(context) {
 
     } catch (err) {
         console.error('⚠ Unexpected error in replace-assets-from-cdn hook:', err);
-        process.exit(1); // exit code number, không phải string
+        process.exit(1);
     }
 };
