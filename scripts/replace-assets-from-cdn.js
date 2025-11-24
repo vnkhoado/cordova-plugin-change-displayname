@@ -4,7 +4,7 @@ const path = require('path');
 const https = require('https');
 const semver = require('semver');
 const platform = context.opts.platforms[0];
-const configPath;
+let configPath;
 
 function getConfigParser(context, config) {
     let ConfigParser;
