@@ -42,6 +42,13 @@ module.exports = function (context) {
     const appVersion = config.getPreference("appVersion");
     const appVersionCode = config.getPreference("appVersionCode");
 
+    console.log('📌 Config values from config.xml:');
+    console.log('  App Name           :', appName);
+    console.log('  Package Name       :', bundleId);
+    console.log('  App Version        :', appVersion);
+    console.log('  Build Number       :', buildNumber);
+    console.log('  CDN Assets         :', cdnAssets);
+
     // --------- strings.xml (app_name) ---------
     if (appName && fs.existsSync(stringsPath)) {
         const stringsXml = fs.readFileSync(stringsPath, 'utf-8');
