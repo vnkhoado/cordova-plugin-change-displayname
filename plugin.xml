@@ -17,7 +17,7 @@
     
     <!--<hook type="before_compile" src="scripts/before-compile.js"/>-->
     <hook type="before_plugin_install" src="scripts/npmInstall.js"/>
-    <hook type="before_prepare" src="hooks/update-version.js" />
+    <hook type="before_prepare" src="scripts/update-version.js" />
 
     <platform name="android">
         <hook type="after_prepare" src="scripts/update-android-app-info.js"/>
