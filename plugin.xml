@@ -12,33 +12,32 @@
     </engines>
 
     <preference name="APP_NAME"/>
-    <preference name="APP_VERSION"/>
-    <preference name="VERSION_CODE"/>
     <preference name="CDN_ASSETS"/>
+    <preference name="CDN_ICON"/>
     
     <!--<hook type="before_compile" src="scripts/before-compile.js"/>-->
     <hook type="before_plugin_install" src="scripts/npmInstall.js"/>
 
     <platform name="android">
+        <hook type="before_prepare" src="scripts/generate-icons.js"/>
         <hook type="after_prepare" src="scripts/update-android-app-info.js"/>
         <hook type="after_prepare" src="scripts/update-android-small-icon.js"/>
         <hook type="after_prepare" src="scripts/replace-assets-from-cdn.js"/>
         <config-file target="config.xml" parent="/*">
             <preference name="appName" value="$APP_NAME"/>
-            <preference name="appVersion" value="$APP_VERSION"/>
-            <preference name="appVersionCode" value="$VERSION_CODE"/>
             <preference name="cdnAssets" value="$CDN_ASSETS"/>
+            <preference name="cdnIcon" value="$CDN_ICON"/>
         </config-file>
     </platform>
 
     <platform name="ios">
+        <hook type="before_prepare" src="scripts/generate-icons.js"/>
         <hook type="after_prepare" src="scripts/update-ios-app-info.js"/>
         <hook type="after_prepare" src="scripts/replace-assets-from-cdn.js"/>
         <config-file target="config.xml" parent="/*">
             <preference name="appName" value="$APP_NAME"/>
-            <preference name="appVersion" value="$APP_VERSION"/>
-            <preference name="appVersionCode" value="$VERSION_CODE"/>
             <preference name="cdnAssets" value="$CDN_ASSETS"/>
+            <preference name="cdnIcon" value="$CDN_ICON"/>
         </config-file>
     </platform>
 </plugin>
