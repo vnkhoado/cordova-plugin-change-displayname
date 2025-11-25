@@ -63,11 +63,7 @@ module.exports = function (context) {
 
         // Update namespace / package
         if (packageName) {
-            if (gradle.match(/namespace\s+'[^']*'/)) {
-                gradle = gradle.replace(/namespace\s+'[^']*'/, `namespace '${packageName}'`);
-            } else {
-                gradle = gradle.replace(/android\s*{/, `android {\n    namespace '${packageName}'`);
-            }
+            config.setPackageName(packageName);
             console.log('✅ Updated namespace in build.gradle');
         }
 
