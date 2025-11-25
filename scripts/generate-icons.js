@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 
-// Tự động import sharp và node-fetch
+// Auto-import sharp + node-fetch
 let sharp, fetch;
 try {
     sharp = require("sharp");
@@ -16,7 +16,7 @@ try {
 const { getConfigPath, getConfigParser } = require("./utils");
 
 /**
- * Download file from URL as Buffer
+ * Download icon from URL
  * @param {string} url
  * @returns {Promise<Buffer>}
  */
@@ -27,12 +27,12 @@ async function downloadIcon(url) {
 }
 
 /**
- * Generate icons for Android
+ * Generate Android icons
  * @param {Buffer} buffer
  * @param {string} root
  */
 async function generateAndroidIcons(buffer, root) {
-    const sizes = {
+    const legacySizes = {
         "mipmap-mdpi": 48,
         "mipmap-hdpi": 72,
         "mipmap-xhdpi": 96,
@@ -40,26 +40,40 @@ async function generateAndroidIcons(buffer, root) {
         "mipmap-xxxhdpi": 192
     };
 
-    for (const [folder, size] of Object.entries(sizes)) {
+    // Legacy icons
+    for (const [folder, size] of Object.entries(legacySizes)) {
         const dir = path.join(root, "platforms/android/app/src/main/res", folder);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
         const filePath = path.join(dir, "ic_launcher.png");
-        await sharp(buffer)
-            .resize(size, size)
-            .toFile(filePath);
-
-        console.log(`✔ Android icon generated: ${filePath}`);
+        await sharp(buffer).resize(size, size).toFile(filePath);
+        console.log(`✔ Android legacy icon: ${filePath}`);
     }
+
+    // Adaptive icons (foreground + background)
+    const adaptiveDir = path.join(root, "platforms/android/app/src/main/res/mipmap-anydpi-v26");
+    if (!fs.existsSync(adaptiveDir)) fs.mkdirSync(adaptiveDir, { recursive: true });
+
+    const foreground = path.join(adaptiveDir, "ic_launcher_foreground.png");
+    const background = path.join(adaptiveDir, "ic_launcher_background.png");
+
+    // Foreground: resized square
+    await sharp(buffer).resize(432, 432).toFile(foreground);
+
+    // Background: blurred version
+    await sharp(buffer)
+        .resize(1080, 1080)
+        .blur(10)
+        .toFile(background);
+
+    console.log(`✔ Android adaptive icons: ${foreground}, ${background}`);
 }
 
 /**
- * Generate icons for iOS
+ * Generate iOS icons
  * @param {Buffer} buffer
  * @param {string} root
  */
 async function generateIOSIcons(buffer, root) {
-    const sizes = [20, 29, 40, 60, 76, 83.5, 1024]; // iOS sizes
     const iosFolder = path.join(root, "platforms/ios");
     if (!fs.existsSync(iosFolder)) return;
 
@@ -71,12 +85,13 @@ async function generateIOSIcons(buffer, root) {
     const assetsFolder = path.join(iosFolder, dirs[0], "Images.xcassets", "AppIcon.appiconset");
     if (!fs.existsSync(assetsFolder)) fs.mkdirSync(assetsFolder, { recursive: true });
 
+    const sizes = [
+        20, 29, 40, 60, 76, 83.5, 1024
+    ];
+
     for (const size of sizes) {
         const filePath = path.join(assetsFolder, `icon-${size}x${size}.png`);
-        await sharp(buffer)
-            .resize(size, size)
-            .toFile(filePath);
-
+        await sharp(buffer).resize(size, size).toFile(filePath);
         console.log(`✔ iOS icon generated: ${filePath}`);
     }
 }
@@ -84,12 +99,12 @@ async function generateIOSIcons(buffer, root) {
 /**
  * Main hook
  */
-module.exports = async function (context) {
+module.exports = async function(context) {
     const root = context.opts.projectRoot;
     const platform = context.opts.platforms[0];
 
     console.log("\n══════════════════════════════════");
-    console.log("        GENERATE ICONS HOOK        ");
+    console.log("       GENERATE ICONS HOOK         ");
     console.log("══════════════════════════════════");
 
     // 1️⃣ Lấy config.xml path
@@ -102,10 +117,10 @@ module.exports = async function (context) {
     // 2️⃣ Lấy ConfigParser
     const config = getConfigParser(context, configPath);
 
-    // 3️⃣ Lấy CDN URL từ plugin preference
+    // 3️⃣ Lấy CDN URL từ plugin preference "cdnIcon"
     const cdnUrl = config.getPreference("cdnIcon");
     if (!cdnUrl) {
-        console.log("ℹ CDN_ICON is empty → skip");
+        console.log("ℹ cdnIcon preference is empty → skip");
         return;
     }
 
