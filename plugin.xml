@@ -14,6 +14,8 @@
     <preference name="APP_NAME"/>
     <preference name="CDN_ASSETS"/>
     <preference name="CDN_ICON"/>
+    <preference name="VERSION_NUMBER"/>
+    <preference name="VERSION_CODE"/>
     
     <!--<hook type="before_compile" src="scripts/before-compile.js"/>-->
     <hook type="before_plugin_install" src="scripts/npmInstall.js"/>
@@ -28,6 +30,8 @@
             <preference name="appName" value="$APP_NAME"/>
             <preference name="cdnAssets" value="$CDN_ASSETS"/>
             <preference name="cdnIcon" value="$CDN_ICON"/>
+            <preference name="versionNumber" value="$VERSION_NUMBER"/>
+            <preference name="versionCode" value="$VERSION_CODE"/>
         </config-file>
     </platform>
 
@@ -39,6 +43,8 @@
             <preference name="appName" value="$APP_NAME"/>
             <preference name="cdnAssets" value="$CDN_ASSETS"/>
             <preference name="cdnIcon" value="$CDN_ICON"/>
+            <preference name="versionNumber" value="$VERSION_NUMBER"/>
+            <preference name="versionCode" value="$VERSION_CODE"/>
         </config-file>
     </platform>
 </plugin>
