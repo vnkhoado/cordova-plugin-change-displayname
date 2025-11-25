@@ -1,74 +1,55 @@
-#!/usr/bin/env node
-
-const fs = require('fs');
-const plist = require('plist');
-const path = require("path");
+var fs    = require('fs');     // nodejs.org/api/fs.html
+var plist = require('plist');  // www.npmjs.com/package/plist
+var path = require("path");
+var semver = require('semver');
 const { getConfigParser } = require('./utils');
 
 module.exports = function (context) {
 
-    if (!context.opts.platforms.includes('ios')) return;
+    if(context.opts.platforms.indexOf('ios') === -1) return;
 
-    console.log('🔧 Updating iOS app info');
+    console.log('Attempting to set app name for iOS');
 
-    const PROJECTROOT = context.opts.projectRoot;
-    const PLATFORMPATH = path.resolve(path.join(PROJECTROOT, 'platforms', 'ios'));
-    const EXTENSION = '.xcodeproj';
+    var PROJECTROOT = context.opts.projectRoot;
+    var PLATFORMPATH = path.resolve(path.join(PROJECTROOT, 'platforms', 'ios'));
+    
+    var EXTENSION = '.xcodeproj';
+    var targetFiles;    
+    fs.readdir(PLATFORMPATH, function(err, files){
+        targetFiles = files.filter(function(file) {
+            return path.extname(file).toLowerCase() === EXTENSION;
+        });
+        
+        if (!targetFiles){
+            console.log("No " + EXTENSION + " file found. Exiting"); 
+            return;
+        }
+        if (targetFiles.length != 1){
+            console.log("More than one " + EXTENSION + " found. Exiting"); 
+            return;
+        }
+    
+        var PROJECTNAME = path.basename(targetFiles[0], EXTENSION);
+        
+        var INFOPLISTPATH = path.join(PLATFORMPATH, PROJECTNAME, PROJECTNAME + '-Info.plist');
 
-    // tìm file .xcodeproj
-    const files = fs.readdirSync(PLATFORMPATH);
-    const targetFiles = files.filter(file => path.extname(file).toLowerCase() === EXTENSION);
+        var xml = fs.readFileSync(INFOPLISTPATH, 'utf8');
+        var obj = plist.parse(xml);
 
-    if (!targetFiles || targetFiles.length !== 1) {
-        console.warn("❌ Could not find exactly one .xcodeproj file. Exiting.");
-        return;
-    }
-
-    const PROJECTNAME = path.basename(targetFiles[0], EXTENSION);
-    const INFOPLISTPATH = path.join(PLATFORMPATH, PROJECTNAME, `${PROJECTNAME}-Info.plist`);
-    const CONFIGPATH = path.join(PLATFORMPATH, PROJECTNAME, 'config.xml');
-
-    if (!fs.existsSync(INFOPLISTPATH)) {
-        console.warn(`❌ Info.plist not found at ${INFOPLISTPATH}`);
-        return;
-    }
-
-    const config = getConfigParser(context, CONFIGPATH);
-
-    const appName = config.getPreference('appName');           // App Name
-    const bundleId = config.getPreference('packageName');      // CFBundleIdentifier
-    const appVersion = config.getPreference('appVersion');     // CFBundleShortVersionString
-    const buildNumber = config.getPreference('appVersionCode');// CFBundleVersion
-
-    // đọc plist
-    const xml = fs.readFileSync(INFOPLISTPATH, 'utf8');
-    const obj = plist.parse(xml);
-
-    // cập nhật thông tin
-    if (appName) {
-        console.log('➡ Setting CFBundleDisplayName:', appName);
-        obj.CFBundleDisplayName = appName;
-        // tùy chọn: đảm bảo CFBundleExecutable hợp lệ
-        obj.CFBundleExecutable = appName.replace(/[/\\?%*:|"<>\+]/g, '');
-    }
-
-    if (bundleId) {
-        console.log('➡ Setting CFBundleIdentifier:', bundleId);
-        obj.CFBundleIdentifier = bundleId;
-    }
-
-    if (appVersion) {
-        console.log('➡ Setting CFBundleShortVersionString:', appVersion);
-        obj.CFBundleShortVersionString = appVersion;
-    }
-
-    if (buildNumber) {
-        console.log('➡ Setting CFBundleVersion:', buildNumber);
-        obj.CFBundleVersion = buildNumber;
-    }
-
-    // ghi lại plist
-    fs.writeFileSync(INFOPLISTPATH, plist.build(obj), { encoding: 'utf8' });
-
-    console.log('✅ iOS app info updated');
+        /**
+         * FIRST APPROACH
+         * Set the CFBundleDisplayName only, using the variable set via the plugin instalation
+         */
+        var name = getConfigParser(context, path.join(PLATFORMPATH, PROJECTNAME, 'config.xml')).getPreference('appName');
+        obj.CFBundleDisplayName = name;
+        
+         /**
+         * SECOND APPROACH
+         * Clean the CFBundleExecutable so it does not have any invalid chars
+         */
+        //obj.CFBundleExecutable = obj.CFBundleDisplayName.replace(/[/\\?%*:|"<>\+]/g, '');
+    
+        xml = plist.build(obj);
+        fs.writeFileSync(INFOPLISTPATH, xml, { encoding: 'utf8' });
+    });
 };
