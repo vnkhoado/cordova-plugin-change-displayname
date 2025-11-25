@@ -1,99 +1,85 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
+const fs = require("fs");
 const path = require("path");
-const xml2js = require('xml2js');
-const parser = new xml2js.Parser();
-const { getConfigParser } = require('./utils');
-const builder = new xml2js.Builder({
-    xmldec: {
-        version: '1.0',
-        encoding: 'UTF-8'
-    }
-});
+const { ConfigParser } = require("cordova-common");
+const xml2js = require("xml2js");
 
 module.exports = function (context) {
-    if (!context.opts.platforms.includes('android')) return;
+    const root = context.opts.projectRoot;
 
-    console.log('🔧 Updating Android app info');
+    const platforms = ["android", "ios"];
 
-    const projectRoot = context.opts.projectRoot;
-    const usesNewStructure = fs.existsSync(path.join(projectRoot, 'platforms', 'android', 'app'));
-    const basePath = usesNewStructure
-        ? path.join(projectRoot, 'platforms', 'android', 'app', 'src', 'main')
-        : path.join(projectRoot, 'platforms', 'android');
+    platforms.forEach((platform) => {
+        let configPath = null;
 
-    const configPath = path.join(basePath, 'res', 'xml', 'config.xml');
-    const stringsPath = path.join(basePath, 'res', 'values', 'strings.xml');
-    const manifestPath = path.join(basePath, 'AndroidManifest.xml');
-    const buildGradlePath = path.join(projectRoot, 'platforms', 'android', 'app', 'build.gradle');
-
-    // kiểm tra config.xml
-    try {
-        fs.accessSync(configPath, fs.F_OK);
-    } catch (e) {
-        console.error(`⚠ Could not find Android config.xml at ${configPath}`);
-        return;
-    }
-
-    const config = getConfigParser(context, configPath);
-    const appName = config.getPreference("appName");
-    const packageName = config.getPreference("packageName");
-    const appVersion = config.getPreference("appVersion");
-    const appVersionCode = config.getPreference("appVersionCode");
-
-    // --------- strings.xml (app_name) ---------
-    if (appName && fs.existsSync(stringsPath)) {
-        const stringsXml = fs.readFileSync(stringsPath, 'utf-8');
-        parser.parseString(stringsXml, (err, data) => {
-            if (err) return;
-            data.resources.string.forEach(str => {
-                if (str.$.name === 'app_name') {
-                    console.log('➡ Setting App Name:', appName);
-                    str._ = appName;
+        // ===== 1. Tìm config.xml =====
+        if (platform === "android") {
+            const p1 = path.join(root, "platforms", "android", "app/src/main/res/xml/config.xml");
+            const p2 = path.join(root, "platforms", "android", "res/xml/config.xml");
+            configPath = fs.existsSync(p1) ? p1 : fs.existsSync(p2) ? p2 : null;
+        } else if (platform === "ios") {
+            const iosFolder = path.join(root, "platforms", "ios");
+            if (fs.existsSync(iosFolder)) {
+                const dirs = fs
+                    .readdirSync(iosFolder)
+                    .filter((d) => fs.existsSync(path.join(iosFolder, d, "config.xml")));
+                if (dirs.length) {
+                    configPath = path.join(iosFolder, dirs[0], "config.xml");
                 }
-            });
-            fs.writeFileSync(stringsPath, builder.buildObject(data));
-        });
-    }
-
-    // --------- Update build.gradle (namespace / version / versionCode) --------- 
-    if (fs.existsSync(buildGradlePath)) {
-        let gradle = fs.readFileSync(buildGradlePath, 'utf8');
-
-        // Update namespace / package
-        if (packageName) {
-            config.setPackageName(packageName);
-            console.log('✅ Updated namespace in build.gradle');
+            }
         }
 
-        // Update versionName
-        if (appVersion) {
-            if (gradle.match(/versionName\s+"[^"]*"/)) {
-                gradle = gradle.replace(/versionName\s+"[^"]*"/, `versionName "${appVersion}"`);
-            } else {
-                gradle = gradle.replace(/android\s*{/, `android {\n    defaultConfig {\n        versionName "${appVersion}"\n    }`);
+        // fallback: dùng root config.xml nếu platform chưa add
+        if (!configPath) {
+            configPath = path.join(root, "config.xml");
+            if (!fs.existsSync(configPath)) {
+                console.warn(`⚠️ config.xml not found for ${platform}, skipping...`);
+                return;
             }
-            console.log('✅ Updated versionName in build.gradle');
         }
 
-        // Update versionCode
-        if (appVersionCode) {
-            let numericCode = parseInt(appVersionCode, 10);
-            if (isNaN(numericCode)) {
-                console.warn(`⚠ Invalid APP_VERSION_CODE ('${appVersionCode}'), fallback to 1`);
-                numericCode = 1;
+        try {
+            const config = new ConfigParser(configPath);
+
+            // ===== 2. Lấy preference =====
+            const packageName = config.getPreference("packageName");
+            const appVersion = config.getPreference("appVersion");
+            const appVersionCode = config.getPreference("appVersionCode");
+            const appName = config.getPreference("appName");
+
+            // ===== 3. Update widget attributes =====
+            if (packageName) config.setPackageName(packageName);
+            if (appVersion) config.setVersion(appVersion);
+            if (appVersionCode) {
+                if (platform === "android") config.setAttribute("android-versionCode", appVersionCode);
+                if (platform === "ios") config.setAttribute("ios-CFBundleVersion", appVersionCode);
             }
-            if (gradle.match(/versionCode\s+\d+/)) {
-                gradle = gradle.replace(/versionCode\s+\d+/, `versionCode ${numericCode}`);
-            } else {
-                gradle = gradle.replace(/android\s*{/, `android {\n    defaultConfig {\n        versionCode ${numericCode}\n    }`);
+
+            // ===== 4. Update <name> =====
+            if (appName) {
+                const xml = fs.readFileSync(configPath, "utf8");
+                xml2js.parseString(xml, (err, result) => {
+                    if (err) throw err;
+                    result.widget.name = [appName];
+                    const builder = new xml2js.Builder();
+                    const updatedXml = builder.buildObject(result);
+                    fs.writeFileSync(configPath, updatedXml, "utf8");
+                });
             }
-            console.log('✅ Updated versionCode in build.gradle');
+
+            // ===== 5. Ghi config =====
+            config.write();
+
+            console.log(`✔ ${platform} versioning updated:`);
+            console.log("   packageName =", config.packageName());
+            console.log("   version =", config.version());
+            console.log("   android-versionCode =", config.getAttribute("android-versionCode"));
+            console.log("   ios-CFBundleVersion =", config.getAttribute("ios-CFBundleVersion"));
+            if (appName) console.log("   appName =", appName);
+
+        } catch (err) {
+            console.error(`❌ Error updating ${platform} config.xml:`, err);
         }
-
-        fs.writeFileSync(buildGradlePath, gradle, 'utf8');
-    }
-
-    console.log('✅ Android app info update completed.');
+    });
 };
