@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
-const { getConfigParser, isCordovaAbove } = require('./utils');
+const { getConfigParser, getConfigPath } = require('./utils');
 
 //
 // Download CDN file content
@@ -53,45 +53,7 @@ module.exports = async function (context) {
     console.log("     CDN REPLACE ASSETS HOOK      ");
     console.log("══════════════════════════════════");
 
-    //
-    // 1. Find config.xml path
-    //
-    let configPath = null;
-
-    if (platform === "android") {
-        const p1 = path.join(
-            root,
-            "platforms",
-            "android",
-            "app/src/main/res/xml/config.xml"
-        );
-        const p2 = path.join(
-            root,
-            "platforms",
-            "android",
-            "res/xml/config.xml"
-        );
-
-        configPath = fs.existsSync(p1)
-            ? p1
-            : fs.existsSync(p2)
-            ? p2
-            : null;
-    }
-
-    if (platform === "ios") {
-        // MABS keeps config.xml in: platforms/ios/<ProjectName>/config.xml
-        const iosFolder = path.join(root, "platforms", "ios");
-        const dirs = fs
-            .readdirSync(iosFolder)
-            .filter((d) =>
-                fs.existsSync(path.join(iosFolder, d, "config.xml"))
-            );
-
-        if (dirs.length) {
-            configPath = path.join(iosFolder, dirs[0], "config.xml");
-        }
-    }
+    const configPath = getConfigPath(context, platform);
 
     if (!configPath) {
         console.log("⚠ config.xml not found. Skip hook.");
