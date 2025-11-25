@@ -20,7 +20,7 @@ module.exports = {
             ConfigParser = context.requireCordovaModule('cordova-common/src/ConfigParser/ConfigParser');
         }
         return new ConfigParser(configPath);
-    }
+    },
 
     // Lấy config.xml path cho Android / iOS
     getConfigPath: function (context, platform) {
