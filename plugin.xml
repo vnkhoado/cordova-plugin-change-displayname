@@ -23,7 +23,6 @@
 
     <platform name="android">
         <hook type="after_prepare" src="scripts/update-android-app-info.js"/>
-        <hook type="after_prepare" src="scripts/update-android-small-icon.js"/>
         <hook type="after_prepare" src="scripts/generate-icons.js"/>
         <hook type="after_prepare" src="scripts/replace-assets-from-cdn.js"/>
         <config-file target="config.xml" parent="/*">
