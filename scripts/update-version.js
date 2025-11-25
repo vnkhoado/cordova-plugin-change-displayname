@@ -1,35 +1,43 @@
 #!/usr/bin/env node
-
 const fs = require('fs');
 const path = require('path');
 const xml2js = require('xml2js');
 
 module.exports = function(context) {
-    const rootDir = context.opts.projectRoot;
-    const configXmlPath = path.join(rootDir, 'config.xml');
+    return new Promise((resolve, reject) => {
+        const configXmlPath = path.join(context.opts.projectRoot, 'config.xml');
+        if (!fs.existsSync(configXmlPath)) return reject('config.xml not found');
 
-    if (!fs.existsSync(configXmlPath)) {
-        console.error('config.xml not found!');
-        return;
-    }
+        const xml = fs.readFileSync(configXmlPath, 'utf-8');
+        xml2js.parseString(xml, (err, result) => {
+            if (err) return reject(err);
 
-    const xml = fs.readFileSync(configXmlPath, 'utf-8');
-    xml2js.parseString(xml, (err, result) => {
-        if (err) throw err;
+            const widget = result.widget;
+            const widgetAttrs = widget.$;
 
-        // Thay đổi version và versionCode
-        const newVersion = "1.2.3";
-        const newVersionCode = "123";
+            // Lấy giá trị plugin variables từ config.xml preference
+            const preferences = widget.preference || [];
+            let versionNumber, versionCode;
+            preferences.forEach(pref => {
+                switch(pref.$.name){
+                    case "VERSION_NUMBER": versionNumber = pref.$.value; break;
+                    case "VERSION_CODE": versionCode = pref.$.value; break;
+                }
+            });
 
-        if (result.widget.$) {
-            result.widget.$.version = newVersion;
-            result.widget.$['android-versionCode'] = newVersionCode;
-        }
+            // Ghi vào widget
+            if(versionNumber) widgetAttrs.version = versionNumber;
+            if(versionCode){
+                widgetAttrs['android-versionCode'] = versionCode;
+                widgetAttrs['ios-CFBundleVersion'] = versionCode;
+            }
 
-        const builder = new xml2js.Builder();
-        const updatedXml = builder.buildObject(result);
-
-        fs.writeFileSync(configXmlPath, updatedXml);
-        console.log(`Updated version to ${newVersion} and versionCode to ${newVersionCode}`);
+            const builder = new xml2js.Builder();
+            fs.writeFile(configXmlPath, builder.buildObject(result), (err)=>{
+                if(err) return reject(err);
+                console.log(`[ChangeAppInfo] version=${versionNumber}, versionCode=${versionCode}`);
+                resolve();
+            });
+        });
     });
 };
