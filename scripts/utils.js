@@ -1,4 +1,5 @@
 const semver = require('semver');
+const path = require("path");
 
 module.exports = {
     // Kiểm tra Cordova version
