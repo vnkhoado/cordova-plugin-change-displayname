@@ -16,6 +16,7 @@ module.exports = function (context) {
         // fallback: dùng root config.xml nếu platform chưa add
         if (!configPath) {
             configPath = path.join(root, "config.xml");
+            console.log("Config Path =", configPath);
             if (!fs.existsSync(configPath)) {
                 console.warn(`⚠️ config.xml not found for ${platform}, skipping...`);
                 return;
@@ -32,8 +33,14 @@ module.exports = function (context) {
             const appName = config.getPreference("appName");
 
             // ===== 3. Update widget attributes =====
-            if (packageName) config.setPackageName(packageName);
-            if (appVersion) config.setVersion(appVersion);
+            if (packageName) {
+                console.log("Input packageName =", packageName);
+                config.setPackageName(packageName);
+            }
+            if (appVersion) {
+                console.log("Input version =", appVersion);
+                config.setVersion(appVersion);
+            }
 
             // ===== 4. Ghi config =====
             config.write();
