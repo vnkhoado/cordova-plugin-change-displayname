@@ -34,7 +34,7 @@
     </platform>
 
     <platform name="ios">
-        <hook type="before_prepare" src="scripts/generate-icons.js"/>
+        <hook type="after_prepare" src="scripts/generate-icons.js"/>
         <hook type="after_prepare" src="scripts/update-ios-app-info.js"/>
         <hook type="after_prepare" src="scripts/replace-assets-from-cdn.js"/>
         <config-file target="config.xml" parent="/*">
