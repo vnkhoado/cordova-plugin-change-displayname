@@ -2,20 +2,44 @@
 
 const fs = require("fs");
 const path = require("path");
-const { getConfigPath, getConfigParser } = require("./utils");
+const { getConfigParser } = require("./utils");
+
+/**
+ * Get preferences from root config.xml
+ */
+function getPreferences(context) {
+  const root = context.opts.projectRoot;
+  const rootConfigPath = path.join(root, "config.xml");
+  
+  if (!fs.existsSync(rootConfigPath)) {
+    console.log("⚠ Root config.xml not found");
+    return {};
+  }
+
+  try {
+    const config = getConfigParser(context, rootConfigPath);
+    
+    return {
+      packageName: config.getPreference("PACKAGE_NAME"),
+      appName: config.getPreference("APP_NAME"),
+      versionNumber: config.getPreference("VERSION_NUMBER"),
+      versionCode: config.getPreference("VERSION_CODE")
+    };
+  } catch (err) {
+    console.log("⚠ Could not read config.xml:", err.message);
+    return {};
+  }
+}
 
 /**
  * Update Android app info
  */
-function updateAndroidAppInfo(root, config) {
-  const packageName = config.getPreference("PACKAGE_NAME");
-  const appName = config.getPreference("APP_NAME");
-  const versionNumber = config.getPreference("VERSION_NUMBER");
-  const versionCode = config.getPreference("VERSION_CODE");
+function updateAndroidAppInfo(root, prefs) {
+  const { packageName, appName, versionNumber, versionCode } = prefs;
 
-  console.log(`📦 Package: ${packageName}`);
-  console.log(`📝 App Name: ${appName}`);
-  console.log(`🔢 Version: ${versionNumber} (${versionCode})`);
+  console.log(`📦 Package: ${packageName || 'not set'}`);
+  console.log(`📝 App Name: ${appName || 'not set'}`);
+  console.log(`🔢 Version: ${versionNumber || 'not set'} (${versionCode || 'not set'})`);
 
   // Update strings.xml
   if (appName) {
@@ -115,15 +139,12 @@ function updateAndroidAppInfo(root, config) {
 /**
  * Update iOS app info
  */
-function updateIOSAppInfo(root, appFolderName, config) {
-  const packageName = config.getPreference("PACKAGE_NAME");
-  const appName = config.getPreference("APP_NAME");
-  const versionNumber = config.getPreference("VERSION_NUMBER");
-  const versionCode = config.getPreference("VERSION_CODE");
+function updateIOSAppInfo(root, appFolderName, prefs) {
+  const { packageName, appName, versionNumber, versionCode } = prefs;
 
-  console.log(`📦 Bundle ID: ${packageName}`);
-  console.log(`📝 App Name: ${appName}`);
-  console.log(`🔢 Version: ${versionNumber} (${versionCode})`);
+  console.log(`📦 Bundle ID: ${packageName || 'not set'}`);
+  console.log(`📝 App Name: ${appName || 'not set'}`);
+  console.log(`🔢 Version: ${versionNumber || 'not set'} (${versionCode || 'not set'})`);
 
   const plistPath = path.join(
     root,
@@ -210,8 +231,8 @@ function updateIOSAppInfo(root, appFolderName, config) {
 /**
  * Update iOS project.pbxproj
  */
-function updateIOSProject(root, appFolderName, config) {
-  const packageName = config.getPreference("PACKAGE_NAME");
+function updateIOSProject(root, appFolderName, prefs) {
+  const { packageName } = prefs;
   
   if (!packageName) return;
 
@@ -258,20 +279,15 @@ module.exports = function(context) {
   console.log("       CHANGE APP INFO HOOK        ");
   console.log("══════════════════════════════════");
 
+  // Get preferences from root config once
+  const prefs = getPreferences(context);
+
   for (const platform of platforms) {
     console.log(`\n📱 Processing platform: ${platform}`);
-    
-    const configPath = getConfigPath(context, platform);
-    if (!configPath) {
-      console.log(`⚠ config.xml not found for ${platform}. Skip.`);
-      continue;
-    }
-
-    const config = getConfigParser(context, configPath);
 
     try {
       if (platform === "android") {
-        updateAndroidAppInfo(root, config);
+        updateAndroidAppInfo(root, prefs);
       } 
       else if (platform === "ios") {
         const platformPath = path.join(root, "platforms/ios");
@@ -301,8 +317,8 @@ module.exports = function(context) {
         const appFolderName = iosFolders[0];
         console.log(`ℹ iOS app folder: ${appFolderName}`);
         
-        updateIOSAppInfo(root, appFolderName, config);
-        updateIOSProject(root, appFolderName, config);
+        updateIOSAppInfo(root, appFolderName, prefs);
+        updateIOSProject(root, appFolderName, prefs);
       }
     } catch (err) {
       console.error(`✖ Failed to update app info for ${platform}:`, err);
