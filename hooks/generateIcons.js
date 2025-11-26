@@ -17,6 +17,32 @@ try {
 const { getConfigPath, getConfigParser } = require("./utils");
 
 /**
+ * Get CDN URL from multiple sources
+ */
+function getCdnUrl(config, context) {
+  // Try multiple preference names
+  let cdnUrl = config.getPreference("CDN_ICON") || 
+               config.getPreference("cdnIcon") ||
+               config.getPreference("cdn_icon");
+  
+  // If not found in preferences, try plugin variables
+  if (!cdnUrl && context.opts && context.opts.plugin && context.opts.plugin.variables) {
+    cdnUrl = context.opts.plugin.variables.CDN_ICON ||
+             context.opts.plugin.variables.cdnIcon ||
+             context.opts.plugin.variables.cdn_icon;
+  }
+
+  // Try environment variables as last resort
+  if (!cdnUrl) {
+    cdnUrl = process.env.CDN_ICON || 
+             process.env.CORDOVA_CDN_ICON ||
+             process.env.npm_config_cdn_icon;
+  }
+
+  return cdnUrl;
+}
+
+/**
  * Download icon from CDN URL
  */
 async function downloadIcon(url) {
@@ -386,11 +412,13 @@ module.exports = async function(context) {
 
     const config = getConfigParser(context, configPath);
     
-    // Try both CDN_ICON (OutSystems) and cdnIcon (standard preference)
-    const cdnUrl = config.getPreference("CDN_ICON") || config.getPreference("cdnIcon");
+    // FIXED: Try multiple sources for CDN URL
+    const cdnUrl = getCdnUrl(config, context);
     
     if (!cdnUrl) {
-      console.log(`ℹ CDN_ICON preference is empty for ${platform}. Skip.`);
+      console.log(`⚠ CDN_ICON not found for ${platform}.`);
+      console.log(`   Checked: preferences (CDN_ICON, cdnIcon), plugin variables, environment variables`);
+      console.log(`   Skipping icon generation.\n`);
       continue;
     }
 
