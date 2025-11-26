@@ -1,24 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.0.1">
+    version="2.0.2">
     
     <name>Change App Info</name>
-    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time</description>
+    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Optimized for OutSystems MABS.</description>
     <license>MIT</license>
     <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs</keywords>
     
-    <!-- Plugin Variables (from OutSystems JSON config) -->
-    <preference name="PACKAGE_NAME" default="" />
-    <preference name="APP_NAME" default="" />
-    <preference name="VERSION_NUMBER" default="" />
-    <preference name="VERSION_CODE" default="" />
-    <preference name="CDN_ASSETS" default="" />
-    <preference name="CDN_ICON" default="" />
+    <author>vnkhoado</author>
+    <repo>https://github.com/vnkhoado/cordova-plugin-change-app-info.git</repo>
     
     <engines>
         <engine name="cordova" version=">=9.0.0" />
     </engines>
+    
+    <!-- No plugin variables required - reads from config.xml preferences -->
+    <!-- Add these to your config.xml or OutSystems Extensibility Configurations:
+         - PACKAGE_NAME
+         - APP_NAME
+         - VERSION_NUMBER
+         - VERSION_CODE
+         - CDN_ICON
+    -->
     
     <!-- Android Platform -->
     <platform name="android">
@@ -27,9 +31,6 @@
         
         <!-- Generate icons from CDN -->
         <hook type="after_prepare" src="hooks/generateIcons.js" />
-        
-        <!-- REMOVED: config-file for strings.xml to prevent duplicates -->
-        <!-- app_name will be set by changeAppInfo.js hook instead -->
     </platform>
     
     <!-- iOS Platform -->
