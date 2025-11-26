@@ -115,7 +115,7 @@ function getIOSTarget(root, appFolderName) {
   proj.parseSync();
 
   // Lấy tất cả native target, bỏ CordovaLib
-  const targets = Object.values(proj.pbxNativeTargetSection()).filter(t => !t.comment.includes("CordovaLib"));
+  const targets = Object.values(proj.pbxNativeTargetSection()).filter(t => t.comment && !t.comment.includes("CordovaLib"));
   if (!targets.length) return {};
 
   const targetUUID = Object.keys(targets[0])[0];
