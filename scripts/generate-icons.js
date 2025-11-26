@@ -3,12 +3,13 @@
 const fs = require("fs");
 const path = require("path");
 
-let sharp, fetch;
+let sharp, fetch, xcode;
 try {
   sharp = require("sharp");
   fetch = (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
+  xcode = require("xcode");
 } catch (err) {
-  console.error("✖ Please install sharp and node-fetch in plugin folder");
+  console.error("✖ Please install sharp, node-fetch, xcode in plugin folder");
   process.exit(1);
 }
 
@@ -46,30 +47,11 @@ async function generateAndroidIcons(buffer, root) {
 }
 
 /**
- * Generate iOS Pro icons + Contents.json
- * Auto create Images.xcassets/AppIcon.appiconset if missing
+ * Generate iOS icons + Contents.json
  */
-async function generateIOSProIcons(buffer, root) {
-  const iosFolder = path.join(root, "platforms/ios");
-  if (!fs.existsSync(iosFolder)) {
-    console.log("⚠ iOS folder not found, skip.");
-    return;
-  }
-
-  // 🔹 Lọc folder là directory và bỏ CordovaLib
-  const iosFolders = fs.readdirSync(iosFolder)
-    .filter(f => {
-      const fullPath = path.join(iosFolder, f);
-      return fs.statSync(fullPath).isDirectory() && f !== "CordovaLib";
-    });
-
-  if (!iosFolders.length) {
-    console.log("⚠ No iOS app folder found. Skip.");
-    return;
-  }
-
-  const appFolder = iosFolders[0]; // folder app chính
-  const xcassetsFolder = path.join(iosFolder, appFolder, "Images.xcassets");
+async function generateIOSIcons(buffer, root, appFolderName) {
+  const iosFolder = path.join(root, "platforms/ios", appFolderName);
+  const xcassetsFolder = path.join(iosFolder, "Images.xcassets");
   const assetsFolder = path.join(xcassetsFolder, "AppIcon.appiconset");
 
   if (!fs.existsSync(assetsFolder)) fs.mkdirSync(assetsFolder, { recursive: true });
@@ -124,6 +106,48 @@ async function generateIOSProIcons(buffer, root) {
 }
 
 /**
+ * Log current AppIcon in project.pbxproj
+ */
+function logCurrentAppIcon(root, appFolderName) {
+  const pbxPath = path.join(root, "platforms/ios", appFolderName + ".xcodeproj", "project.pbxproj");
+  if (!fs.existsSync(pbxPath)) {
+    console.log("⚠ project.pbxproj not found:", pbxPath);
+    return;
+  }
+
+  const proj = xcode.project(pbxPath);
+  proj.parseSync();
+
+  const targets = proj.getFirstTarget();
+  const targetUUID = targets.uuid;
+
+  const buildSettings = proj.pbxXCBuildConfigurationSection();
+  const settingsForTarget = Object.values(buildSettings).filter(
+    x => x.buildSettings && x.buildSettings.PRODUCT_NAME === targets.name
+  );
+
+  const appIconName = settingsForTarget[0]?.buildSettings?.ASSETCATALOG_COMPILER_APPICON_NAME;
+  console.log("ℹ Current AppIcon for target", targets.name, "is:", appIconName || "(not set)");
+
+  return { proj, targetUUID };
+}
+
+/**
+ * Update AppIcon in project.pbxproj
+ */
+function updateAppIcon(root, appFolderName) {
+  const { proj, targetUUID } = logCurrentAppIcon(root, appFolderName);
+  if (!proj || !targetUUID) return;
+
+  proj.updateBuildProperty("ASSETCATALOG_COMPILER_APPICON_NAME", "AppIcon", targetUUID);
+  fs.writeFileSync(
+    path.join(root, "platforms/ios", appFolderName + ".xcodeproj", "project.pbxproj"),
+    proj.writeSync()
+  );
+  console.log("✅ Updated project.pbxproj: AppIcon set to AppIcon.appiconset");
+}
+
+/**
  * Main hook
  */
 module.exports = async function (context) {
@@ -162,7 +186,19 @@ module.exports = async function (context) {
       if (platform === "android") {
         await generateAndroidIcons(buffer, root);
       } else if (platform === "ios") {
-        await generateIOSProIcons(buffer, root);
+        // Lấy app folder iOS (bỏ CordovaLib)
+        const iosFolders = fs.readdirSync(path.join(root, "platforms/ios"))
+          .filter(f => fs.statSync(path.join(root, "platforms/ios", f)).isDirectory() && f !== "CordovaLib");
+
+        if (!iosFolders.length) {
+          console.log("⚠ No iOS app folder found. Skip.");
+          continue;
+        }
+
+        const appFolderName = iosFolders[0];
+        await generateIOSIcons(buffer, root, appFolderName);
+        logCurrentAppIcon(root, appFolderName);
+        updateAppIcon(root, appFolderName);
       }
     } catch (err) {
       console.error(`✖ Failed to generate icons for ${platform}:`, err.message);
