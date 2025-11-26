@@ -28,24 +28,22 @@ function updateAndroidAppInfo(root, config) {
       try {
         let content = fs.readFileSync(stringsPath, "utf8");
         
-        const appNameRegex = /<string name="app_name">.*?<\/string>/;
-        if (appNameRegex.test(content)) {
-          content = content.replace(
-            appNameRegex,
-            `<string name="app_name">${appName}</string>`
-          );
-        } else {
-          content = content.replace(
-            "</resources>",
-            `    <string name="app_name">${appName}</string>\n</resources>`
-          );
-        }
+        // FIXED: Remove ALL existing app_name entries to prevent duplicates
+        content = content.replace(/<string name="app_name">.*?<\/string>\s*/g, '');
+        
+        // Add new app_name before closing </resources> tag
+        content = content.replace(
+          "</resources>",
+          `    <string name="app_name">${appName}</string>\n</resources>`
+        );
 
         fs.writeFileSync(stringsPath, content, "utf8");
-        console.log(`✅ Android app name updated`);
+        console.log(`✅ Android app name updated (duplicates removed)`);
       } catch (err) {
         console.error("✖ Failed to update strings.xml:", err.message);
       }
+    } else {
+      console.log(`⚠ strings.xml not found: ${stringsPath}`);
     }
   }
 
