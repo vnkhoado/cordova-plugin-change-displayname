@@ -2,521 +2,331 @@
 
 const fs = require("fs");
 const path = require("path");
+const https = require("https");
+const { execSync } = require("child_process");
 
-let sharp, fetch, xcode;
-try {
-  sharp = require("sharp");
-  fetch = (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
-  xcode = require("xcode");
-} catch (err) {
-  console.error("✖ Please install sharp, node-fetch, xcode");
-  console.error("  Run: cd plugins/cordova-plugin-change-app-info && npm install");
-  process.exit(1);
-}
-
-const { getConfigParser } = require("./utils");
-
-/**
- * Get CDN URL from root config.xml
- */
-function getCdnUrl(context) {
-  const root = context.opts.projectRoot;
-  const rootConfigPath = path.join(root, "config.xml");
-  
-  console.log(`🔍 Checking for CDN_ICON in: ${rootConfigPath}`);
-  
-  if (!fs.existsSync(rootConfigPath)) {
-    console.log("⚠ Root config.xml not found");
-    return null;
-  }
-
-  try {
-    const config = getConfigParser(context, rootConfigPath);
-    
-    // Try multiple preference names
-    let cdnUrl = config.getPreference("CDN_ICON") || 
-                 config.getPreference("cdnIcon") ||
-                 config.getPreference("cdn_icon");
-    
-    if (cdnUrl) {
-      console.log(`✅ Found CDN_ICON in config.xml: ${cdnUrl}`);
-      return cdnUrl;
-    } else {
-      console.log("⚠ CDN_ICON preference not found in config.xml");
-    }
-  } catch (err) {
-    console.log("⚠ Could not read config.xml:", err.message);
-  }
-  
-  // Try plugin variables from context
-  if (context.opts && context.opts.plugin && context.opts.plugin.variables) {
-    const cdnUrl = context.opts.plugin.variables.CDN_ICON ||
-                   context.opts.plugin.variables.cdnIcon ||
-                   context.opts.plugin.variables.cdn_icon;
-    if (cdnUrl) {
-      console.log(`✅ Found CDN_ICON in plugin variables: ${cdnUrl}`);
-      return cdnUrl;
-    }
-  }
-
-  // Try environment variables as last resort
-  const envUrl = process.env.CDN_ICON || 
-                 process.env.CORDOVA_CDN_ICON ||
-                 process.env.npm_config_cdn_icon;
-  
-  if (envUrl) {
-    console.log(`✅ Found CDN_ICON in environment: ${envUrl}`);
-    return envUrl;
-  }
-
-  return null;
-}
-
-/**
- * Download icon from CDN URL
- */
-async function downloadIcon(url) {
-  console.log(`📥 Downloading icon from: ${url}`);
-  
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Failed to download ${url}, status ${res.status}`);
-  }
-  
-  const buffer = Buffer.from(await res.arrayBuffer());
-  console.log(`✔ Icon downloaded successfully (${buffer.length} bytes)`);
-  
-  return buffer;
-}
-
-/**
- * Generate Android icons (mipmap)
- */
-async function generateAndroidIcons(buffer, root) {
-  console.log("\n📱 Generating Android icons...");
-  
-  const sizes = {
-    "mipmap-mdpi": 48,
-    "mipmap-hdpi": 72,
-    "mipmap-xhdpi": 96,
-    "mipmap-xxhdpi": 144,
-    "mipmap-xxxhdpi": 192
-  };
-
-  let generatedCount = 0;
-
-  for (const [folder, size] of Object.entries(sizes)) {
-    const dir = path.join(root, "platforms/android/app/src/main/res", folder);
-    
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    const filePath = path.join(dir, "ic_launcher.png");
-    
-    try {
-      await sharp(buffer)
-        .resize(size, size, {
-          fit: 'cover',
-          position: 'center'
-        })
-        .png({ quality: 100 })
-        .toFile(filePath);
-      
-      console.log(`  ✔ ${folder}/ic_launcher.png (${size}x${size})`);
-      generatedCount++;
-    } catch (err) {
-      console.error(`  ✖ Failed to generate ${folder}:`, err.message);
-    }
-  }
-
-  console.log(`✅ Generated ${generatedCount} Android icon sizes\n`);
-}
-
-/**
- * Generate iOS icons and Contents.json
- */
-async function generateIOSIcons(buffer, root, appFolderName) {
-  console.log("\n📱 Generating iOS icons...");
-  
-  const iosFolder = path.join(root, "platforms/ios", appFolderName);
-  const xcassetsFolder = path.join(iosFolder, "Images.xcassets");
-  const assetsFolder = path.join(xcassetsFolder, "AppIcon.appiconset");
-
-  console.log(`📂 iOS folder: ${iosFolder}`);
-  console.log(`📂 XCAssets folder: ${xcassetsFolder}`);
-  console.log(`📂 AppIcon folder: ${assetsFolder}`);
-
-  // Create folder if not exists
-  if (!fs.existsSync(assetsFolder)) {
-    console.log("📁 Creating AppIcon.appiconset folder...");
-    fs.mkdirSync(assetsFolder, { recursive: true });
-  } else {
-    console.log("📁 AppIcon.appiconset folder exists");
-  }
-
-  // Define all required iOS icons
-  const icons = [
-    // iPhone Notification
-    { size: 20, idiom: "iphone", scale: [2, 3] },
-    // iPhone Settings, Spotlight
-    { size: 29, idiom: "iphone", scale: [2, 3] },
-    // iPhone Spotlight
-    { size: 40, idiom: "iphone", scale: [2, 3] },
-    // iPhone App
-    { size: 60, idiom: "iphone", scale: [2, 3] },
-    // iPad Notifications
-    { size: 20, idiom: "ipad", scale: [1, 2] },
-    // iPad Settings
-    { size: 29, idiom: "ipad", scale: [1, 2] },
-    // iPad Spotlight
-    { size: 40, idiom: "ipad", scale: [1, 2] },
-    // iPad App
-    { size: 76, idiom: "ipad", scale: [1, 2] },
-    // iPad Pro
-    { size: 83.5, idiom: "ipad", scale: [2] },
-    // App Store
-    { size: 1024, idiom: "ios-marketing", scale: [1] }
-  ];
-
-  const contentsImages = [];
-  let generatedCount = 0;
-
-  for (const icon of icons) {
-    for (const scale of icon.scale) {
-      const scaledSize = Math.round(icon.size * scale);
-      const scaleSuffix = scale === 1 ? "" : `@${scale}x`;
-      const filename = `icon-${icon.size}${scaleSuffix}.png`;
-      const filePath = path.join(assetsFolder, filename);
-
-      try {
-        await sharp(buffer)
-          .resize(scaledSize, scaledSize, {
-            fit: 'cover',
-            position: 'center'
-          })
-          .png({ quality: 100 })
-          .toFile(filePath);
-
-        // Add to Contents.json
-        contentsImages.push({
-          idiom: icon.idiom,
-          size: `${icon.size}x${icon.size}`,
-          scale: `${scale}x`,
-          filename: filename
+function download(url, dest) {
+    return new Promise((resolve, reject) => {
+        const file = fs.createWriteStream(dest);
+        https.get(url, (response) => {
+            response.pipe(file);
+            file.on("finish", () => file.close(() => resolve(true)));
+        }).on("error", (err) => {
+            fs.unlink(dest, () => {});
+            reject(err.message);
         });
-
-        console.log(`  ✔ ${filename} (${scaledSize}x${scaledSize})`);
-        generatedCount++;
-      } catch (err) {
-        console.error(`  ✖ Failed to generate ${filename}:`, err.message);
-      }
-    }
-  }
-
-  // Generate Contents.json
-  const contentsJson = {
-    images: contentsImages,
-    info: {
-      version: 1,
-      author: "xcode"
-    }
-  };
-
-  const contentsPath = path.join(assetsFolder, "Contents.json");
-  fs.writeFileSync(contentsPath, JSON.stringify(contentsJson, null, 2), "utf8");
-  
-  console.log(`✅ Generated ${generatedCount} iOS icon sizes`);
-  console.log(`✅ Contents.json created at: ${contentsPath}\n`);
-
-  return assetsFolder;
-}
-
-/**
- * Verify iOS icons exist
- */
-function verifyIOSIcons(assetsFolder) {
-  console.log("\n🔍 Verifying iOS icons...");
-  
-  const contentsPath = path.join(assetsFolder, "Contents.json");
-  
-  if (!fs.existsSync(contentsPath)) {
-    console.log("❌ Contents.json not found");
-    return false;
-  }
-
-  const contents = JSON.parse(fs.readFileSync(contentsPath, "utf8"));
-  const missingFiles = [];
-  let existingCount = 0;
-
-  for (const img of contents.images) {
-    const filePath = path.join(assetsFolder, img.filename);
-    if (!fs.existsSync(filePath)) {
-      missingFiles.push(img.filename);
-    } else {
-      existingCount++;
-    }
-  }
-
-  if (missingFiles.length > 0) {
-    console.log(`⚠ Missing ${missingFiles.length} icon files:`, missingFiles.join(", "));
-    console.log(`✔ Found ${existingCount} icons`);
-    return false;
-  }
-
-  console.log(`✅ All ${existingCount} iOS icons verified`);
-  return true;
-}
-
-/**
- * Get iOS target info from project.pbxproj
- */
-function getIOSTarget(root, appFolderName) {
-  const pbxPath = path.join(
-    root,
-    "platforms/ios",
-    appFolderName + ".xcodeproj",
-    "project.pbxproj"
-  );
-  
-  console.log(`\n🔍 Checking Xcode project: ${pbxPath}`);
-  
-  if (!fs.existsSync(pbxPath)) {
-    console.log("❌ project.pbxproj not found");
-    return {};
-  }
-
-  try {
-    const proj = xcode.project(pbxPath);
-    proj.parseSync();
-
-    // Get native targets (exclude CordovaLib)
-    const nativeTargets = proj.pbxNativeTargetSection();
-    const targetKeys = Object.keys(nativeTargets).filter(key => {
-      return !key.endsWith('_comment') && 
-             nativeTargets[key].name && 
-             !nativeTargets[key].name.includes('CordovaLib');
     });
-
-    if (!targetKeys.length) {
-      console.log("⚠ No native target found");
-      return {};
-    }
-
-    const targetUUID = targetKeys[0];
-    const targetName = nativeTargets[targetUUID].name;
-    
-    console.log(`✅ iOS target: ${targetName}`);
-
-    // Log current AppIcon setting
-    const buildConfigs = proj.pbxXCBuildConfigurationSection();
-    for (const key in buildConfigs) {
-      if (!key.endsWith('_comment') && buildConfigs[key].buildSettings) {
-        const settings = buildConfigs[key].buildSettings;
-        if (settings.ASSETCATALOG_COMPILER_APPICON_NAME) {
-          console.log(`🔍 Current AppIcon setting: ${settings.ASSETCATALOG_COMPILER_APPICON_NAME}`);
-          break;
-        }
-      }
-    }
-
-    return { proj, targetUUID, pbxPath };
-  } catch (err) {
-    console.error("✖ Failed to parse project.pbxproj:", err.message);
-    return {};
-  }
 }
 
-/**
- * Update AppIcon setting in project.pbxproj
- */
-function updateAppIcon(root, appFolderName) {
-  const { proj, targetUUID, pbxPath } = getIOSTarget(root, appFolderName);
-  
-  if (!proj || !targetUUID) {
-    console.log("⚠ Cannot update AppIcon setting");
-    return false;
-  }
-
-  try {
-    // Update ASSETCATALOG_COMPILER_APPICON_NAME for all build configurations
-    const configs = proj.pbxXCBuildConfigurationSection();
-    
-    let updatedCount = 0;
-    for (const key in configs) {
-      if (!key.endsWith('_comment') && configs[key].buildSettings) {
-        configs[key].buildSettings.ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon";
-        updatedCount++;
-      }
-    }
-
-    // Save file
-    fs.writeFileSync(pbxPath, proj.writeSync(), "utf8");
-    console.log(`✅ Updated project.pbxproj: Set ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon" (${updatedCount} configurations)`);
-    return true;
-  } catch (err) {
-    console.error("✖ Failed to update project.pbxproj:", err.message);
-    return false;
-  }
-}
-
-/**
- * Clean Xcode build cache
- */
-function cleanXcodeCache(root, appFolderName) {
-  console.log("\n🧹 Cleaning iOS build cache...");
-  
-  const pathsToClean = [
-    path.join(root, "platforms/ios/build"),
-    path.join(root, "platforms/ios/DerivedData")
-  ];
-
-  let cleanedCount = 0;
-  pathsToClean.forEach(p => {
-    if (fs.existsSync(p)) {
-      try {
-        fs.rmSync(p, { recursive: true, force: true });
-        console.log(`  ✔ Cleaned: ${path.basename(p)}`);
-        cleanedCount++;
-      } catch (err) {
-        console.log(`  ⚠ Could not clean ${path.basename(p)}`);
-      }
-    }
-  });
-
-  if (cleanedCount > 0) {
-    console.log(`✅ Cleaned ${cleanedCount} cache folder(s)`);
-  } else {
-    console.log(`ℹ No cache to clean`);
-  }
-}
-
-/**
- * Force touch xcassets to trigger Xcode rebuild
- */
-function touchXCAssets(assetsFolder) {
-  try {
-    const now = new Date();
-    
-    // Touch AppIcon.appiconset folder
-    fs.utimesSync(assetsFolder, now, now);
-    
-    // Touch Contents.json
-    const contentsPath = path.join(assetsFolder, "Contents.json");
-    if (fs.existsSync(contentsPath)) {
-      fs.utimesSync(contentsPath, now, now);
-    }
-    
-    console.log("🔄 Touched xcassets to force Xcode refresh");
-  } catch (err) {
-    console.log("⚠ Could not touch xcassets:", err.message);
-  }
-}
-
-/**
- * Main hook function
- */
-module.exports = async function(context) {
-  const root = context.opts.projectRoot;
-  const platforms = context.opts.platforms;
-
-  console.log("\n══════════════════════════════════");
-  console.log("        GENERATE ICONS HOOK        ");
-  console.log("══════════════════════════════════");
-  console.log("Hook type:", context.hook);
-  console.log("Platforms:", platforms.join(", "));
-  console.log("Project root:", root);
-
-  // Get CDN URL once from root config (not per platform)
-  const cdnUrl = getCdnUrl(context);
-  
-  if (!cdnUrl) {
-    console.log(`\n❌ CDN_ICON not found`);
-    console.log(`   Add this to your root config.xml or OutSystems Extensibility Configurations:`);
-    console.log(`   <preference name="CDN_ICON" value="https://your-cdn.com/icon-1024.png" />`);
-    console.log(`   Skipping icon generation.\n`);
-    return;
-  }
-
-  console.log(`🔗 CDN URL: ${cdnUrl}`);
-
-  // Download icon once
-  let buffer;
-  try {
-    buffer = await downloadIcon(cdnUrl);
-  } catch (err) {
-    console.error(`❌ Failed to download icon: ${err.message}`);
-    console.error(err.stack);
-    return;
-  }
-
-  // Generate icons for each platform
-  for (const platform of platforms) {
-    console.log(`\n📱 Processing platform: ${platform}`);
-
+function resizeWithSips(src, dest, size) {
     try {
-      if (platform === "android") {
-        await generateAndroidIcons(buffer, root);
-      } 
-      else if (platform === "ios") {
-        const platformPath = path.join(root, "platforms/ios");
-        
-        if (!fs.existsSync(platformPath)) {
-          console.log("⚠ iOS platform folder not found.");
-          console.log("  Run: cordova platform add ios");
-          continue;
-        }
-
-        // Find app folder
-        const iosFolders = fs.readdirSync(platformPath).filter(f => {
-          const fullPath = path.join(platformPath, f);
-          return (
-            fs.statSync(fullPath).isDirectory() &&
-            f !== "CordovaLib" &&
-            f !== "www" &&
-            f !== "cordova" &&
-            f !== "build" &&
-            f !== "DerivedData"
-          );
-        });
-
-        if (!iosFolders.length) {
-          console.log("⚠ No iOS app folder found.");
-          continue;
-        }
-
-        const appFolderName = iosFolders[0];
-        console.log(`✅ iOS app folder: ${appFolderName}`);
-
-        // Clean build cache FIRST
-        cleanXcodeCache(root, appFolderName);
-
-        // Generate icons (ALWAYS, no skip check)
-        const assetsFolder = await generateIOSIcons(buffer, root, appFolderName);
-        
-        // Verify icons
-        verifyIOSIcons(assetsFolder);
-        
-        // Update Xcode project
-        updateAppIcon(root, appFolderName);
-        
-        // Touch xcassets to force Xcode rebuild
-        touchXCAssets(assetsFolder);
-        
-        console.log("\n✅ iOS icon generation completed!");
-        console.log("📌 IMPORTANT: To see new icon on device:");
-        console.log("   1. DELETE app completely from device");
-        console.log("   2. REBOOT device (turn off and on)");
-        console.log("   3. Install app again");
-      }
-    } catch (err) {
-      console.error(`❌ Failed to generate icons for ${platform}:`);
-      console.error(err.message);
-      console.error(err.stack);
+        execSync(`sips -z ${size} ${size} "${src}" --out "${dest}"`, { stdio: 'ignore' });
+        return true;
+    } catch (e) {
+        return false;
     }
-  }
+}
 
-  console.log("\n══════════════════════════════════");
-  console.log("✅ Icons generation completed!");
-  console.log("══════════════════════════════════\n");
+module.exports = async function(context) {
+    const ConfigParser = context.requireCordovaModule("cordova-common").ConfigParser;
+    const config = new ConfigParser(path.join(context.opts.projectRoot, "config.xml"));
+    
+    const platforms = context.opts.platforms;
+    const root = context.opts.projectRoot;
+    
+    console.log("\n══════════════════════════════════");
+    console.log("        GENERATE ICONS HOOK        ");
+    console.log("══════════════════════════════════");
+    console.log("Hook type:", context.hook);
+    console.log("Platforms:", platforms.join(", "));
+    
+    // Get CDN_ICON
+    const cdnUrl = config.getPreference("CDN_ICON");
+    
+    if (!cdnUrl) {
+        console.log("⚠ CDN_ICON not found in config.xml");
+        console.log("══════════════════════════════════\n");
+        return;
+    }
+    
+    console.log("Project root:", root);
+    console.log("Checking for CDN_ICON in", path.join(root, "config.xml"));
+    console.log("Found CDN_ICON in config.xml:", cdnUrl);
+    console.log("CDN URL:", cdnUrl);
+    
+    // Download icon
+    const tempIcon = path.join(root, "temp_icon_download.png");
+    
+    try {
+        console.log("Downloading icon from", cdnUrl);
+        await download(cdnUrl, tempIcon);
+        const stats = fs.statSync(tempIcon);
+        console.log("Icon downloaded successfully", stats.size, "bytes");
+    } catch (err) {
+        console.log("❌ Failed to download icon:", err);
+        console.log("══════════════════════════════════\n");
+        return;
+    }
+    
+    // Process each platform
+    for (const platform of platforms) {
+        console.log("\nProcessing platform:", platform);
+        
+        if (platform === "android") {
+            await generateAndroidIcons(root, tempIcon);
+        } else if (platform === "ios") {
+            await generateIOSIcons(root, tempIcon);
+        }
+    }
+    
+    // Cleanup
+    try {
+        fs.unlinkSync(tempIcon);
+    } catch (e) {}
+    
+    console.log("\n══════════════════════════════════");
+    console.log("Icons generation completed!");
+    console.log("══════════════════════════════════\n");
 };
+
+async function generateAndroidIcons(root, iconPath) {
+    const androidPath = path.join(root, "platforms/android");
+    
+    if (!fs.existsSync(androidPath)) {
+        console.log("❌ Android platform not found");
+        return;
+    }
+    
+    // Find res folder
+    const resPaths = [
+        path.join(androidPath, "app/src/main/res"),
+        path.join(androidPath, "res")
+    ];
+    
+    let resPath = null;
+    for (const p of resPaths) {
+        if (fs.existsSync(p)) {
+            resPath = p;
+            break;
+        }
+    }
+    
+    if (!resPath) {
+        console.log("❌ Android res folder not found");
+        return;
+    }
+    
+    console.log("Android res folder:", resPath);
+    console.log("Generating Android icons...");
+    
+    const androidSizes = [
+        ["mipmap-ldpi", 36],
+        ["mipmap-mdpi", 48],
+        ["mipmap-hdpi", 72],
+        ["mipmap-xhdpi", 96],
+        ["mipmap-xxhdpi", 144],
+        ["mipmap-xxxhdpi", 192]
+    ];
+    
+    let successCount = 0;
+    for (const [folder, size] of androidSizes) {
+        const folderPath = path.join(resPath, folder);
+        if (!fs.existsSync(folderPath)) {
+            fs.mkdirSync(folderPath, { recursive: true });
+        }
+        
+        const output = path.join(folderPath, "ic_launcher.png");
+        if (resizeWithSips(iconPath, output, size)) {
+            console.log(`  ✔ ${folder}/ic_launcher.png (${size}x${size})`);
+            successCount++;
+        }
+    }
+    
+    console.log(`✅ Generated ${successCount}/${androidSizes.length} Android icons`);
+}
+
+async function generateIOSIcons(root, iconPath) {
+    const iosPath = path.join(root, "platforms/ios");
+    
+    if (!fs.existsSync(iosPath)) {
+        console.log("❌ iOS platform not found");
+        return;
+    }
+    
+    // Find app folder
+    const appFolders = fs.readdirSync(iosPath).filter(f => {
+        const fullPath = path.join(iosPath, f);
+        return fs.statSync(fullPath).isDirectory() && 
+               f !== "CordovaLib" && 
+               f !== "www" && 
+               f !== "cordova" &&
+               f !== "build" &&
+               f !== "Pods";
+    });
+    
+    if (appFolders.length === 0) {
+        console.log("❌ iOS app folder not found");
+        return;
+    }
+    
+    const appFolder = appFolders[0];
+    const appPath = path.join(iosPath, appFolder);
+    
+    console.log("iOS app folder:", appFolder);
+    
+    // AUTO-DETECT correct .xcassets folder ✅
+    const xcassetsFolders = fs.readdirSync(appPath).filter(f => {
+        const xcassetsPath = path.join(appPath, f);
+        return f.endsWith('.xcassets') && fs.statSync(xcassetsPath).isDirectory();
+    });
+    
+    if (xcassetsFolders.length === 0) {
+        console.log("❌ No .xcassets folder found");
+        return;
+    }
+    
+    // Use first .xcassets folder (usually Assets.xcassets or Images.xcassets)
+    const xcassetsFolder = xcassetsFolders[0];
+    const xcassetsPath = path.join(appPath, xcassetsFolder);
+    const appIconPath = path.join(xcassetsPath, "AppIcon.appiconset");
+    
+    console.log("Cleaning iOS build cache...");
+    // No cache to clean (handled by cleanBuild.js)
+    console.log("No cache to clean");
+    
+    console.log("Generating iOS icons...");
+    console.log("iOS folder:", appPath);
+    console.log("XCAssets folder:", xcassetsPath);
+    console.log("📁 Using:", xcassetsFolder);  // ✅ LOG FOLDER NAME
+    console.log("AppIcon folder:", appIconPath);
+    
+    // Create AppIcon.appiconset if not exists
+    if (!fs.existsSync(appIconPath)) {
+        console.log("Creating AppIcon.appiconset folder...");
+        fs.mkdirSync(appIconPath, { recursive: true });
+    }
+    
+    const iosSizes = [
+        ["icon-20@2x.png", 40],
+        ["icon-20@3x.png", 60],
+        ["icon-29@2x.png", 58],
+        ["icon-29@3x.png", 87],
+        ["icon-40@2x.png", 80],
+        ["icon-40@3x.png", 120],
+        ["icon-60@2x.png", 120],
+        ["icon-60@3x.png", 180],
+        ["icon-20.png", 20],
+        ["icon-20@2x.png", 40],
+        ["icon-29.png", 29],
+        ["icon-29@2x.png", 58],
+        ["icon-40.png", 40],
+        ["icon-40@2x.png", 80],
+        ["icon-76.png", 76],
+        ["icon-76@2x.png", 152],
+        ["icon-83.5@2x.png", 167],
+        ["icon-1024.png", 1024]
+    ];
+    
+    let successCount = 0;
+    for (const [filename, size] of iosSizes) {
+        const output = path.join(appIconPath, filename);
+        if (resizeWithSips(iconPath, output, size)) {
+            console.log(`  ✔ ${filename} (${size}x${size})`);
+            successCount++;
+        }
+    }
+    
+    console.log(`Generated ${successCount} iOS icon sizes`);
+    
+    // Create Contents.json
+    const contentsJson = {
+        "images": [
+            { "size": "20x20", "idiom": "iphone", "filename": "icon-20@2x.png", "scale": "2x" },
+            { "size": "20x20", "idiom": "iphone", "filename": "icon-20@3x.png", "scale": "3x" },
+            { "size": "29x29", "idiom": "iphone", "filename": "icon-29@2x.png", "scale": "2x" },
+            { "size": "29x29", "idiom": "iphone", "filename": "icon-29@3x.png", "scale": "3x" },
+            { "size": "40x40", "idiom": "iphone", "filename": "icon-40@2x.png", "scale": "2x" },
+            { "size": "40x40", "idiom": "iphone", "filename": "icon-40@3x.png", "scale": "3x" },
+            { "size": "60x60", "idiom": "iphone", "filename": "icon-60@2x.png", "scale": "2x" },
+            { "size": "60x60", "idiom": "iphone", "filename": "icon-60@3x.png", "scale": "3x" },
+            { "size": "20x20", "idiom": "ipad", "filename": "icon-20.png", "scale": "1x" },
+            { "size": "20x20", "idiom": "ipad", "filename": "icon-20@2x.png", "scale": "2x" },
+            { "size": "29x29", "idiom": "ipad", "filename": "icon-29.png", "scale": "1x" },
+            { "size": "29x29", "idiom": "ipad", "filename": "icon-29@2x.png", "scale": "2x" },
+            { "size": "40x40", "idiom": "ipad", "filename": "icon-40.png", "scale": "1x" },
+            { "size": "40x40", "idiom": "ipad", "filename": "icon-40@2x.png", "scale": "2x" },
+            { "size": "76x76", "idiom": "ipad", "filename": "icon-76.png", "scale": "1x" },
+            { "size": "76x76", "idiom": "ipad", "filename": "icon-76@2x.png", "scale": "2x" },
+            { "size": "83.5x83.5", "idiom": "ipad", "filename": "icon-83.5@2x.png", "scale": "2x" },
+            { "size": "1024x1024", "idiom": "ios-marketing", "filename": "icon-1024.png", "scale": "1x" }
+        ],
+        "info": {
+            "version": 1,
+            "author": "cordova-plugin-change-app-info"
+        }
+    };
+    
+    const contentsPath = path.join(appIconPath, "Contents.json");
+    fs.writeFileSync(contentsPath, JSON.stringify(contentsJson, null, 2));
+    console.log("Contents.json created at", contentsPath);
+    
+    // Verify
+    console.log("Verifying iOS icons...");
+    const allExist = iosSizes.every(([filename]) => 
+        fs.existsSync(path.join(appIconPath, filename))
+    );
+    
+    if (allExist) {
+        console.log(`All ${iosSizes.length} iOS icons verified`);
+    } else {
+        console.log("⚠ Some icons are missing");
+    }
+    
+    // Update Xcode project
+    const projectPath = path.join(iosPath, appFolder + ".xcodeproj", "project.pbxproj");
+    console.log("Checking Xcode project", projectPath);
+    
+    if (fs.existsSync(projectPath)) {
+        try {
+            let projectContent = fs.readFileSync(projectPath, "utf8");
+            const targetMatch = projectContent.match(/\/\* (.*?) \*\/ = \{[^}]*isa = PBXNativeTarget/);
+            
+            if (targetMatch) {
+                const targetName = targetMatch[1];
+                console.log("iOS target:", targetName);
+                
+                const currentSetting = projectContent.match(/ASSETCATALOG_COMPILER_APPICON_NAME = ([^;]+);/);
+                console.log("Current AppIcon setting:", currentSetting ? currentSetting[1].trim() : "Not set");
+                
+                // Ensure ASSETCATALOG_COMPILER_APPICON_NAME is set
+                const regex = /ASSETCATALOG_COMPILER_APPICON_NAME = [^;]+;/g;
+                const replacement = 'ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;';
+                
+                let changeCount = 0;
+                projectContent = projectContent.replace(regex, (match) => {
+                    changeCount++;
+                    return replacement;
+                });
+                
+                if (changeCount > 0) {
+                    fs.writeFileSync(projectPath, projectContent);
+                    console.log(`Updated project.pbxproj: Set ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon (${changeCount} configurations)`);
+                }
+                
+                // Touch xcassets to force Xcode to refresh
+                const now = new Date();
+                fs.utimesSync(xcassetsPath, now, now);
+                console.log("Touched xcassets to force Xcode refresh");
+                
+            }
+        } catch (err) {
+            console.log("⚠ Warning: Could not update Xcode project:", err.message);
+        }
+    }
+    
+    console.log("iOS icon generation completed!");
+    console.log("\nIMPORTANT: To see new icon on device:");
+    console.log("1. DELETE app completely from device");
+    console.log("2. REBOOT device (turn off and on)");
+    console.log("3. Install app again");
+}
