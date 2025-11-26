@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.0.0">
+    version="2.0.1">
     
-    <n>Change App Info</n>
+    <name>Change App Info</name>
     <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time</description>
     <license>MIT</license>
     <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs</keywords>
@@ -28,15 +28,8 @@
         <!-- Generate icons from CDN -->
         <hook type="after_prepare" src="hooks/generateIcons.js" />
         
-        <!-- Update package name -->
-        <config-file target="AndroidManifest.xml" parent="/*">
-            <manifest android:versionCode="$VERSION_CODE" android:versionName="$VERSION_NUMBER" package="$PACKAGE_NAME" />
-        </config-file>
-        
-        <!-- Update app name -->
-        <config-file target="res/values/strings.xml" parent="/*">
-            <string name="app_name">$APP_NAME</string>
-        </config-file>
+        <!-- REMOVED: config-file for strings.xml to prevent duplicates -->
+        <!-- app_name will be set by changeAppInfo.js hook instead -->
     </platform>
     
     <!-- iOS Platform -->
@@ -67,31 +60,6 @@
         <!-- Set AppIcon name -->
         <config-file target="*-Info.plist" parent="CFBundleIconName">
             <string>AppIcon</string>
-        </config-file>
-        
-        <!-- Update bundle identifier -->
-        <config-file target="*-Info.plist" parent="CFBundleIdentifier">
-            <string>$PACKAGE_NAME</string>
-        </config-file>
-        
-        <!-- Update display name -->
-        <config-file target="*-Info.plist" parent="CFBundleDisplayName">
-            <string>$APP_NAME</string>
-        </config-file>
-        
-        <!-- Update bundle name -->
-        <config-file target="*-Info.plist" parent="CFBundleName">
-            <string>$APP_NAME</string>
-        </config-file>
-        
-        <!-- Update version -->
-        <config-file target="*-Info.plist" parent="CFBundleShortVersionString">
-            <string>$VERSION_NUMBER</string>
-        </config-file>
-        
-        <!-- Update build number -->
-        <config-file target="*-Info.plist" parent="CFBundleVersion">
-            <string>$VERSION_CODE</string>
         </config-file>
     </platform>
 </plugin>
