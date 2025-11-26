@@ -1,42 +1,39 @@
 {
-  "name": "cordova-plugin-change-app-info",
+  "name": "cordova-plugin-dynamic-icon",
   "version": "1.0.0",
-  "description": "Cordova plugin that allows you to change the info of your app.",
+  "description": "Change app icon from CDN at build time for iOS and Android",
+  "main": "index.js",
+  "scripts": {
+    "postinstall": "echo 'Installing dependencies...' && npm install sharp node-fetch@2 xcode --save"
+  },
+  "dependencies": {
+    "sharp": "^0.33.0",
+    "node-fetch": "^2.7.0",
+    "xcode": "^3.0.1"
+  },
   "cordova": {
-    "id": "cordova-plugin-change-app-info",
+    "id": "cordova-plugin-dynamic-icon",
     "platforms": [
       "ios",
       "android"
     ]
   },
+  "keywords": [
+    "cordova",
+    "icon",
+    "ios",
+    "android",
+    "cdn",
+    "build",
+    "dynamic",
+    "ecosystem:cordova",
+    "cordova-ios",
+    "cordova-android"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info.git"
-  },
-  "bugs": {
-    "url": "https://github.com/agoncalvesos/cordova-plugin-change-displayname/issues"
-  },
-  "homepage": "https://github.com/vnkhoado/cordova-plugin-change-app-info",
-  "keywords": [
-    "ecosystem:cordova",
-    "cordova-android",
-    "cordova-ios",
-    "cordova:plugin",
-    "spaces",
-    "app",
-    "name",
-    "rename"
-  ],
-  "license": "MIT",
-  "dependencies": {
-    "semver": "^6.3.0",
-    "xml2js": "^0.4.16",
-    "plist": "^3.0.2",
-    "q": "^1.5.1",
-    "sharp": "^0.32.0",
-    "node-fetch": "^3.3.2"
-  },
-  "devDependencies": {
-  },
-  "scripts": {}
+    "url": "https://github.com/vnkhoado/cordova-plugin-dynamic-icon.git"
+  }
 }

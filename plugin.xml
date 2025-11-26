@@ -1,48 +1,97 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0" id="cordova-plugin-change-app-info" version="1.0.0">
-    <name>Change App Info Plugin</name>
-    <author>André Gonçalves @ OutSystems</author>
-    <description>
-        Cordova plugin that allows you to change the info of your app
-    </description>
-    <keywords>cordova, ios, app, display name</keywords>
-    <license>MIT</license>
-    <engines>
-        <engine name="cordova" version=">=3.0.0"/>
-    </engines>
-
-    <preference name="APP_NAME"/>
-    <preference name="CDN_ASSETS"/>
-    <preference name="CDN_ICON"/>
-    <preference name="VERSION_NUMBER"/>
-    <preference name="VERSION_CODE"/>
+<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
+    id="cordova-plugin-change-app-info"
+    version="2.0.0">
     
-    <!--<hook type="before_compile" src="scripts/before-compile.js"/>-->
-    <hook type="before_plugin_install" src="scripts/npmInstall.js"/>
-
+    <n>Change App Info</n>
+    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time</description>
+    <license>MIT</license>
+    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs</keywords>
+    
+    <!-- Plugin Variables (from OutSystems JSON config) -->
+    <preference name="PACKAGE_NAME" default="" />
+    <preference name="APP_NAME" default="" />
+    <preference name="VERSION_NUMBER" default="" />
+    <preference name="VERSION_CODE" default="" />
+    <preference name="CDN_ASSETS" default="" />
+    <preference name="CDN_ICON" default="" />
+    
+    <engines>
+        <engine name="cordova" version=">=9.0.0" />
+    </engines>
+    
+    <!-- Android Platform -->
     <platform name="android">
-        <hook type="after_prepare" src="scripts/generate-icons.js"/>
-        <hook type="after_prepare" src="scripts/update-android-app-info.js"/>
-        <hook type="after_prepare" src="scripts/replace-assets-from-cdn.js"/>
-        <config-file target="config.xml" parent="/*">
-            <preference name="appName" value="$APP_NAME"/>
-            <preference name="cdnAssets" value="$CDN_ASSETS"/>
-            <preference name="cdnIcon" value="$CDN_ICON"/>
-            <preference name="versionNumber" value="$VERSION_NUMBER"/>
-            <preference name="versionCode" value="$VERSION_CODE"/>
+        <!-- Change app info (package, name, version) -->
+        <hook type="after_prepare" src="hooks/changeAppInfo.js" />
+        
+        <!-- Generate icons from CDN -->
+        <hook type="after_prepare" src="hooks/generateIcons.js" />
+        
+        <!-- Update package name -->
+        <config-file target="AndroidManifest.xml" parent="/*">
+            <manifest android:versionCode="$VERSION_CODE" android:versionName="$VERSION_NUMBER" package="$PACKAGE_NAME" />
+        </config-file>
+        
+        <!-- Update app name -->
+        <config-file target="res/values/strings.xml" parent="/*">
+            <string name="app_name">$APP_NAME</string>
         </config-file>
     </platform>
-
+    
+    <!-- iOS Platform -->
     <platform name="ios">
-        <hook type="after_prepare" src="scripts/generate-icons.js"/>
-        <hook type="after_prepare" src="scripts/update-ios-app-info.js"/>
-        <hook type="after_prepare" src="scripts/replace-assets-from-cdn.js"/>
-        <config-file target="config.xml" parent="/*">
-            <preference name="appName" value="$APP_NAME"/>
-            <preference name="cdnAssets" value="$CDN_ASSETS"/>
-            <preference name="cdnIcon" value="$CDN_ICON"/>
-            <preference name="versionNumber" value="$VERSION_NUMBER"/>
-            <preference name="versionCode" value="$VERSION_CODE"/>
+        <!-- Change app info (bundle id, name, version) -->
+        <hook type="after_prepare" src="hooks/changeAppInfo.js" />
+        
+        <!-- Generate icons from CDN - Multiple hooks to ensure it works -->
+        <hook type="after_prepare" src="hooks/generateIcons.js" />
+        <hook type="before_compile" src="hooks/generateIcons.js" />
+        
+        <!-- Clean build before compile -->
+        <hook type="before_build" src="hooks/cleanBuild.js" />
+        
+        <!-- Force Xcode to use AppIcon from xcassets -->
+        <config-file target="*-Info.plist" parent="CFBundleIcons">
+            <dict>
+                <key>CFBundlePrimaryIcon</key>
+                <dict>
+                    <key>CFBundleIconFiles</key>
+                    <array/>
+                    <key>UIPrerenderedIcon</key>
+                    <false/>
+                </dict>
+            </dict>
+        </config-file>
+        
+        <!-- Set AppIcon name -->
+        <config-file target="*-Info.plist" parent="CFBundleIconName">
+            <string>AppIcon</string>
+        </config-file>
+        
+        <!-- Update bundle identifier -->
+        <config-file target="*-Info.plist" parent="CFBundleIdentifier">
+            <string>$PACKAGE_NAME</string>
+        </config-file>
+        
+        <!-- Update display name -->
+        <config-file target="*-Info.plist" parent="CFBundleDisplayName">
+            <string>$APP_NAME</string>
+        </config-file>
+        
+        <!-- Update bundle name -->
+        <config-file target="*-Info.plist" parent="CFBundleName">
+            <string>$APP_NAME</string>
+        </config-file>
+        
+        <!-- Update version -->
+        <config-file target="*-Info.plist" parent="CFBundleShortVersionString">
+            <string>$VERSION_NUMBER</string>
+        </config-file>
+        
+        <!-- Update build number -->
+        <config-file target="*-Info.plist" parent="CFBundleVersion">
+            <string>$VERSION_CODE</string>
         </config-file>
     </platform>
 </plugin>
