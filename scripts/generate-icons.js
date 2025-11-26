@@ -56,43 +56,37 @@ async function generateIOSProIcons(buffer, root) {
     return;
   }
 
-  // 🔍 Tìm folder AppName chứa Images.xcassets
-  let assetsFolder = null;
-  const iosFolders = fs.readdirSync(iosFolder).filter(f => fs.statSync(path.join(iosFolder, f)).isDirectory());
+  // 🔹 Lọc folder là directory và bỏ CordovaLib
+  const iosFolders = fs.readdirSync(iosFolder)
+    .filter(f => {
+      const fullPath = path.join(iosFolder, f);
+      return fs.statSync(fullPath).isDirectory() && f !== "CordovaLib";
+    });
 
-  for (const d of iosFolders) {
-    const fullPath = path.join(iosFolder, d);
-    const candidate1 = path.join(fullPath, "Images.xcassets", "AppIcon.appiconset");
-    const candidate2 = path.join(fullPath, "Resources", "Images.xcassets", "AppIcon.appiconset");
-
-    if (fs.existsSync(candidate1)) { assetsFolder = candidate1; break; }
-    if (fs.existsSync(candidate2)) { assetsFolder = candidate2; break; }
+  if (!iosFolders.length) {
+    console.log("⚠ No iOS app folder found. Skip.");
+    return;
   }
 
-  // Nếu chưa có, tạo folder
-  if (!assetsFolder) {
-    const appName = iosFolders[0]; // folder đầu tiên
-    const xcassetsFolder = path.join(iosFolder, appName, "Images.xcassets");
-    if (!fs.existsSync(xcassetsFolder)) fs.mkdirSync(xcassetsFolder, { recursive: true });
-    assetsFolder = path.join(xcassetsFolder, "AppIcon.appiconset");
-    if (!fs.existsSync(assetsFolder)) fs.mkdirSync(assetsFolder, { recursive: true });
-    console.log("📦 Created iOS AppIcon folder:", assetsFolder);
-  } else {
-    console.log("📦 Found iOS AppIcon folder:", assetsFolder);
-  }
+  const appFolder = iosFolders[0]; // folder app chính
+  const xcassetsFolder = path.join(iosFolder, appFolder, "Images.xcassets");
+  const assetsFolder = path.join(xcassetsFolder, "AppIcon.appiconset");
+
+  if (!fs.existsSync(assetsFolder)) fs.mkdirSync(assetsFolder, { recursive: true });
+  console.log("📦 Using iOS AppIcon folder:", assetsFolder);
 
   // Chuẩn icon Apple Pro
   const icons = [
-    { size: 20, idiom: "iphone", scale: [2,3], role: "notification" },
-    { size: 29, idiom: "iphone", scale: [2,3], role: "settings" },
-    { size: 40, idiom: "iphone", scale: [2,3], role: "spotlight" },
-    { size: 60, idiom: "iphone", scale: [2,3], role: "app" },
-    { size: 20, idiom: "ipad", scale: [1,2], role: "notification" },
-    { size: 29, idiom: "ipad", scale: [1,2], role: "settings" },
-    { size: 40, idiom: "ipad", scale: [1,2], role: "spotlight" },
-    { size: 76, idiom: "ipad", scale: [1,2], role: "app" },
-    { size: 83.5, idiom: "ipad", scale: [2], role: "app" },
-    { size: 1024, idiom: "ios-marketing", scale: [1], role: "appstore" }
+    { size: 20, idiom: "iphone", scale: [2,3] },
+    { size: 29, idiom: "iphone", scale: [2,3] },
+    { size: 40, idiom: "iphone", scale: [2,3] },
+    { size: 60, idiom: "iphone", scale: [2,3] },
+    { size: 20, idiom: "ipad", scale: [1,2] },
+    { size: 29, idiom: "ipad", scale: [1,2] },
+    { size: 40, idiom: "ipad", scale: [1,2] },
+    { size: 76, idiom: "ipad", scale: [1,2] },
+    { size: 83.5, idiom: "ipad", scale: [2] },
+    { size: 1024, idiom: "ios-marketing", scale: [1] }
   ];
 
   const contentsImages = [];
