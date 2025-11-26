@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.0.2">
+    version="2.1.0">
     
     <name>Change App Info</name>
-    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Optimized for OutSystems MABS.</description>
+    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Also supports replacing CSS/JS assets from CDN. Optimized for OutSystems MABS.</description>
     <license>MIT</license>
-    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs</keywords>
+    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs,css,assets</keywords>
     
     <author>vnkhoado</author>
     <repo>https://github.com/vnkhoado/cordova-plugin-change-app-info.git</repo>
@@ -17,11 +17,12 @@
     
     <!-- No plugin variables required - reads from config.xml preferences -->
     <!-- Add these to your config.xml or OutSystems Extensibility Configurations:
-         - PACKAGE_NAME
-         - APP_NAME
-         - VERSION_NUMBER
-         - VERSION_CODE
-         - CDN_ICON
+         - CDN_ICON: Icon URL (e.g., https://cdn.com/icon.png)
+         - CDN_ASSETS: JSON config URL for CSS/JS replacement (e.g., https://cdn.com/assets.json)
+         - APP_NAME: App display name
+         - PACKAGE_NAME: Bundle ID / Package name
+         - VERSION_NUMBER: Version string (e.g., "1.0.0")
+         - VERSION_CODE: Build number (e.g., "1")
     -->
     
     <!-- Android Platform -->
@@ -31,6 +32,9 @@
         
         <!-- Generate icons from CDN -->
         <hook type="after_prepare" src="hooks/generateIcons.js" />
+        
+        <!-- Replace CSS/JS assets from CDN -->
+        <hook type="after_prepare" src="hooks/replace-assets-from-cdn.js" />
     </platform>
     
     <!-- iOS Platform -->
@@ -41,6 +45,9 @@
         <!-- Generate icons from CDN - Multiple hooks to ensure it works -->
         <hook type="after_prepare" src="hooks/generateIcons.js" />
         <hook type="before_compile" src="hooks/generateIcons.js" />
+        
+        <!-- Replace CSS/JS assets from CDN -->
+        <hook type="after_prepare" src="hooks/replace-assets-from-cdn.js" />
         
         <!-- Clean build before compile -->
         <hook type="before_build" src="hooks/cleanBuild.js" />
