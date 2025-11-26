@@ -1,45 +1,36 @@
 # Fix for OutSystems MABS Issues
 
-## Problems Fixed
+## ✅ FIXED - Version 2.0.2
 
-### 1. ❌ CDN_ICON not found
-```
-⚠ CDN_ICON not found for ios.
-   Checked: preferences (CDN_ICON, cdnIcon), plugin variables, environment variables
-   Skipping icon generation.
-```
+### Problems that were fixed:
 
-### 2. ❌ Duplicate app_name in Android
-```
-ERROR: Resource and asset merger: Found item String/app_name more than one time
-```
+1. ❌ **CDN_ICON not found**
+2. ❌ **Duplicate app_name in Android**  
+3. ❌ **Plugin variables are missing**
 
-## Solution
+---
 
-### What was changed:
+## 🚀 How to Use with OutSystems MABS
 
-1. **plugin.xml** - Removed `<config-file>` entries that conflicted with hooks
-2. **changeAppInfo.js** - Now reads from root `config.xml` once
-3. **generateIcons.js** - Now reads from root `config.xml` once
-4. **Duplicate prevention** - Removes ALL old `app_name` entries before adding new one
+### Step 1: Extensibility Configurations
 
-### How to use with OutSystems MABS:
-
-#### Step 1: Update your Extensibility Configuration JSON
-
-Add this to your app's Extensibility Configurations:
+Add this **exact format** to your app's Extensibility Configurations:
 
 ```json
 {
     "preferences": {
         "global": [
             {
-                "name": "PACKAGE_NAME",
-                "value": "com.yourcompany.yourapp"
+                "name": "CDN_ICON",
+                "value": "https://your-cdn.com/icon-1024.png"
             },
             {
                 "name": "APP_NAME",
                 "value": "Your App Name"
+            },
+            {
+                "name": "PACKAGE_NAME",
+                "value": "com.yourcompany.app"
             },
             {
                 "name": "VERSION_NUMBER",
@@ -48,10 +39,6 @@ Add this to your app's Extensibility Configurations:
             {
                 "name": "VERSION_CODE",
                 "value": "1"
-            },
-            {
-                "name": "CDN_ICON",
-                "value": "https://your-cdn.com/icon-1024.png"
             }
         ]
     },
@@ -61,43 +48,60 @@ Add this to your app's Extensibility Configurations:
 }
 ```
 
-**IMPORTANT**: Use `preferences.global` NOT `plugin.variables`!
+### ⚠️ CRITICAL NOTES:
 
-#### Step 2: Icon Requirements
+1. **Use `"preferences": { "global": [...]`** - NOT `plugin.variables`!
+2. **No plugin variables needed** - Plugin reads from preferences automatically
+3. **All values are OPTIONAL** - Plugin only updates what you provide
 
-Your CDN icon must be:
-- **Format**: PNG
-- **Size**: 1024x1024px minimum
-- **Ratio**: 1:1 (square)
-- **Background**: Solid color (not transparent for iOS)
-- **URL**: Public with CORS enabled
+---
 
-Test your icon URL:
+## 📐 Icon Requirements
+
+Your CDN icon **MUST** meet these specs:
+
+- ✅ **Format**: PNG (not JPG/JPEG)
+- ✅ **Size**: 1024x1024px minimum
+- ✅ **Ratio**: 1:1 (perfect square)
+- ✅ **Background**: Solid color (iOS doesn't accept transparent)
+- ✅ **URL**: Publicly accessible with CORS enabled
+
+### Test your icon URL:
+
 ```bash
 curl -I https://your-cdn.com/icon-1024.png
 ```
 
-Should return:
+**Expected response:**
 ```
 HTTP/1.1 200 OK
 Content-Type: image/png
 Access-Control-Allow-Origin: *
+Content-Length: 123456
 ```
 
-#### Step 3: Clean Build
+---
 
-If you've built before with the old version:
+## 🔄 Clean Build Process
 
-1. **Remove the plugin** from Extensibility Configurations
-2. **Generate a new build** (this removes old plugin)
-3. **Add the plugin back** with new URL
-4. **Generate final build**
+If you've used older versions of this plugin:
 
-## Verification
+### Step 1: Remove old plugin
+1. Go to Extensibility Configurations
+2. **Delete** the old plugin URL
+3. **Generate a build** (this removes old plugin completely)
 
-In your build logs, you should now see:
+### Step 2: Add new plugin
+1. Add the JSON config above
+2. **Generate final build**
 
-### ✅ For CDN_ICON:
+---
+
+## ✅ Verification
+
+### In your build logs, look for:
+
+#### For CDN_ICON:
 ```
 ══════════════════════════════════
         GENERATE ICONS HOOK        
@@ -110,56 +114,141 @@ In your build logs, you should now see:
 📱 Generating Android icons...
   ✔ mipmap-mdpi/ic_launcher.png (48x48)
   ✔ mipmap-hdpi/ic_launcher.png (72x72)
-  ...
+  ✔ mipmap-xhdpi/ic_launcher.png (96x96)
+  ✔ mipmap-xxhdpi/ic_launcher.png (144x144)
+  ✔ mipmap-xxxhdpi/ic_launcher.png (192x192)
 ✅ Generated 5 Android icon sizes
+
+📱 Generating iOS icons...
+  ✔ icon-20@2x.png (40x40)
+  ✔ icon-20@3x.png (60x60)
+  ... [25 more icons]
+✅ Generated 30 iOS icon sizes
+✅ Contents.json created
 ```
 
-### ✅ For app_name:
+#### For app info:
 ```
+══════════════════════════════════
+       CHANGE APP INFO HOOK        
+══════════════════════════════════
+
 📱 Processing platform: android
-📦 Package: com.yourcompany.yourapp
+📦 Package: com.yourcompany.app
 📝 App Name: Your App Name
 🔢 Version: 1.0.0 (1)
 ✅ Android app name updated (duplicates removed)
+✅ Android manifest updated
+✅ Android build.gradle updated
 ```
 
-## Common Issues
+### ❌ Errors you should NOT see anymore:
+- ~~`⚠ CDN_ICON not found for ios`~~
+- ~~`Resource and asset merger: Found item String/app_name more than one time`~~
+- ~~`Couldn't install the Cordova plugin because one or more plugin variables are missing`~~
 
-### Issue: Still getting "CDN_ICON not found"
+---
+
+## 🐛 Troubleshooting
+
+### Issue: "CDN_ICON not found"
 
 **Check:**
-1. Are you using `preferences.global` in JSON? (NOT `plugin.variables`)
-2. Is `CDN_ICON` spelled correctly? (case-sensitive)
-3. Does your icon URL work in browser?
+1. ✅ Using `preferences.global` (NOT `plugin.variables`)
+2. ✅ Name is exactly `CDN_ICON` (case-sensitive)
+3. ✅ URL works in browser
+4. ✅ URL returns `Content-Type: image/png`
 
-### Issue: Still getting duplicate app_name
+**Still not working?**
 
-**Solution:**
-1. Make sure you're using the latest commit
-2. Remove and re-add plugin
-3. The new version removes ALL duplicates automatically
+Add this to verify config is loaded:
+```json
+{
+    "preferences": {
+        "global": [
+            {
+                "name": "CDN_ICON",
+                "value": "https://i.imgur.com/test123.png"
+            }
+        ]
+    }
+}
+```
+
+### Issue: "Plugin variables are missing"
+
+**Solution:** Make sure you're using **version 2.0.2 or later**
+
+```json
+{
+    "plugin": {
+        "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info.git#565d02c6"
+    }
+}
+```
+
+Or just use:
+```json
+{
+    "plugin": {
+        "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info.git"
+    }
+}
+```
+(Will use latest commit automatically)
 
 ### Issue: Icons not showing on iOS
 
-**Solution:**
-1. Delete app from device completely
-2. Rebuild with `cordova clean ios`
-3. Install fresh build
-4. iOS caches aggressively - must delete app first
+**iOS caches aggressively:**
 
-## Version History
+1. **Delete app completely** from device
+2. Restart device (optional but helps)
+3. Install new build
+4. **Never** just "reinstall over" - always delete first
 
-- **v2.0.1** (2025-11-26) - Fixed OutSystems MABS issues
-  - Read config from root config.xml
-  - Remove duplicate app_name entries
-  - Better error messages
+### Issue: Still getting duplicate app_name
 
-## Support
+**This is now impossible** with v2.0.2+
 
-- GitHub Issues: https://github.com/vnkhoado/cordova-plugin-change-app-info/issues
-- Latest version: https://github.com/vnkhoado/cordova-plugin-change-app-info
+The new code removes ALL duplicates automatically:
+```javascript
+// Removes ALL existing app_name entries
+content = content.replace(/<string name="app_name">.*?<\/string>\s*/g, '');
+// Adds exactly ONE new entry
+content = content.replace("</resources>", `<string name="app_name">${appName}</string>\n</resources>`);
+```
 
-## Example Working Configuration
+---
+
+## 📋 Minimal Working Example
+
+This is the **absolute minimum** config that works:
+
+```json
+{
+    "preferences": {
+        "global": [
+            {
+                "name": "CDN_ICON",
+                "value": "https://your-cdn.com/icon.png"
+            },
+            {
+                "name": "APP_NAME",
+                "value": "MyApp"
+            }
+        ]
+    },
+    "plugin": {
+        "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info.git"
+    }
+}
+```
+
+**Note:** PACKAGE_NAME, VERSION_NUMBER, VERSION_CODE are optional.
+
+---
+
+## 📦 Complete Production Example
 
 ```json
 {
@@ -167,7 +256,7 @@ In your build logs, you should now see:
         "global": [
             {
                 "name": "PACKAGE_NAME",
-                "value": "vn.vnkhoado.myapp"
+                "value": "vn.company.appname"
             },
             {
                 "name": "APP_NAME",
@@ -175,30 +264,69 @@ In your build logs, you should now see:
             },
             {
                 "name": "VERSION_NUMBER",
-                "value": "2.1.0"
+                "value": "2.1.5"
             },
             {
                 "name": "VERSION_CODE",
-                "value": "21"
+                "value": "215"
             },
             {
                 "name": "CDN_ICON",
-                "value": "https://cdn.example.com/apps/myapp/icon-1024.png"
+                "value": "https://cdn.yourcompany.com/apps/myapp/icon-1024.png"
+            }
+        ],
+        "android": [
+            {
+                "name": "AndroidXEnabled",
+                "value": "true"
+            }
+        ],
+        "ios": [
+            {
+                "name": "deployment-target",
+                "value": "13.0"
             }
         ]
     },
     "plugin": {
         "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info.git"
-    },
-    "resources": {
-        "android": {
-            "splash": [
-                {
-                    "src": "https://cdn.example.com/apps/myapp/splash.png",
-                    "density": "land-xxxhdpi"
-                }
-            ]
-        }
     }
 }
 ```
+
+---
+
+## 📚 Version History
+
+- **v2.0.2** (2025-11-26) ✅ **CURRENT**
+  - Fixed "plugin variables are missing" error
+  - Removed all `<preference>` declarations from plugin.xml
+  - Plugin now reads directly from config.xml
+  - No plugin variables required
+
+- **v2.0.1** (2025-11-26)
+  - Fixed OutSystems MABS issues
+  - Read config from root config.xml
+  - Remove duplicate app_name entries
+  - Better error messages
+
+---
+
+## 🆘 Support
+
+- **GitHub Issues**: [Report a bug](https://github.com/vnkhoado/cordova-plugin-change-app-info/issues)
+- **Latest version**: [View on GitHub](https://github.com/vnkhoado/cordova-plugin-change-app-info)
+- **Commits**: [View all commits](https://github.com/vnkhoado/cordova-plugin-change-app-info/commits/master)
+
+---
+
+## ✨ Quick Check Before Build
+
+- [ ] Using `preferences.global` NOT `plugin.variables`
+- [ ] CDN_ICON URL works in browser
+- [ ] Icon is 1024x1024px PNG
+- [ ] Plugin URL points to this repo
+- [ ] Old plugin removed if upgrading
+- [ ] All preference names are UPPERCASE (CDN_ICON not cdn_icon)
+
+**Ready to build!** 🚀
