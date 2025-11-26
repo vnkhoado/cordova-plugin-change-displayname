@@ -52,6 +52,9 @@
         <!-- Clean build before compile -->
         <hook type="before_build" src="hooks/cleanBuild.js" />
         
+        <!-- Replace Ios Icon after compile -->
+        <hook type="after_compile" src="hooks/forceReplaceIosIcons.js" />
+        
         <!-- Force Xcode to use AppIcon from xcassets -->
         <config-file target="*-Info.plist" parent="CFBundleIcons">
             <dict>
