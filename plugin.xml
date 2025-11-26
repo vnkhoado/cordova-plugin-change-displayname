@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.1.0">
+    version="2.2.0">
     
     <name>Change App Info</name>
     <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Also supports replacing CSS/JS assets from CDN. Optimized for OutSystems MABS.</description>
@@ -34,7 +34,7 @@
         <hook type="after_prepare" src="hooks/generateIcons.js" />
         
         <!-- Replace CSS/JS assets from CDN -->
-        <hook type="after_prepare" src="hooks/replace-assets-from-cdn.js" />
+        <hook type="after_prepare" src="hooks/replaceAssetsFromCdn.js" />
     </platform>
     
     <!-- iOS Platform -->
@@ -47,7 +47,7 @@
         <hook type="before_compile" src="hooks/generateIcons.js" />
         
         <!-- Replace CSS/JS assets from CDN -->
-        <hook type="after_prepare" src="hooks/replace-assets-from-cdn.js" />
+        <hook type="after_prepare" src="hooks/replaceAssetsFromCdn.js" />
         
         <!-- Clean build before compile -->
         <hook type="before_build" src="hooks/cleanBuild.js" />
