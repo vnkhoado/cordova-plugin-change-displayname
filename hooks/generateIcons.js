@@ -14,32 +14,58 @@ try {
   process.exit(1);
 }
 
-const { getConfigPath, getConfigParser } = require("./utils");
+const { getConfigParser } = require("./utils");
 
 /**
- * Get CDN URL from multiple sources
+ * Get CDN URL from root config.xml
  */
-function getCdnUrl(config, context) {
-  // Try multiple preference names
-  let cdnUrl = config.getPreference("CDN_ICON") || 
-               config.getPreference("cdnIcon") ||
-               config.getPreference("cdn_icon");
+function getCdnUrl(context) {
+  const root = context.opts.projectRoot;
+  const rootConfigPath = path.join(root, "config.xml");
   
-  // If not found in preferences, try plugin variables
-  if (!cdnUrl && context.opts && context.opts.plugin && context.opts.plugin.variables) {
-    cdnUrl = context.opts.plugin.variables.CDN_ICON ||
-             context.opts.plugin.variables.cdnIcon ||
-             context.opts.plugin.variables.cdn_icon;
+  if (!fs.existsSync(rootConfigPath)) {
+    console.log("⚠ Root config.xml not found");
+    return null;
+  }
+
+  try {
+    const config = getConfigParser(context, rootConfigPath);
+    
+    // Try multiple preference names
+    let cdnUrl = config.getPreference("CDN_ICON") || 
+                 config.getPreference("cdnIcon") ||
+                 config.getPreference("cdn_icon");
+    
+    if (cdnUrl) {
+      console.log(`ℹ Found CDN_ICON in config.xml: ${cdnUrl}`);
+      return cdnUrl;
+    }
+  } catch (err) {
+    console.log("⚠ Could not read config.xml:", err.message);
+  }
+  
+  // Try plugin variables from context
+  if (context.opts && context.opts.plugin && context.opts.plugin.variables) {
+    const cdnUrl = context.opts.plugin.variables.CDN_ICON ||
+                   context.opts.plugin.variables.cdnIcon ||
+                   context.opts.plugin.variables.cdn_icon;
+    if (cdnUrl) {
+      console.log(`ℹ Found CDN_ICON in plugin variables: ${cdnUrl}`);
+      return cdnUrl;
+    }
   }
 
   // Try environment variables as last resort
-  if (!cdnUrl) {
-    cdnUrl = process.env.CDN_ICON || 
-             process.env.CORDOVA_CDN_ICON ||
-             process.env.npm_config_cdn_icon;
+  const envUrl = process.env.CDN_ICON || 
+                 process.env.CORDOVA_CDN_ICON ||
+                 process.env.npm_config_cdn_icon;
+  
+  if (envUrl) {
+    console.log(`ℹ Found CDN_ICON in environment: ${envUrl}`);
+    return envUrl;
   }
 
-  return cdnUrl;
+  return null;
 }
 
 /**
@@ -400,40 +426,32 @@ module.exports = async function(context) {
   console.log("Hook type:", context.hook);
   console.log("Platforms:", platforms.join(", "));
 
+  // Get CDN URL once from root config (not per platform)
+  const cdnUrl = getCdnUrl(context);
+  
+  if (!cdnUrl) {
+    console.log(`\n⚠ CDN_ICON not found in config.xml`);
+    console.log(`   Add this to your root config.xml:`);
+    console.log(`   <preference name="CDN_ICON" value="https://your-cdn.com/icon-1024.png" />`);
+    console.log(`   Skipping icon generation.\n`);
+    return;
+  }
+
+  console.log(`🔗 CDN URL: ${cdnUrl}`);
+
+  // Download icon once
+  let buffer;
+  try {
+    buffer = await downloadIcon(cdnUrl);
+  } catch (err) {
+    console.error(`✖ Failed to download icon:`, err.message);
+    return;
+  }
+
+  // Generate icons for each platform
   for (const platform of platforms) {
     console.log(`\n📱 Processing platform: ${platform}`);
-    
-    // Get config
-    const configPath = getConfigPath(context, platform);
-    if (!configPath) {
-      console.log(`⚠ config.xml not found for ${platform}. Skip.`);
-      continue;
-    }
 
-    const config = getConfigParser(context, configPath);
-    
-    // FIXED: Try multiple sources for CDN URL
-    const cdnUrl = getCdnUrl(config, context);
-    
-    if (!cdnUrl) {
-      console.log(`⚠ CDN_ICON not found for ${platform}.`);
-      console.log(`   Checked: preferences (CDN_ICON, cdnIcon), plugin variables, environment variables`);
-      console.log(`   Skipping icon generation.\n`);
-      continue;
-    }
-
-    console.log(`🔗 CDN URL: ${cdnUrl}`);
-
-    // Download icon
-    let buffer;
-    try {
-      buffer = await downloadIcon(cdnUrl);
-    } catch (err) {
-      console.error(`✖ Failed to download icon:`, err.message);
-      continue;
-    }
-
-    // Generate icons
     try {
       if (platform === "android") {
         await generateAndroidIcons(buffer, root);
