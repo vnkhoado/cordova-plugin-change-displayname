@@ -57,7 +57,6 @@ async function generateIOSIcons(buffer, root, appFolderName) {
   if (!fs.existsSync(assetsFolder)) fs.mkdirSync(assetsFolder, { recursive: true });
   console.log("📦 Using iOS AppIcon folder:", assetsFolder);
 
-  // Chuẩn icon Apple Pro
   const icons = [
     { size: 20, idiom: "iphone", scale: [2,3] },
     { size: 29, idiom: "iphone", scale: [2,3] },
@@ -106,28 +105,29 @@ async function generateIOSIcons(buffer, root, appFolderName) {
 }
 
 /**
- * Log current AppIcon in project.pbxproj
+ * Log all targets and return project + target UUID
  */
-function logCurrentAppIcon(root, appFolderName) {
+function getIOSTarget(root, appFolderName) {
   const pbxPath = path.join(root, "platforms/ios", appFolderName + ".xcodeproj", "project.pbxproj");
-  if (!fs.existsSync(pbxPath)) {
-    console.log("⚠ project.pbxproj not found:", pbxPath);
-    return;
-  }
+  if (!fs.existsSync(pbxPath)) return {};
 
   const proj = xcode.project(pbxPath);
   proj.parseSync();
 
-  const targets = proj.getFirstTarget();
-  const targetUUID = targets.uuid;
+  // Lấy tất cả native target, bỏ CordovaLib
+  const targets = Object.values(proj.pbxNativeTargetSection()).filter(t => !t.comment.includes("CordovaLib"));
+  if (!targets.length) return {};
 
+  const targetUUID = Object.keys(targets[0])[0];
+  console.log("ℹ iOS target found:", targets[0].comment);
+
+  // Log AppIcon hiện tại
   const buildSettings = proj.pbxXCBuildConfigurationSection();
   const settingsForTarget = Object.values(buildSettings).filter(
-    x => x.buildSettings && x.buildSettings.PRODUCT_NAME === targets.name
+    x => x.buildSettings && x.buildSettings.PRODUCT_NAME === targets[0].comment
   );
-
   const appIconName = settingsForTarget[0]?.buildSettings?.ASSETCATALOG_COMPILER_APPICON_NAME;
-  console.log("ℹ Current AppIcon for target", targets.name, "is:", appIconName || "(not set)");
+  console.log("ℹ Current AppIcon:", appIconName || "(not set)");
 
   return { proj, targetUUID };
 }
@@ -136,10 +136,11 @@ function logCurrentAppIcon(root, appFolderName) {
  * Update AppIcon in project.pbxproj
  */
 function updateAppIcon(root, appFolderName) {
-  const { proj, targetUUID } = logCurrentAppIcon(root, appFolderName);
+  const { proj, targetUUID } = getIOSTarget(root, appFolderName);
   if (!proj || !targetUUID) return;
 
   proj.updateBuildProperty("ASSETCATALOG_COMPILER_APPICON_NAME", "AppIcon", targetUUID);
+
   fs.writeFileSync(
     path.join(root, "platforms/ios", appFolderName + ".xcodeproj", "project.pbxproj"),
     proj.writeSync()
@@ -150,7 +151,7 @@ function updateAppIcon(root, appFolderName) {
 /**
  * Main hook
  */
-module.exports = async function (context) {
+module.exports = async function(context) {
   const root = context.opts.projectRoot;
   const platforms = context.opts.platforms;
 
@@ -186,7 +187,6 @@ module.exports = async function (context) {
       if (platform === "android") {
         await generateAndroidIcons(buffer, root);
       } else if (platform === "ios") {
-        // Lấy app folder iOS (bỏ CordovaLib)
         const iosFolders = fs.readdirSync(path.join(root, "platforms/ios"))
           .filter(f => fs.statSync(path.join(root, "platforms/ios", f)).isDirectory() && f !== "CordovaLib");
 
@@ -197,7 +197,6 @@ module.exports = async function (context) {
 
         const appFolderName = iosFolders[0];
         await generateIOSIcons(buffer, root, appFolderName);
-        logCurrentAppIcon(root, appFolderName);
         updateAppIcon(root, appFolderName);
       }
     } catch (err) {
