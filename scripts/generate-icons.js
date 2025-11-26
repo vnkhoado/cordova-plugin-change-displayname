@@ -55,23 +55,27 @@ async function generateIOSProIcons(buffer, root) {
     return;
   }
 
-  // 🔍 Tìm folder .xcassets
-  let appNameDir = null;
+  // 🔍 Tìm folder AppName chứa Images.xcassets
+  let assetsFolder = null;
   for (const d of fs.readdirSync(iosFolder)) {
-    const xc1 = path.join(iosFolder, d, "Images.xcassets");
-    const xc2 = path.join(iosFolder, d, "Resources", "Images.xcassets");
-    if (fs.existsSync(xc1)) { appNameDir = xc1; break; }
-    if (fs.existsSync(xc2)) { appNameDir = xc2; break; }
+    const candidate1 = path.join(iosFolder, d, "Images.xcassets", "AppIcon.appiconset");
+    const candidate2 = path.join(iosFolder, d, "Resources", "Images.xcassets", "AppIcon.appiconset");
+
+    if (fs.existsSync(candidate1)) { assetsFolder = candidate1; break; }
+    if (fs.existsSync(candidate2)) { assetsFolder = candidate2; break; }
   }
 
-  if (!appNameDir) {
-    console.log("⚠ No Images.xcassets found for iOS. Skip.");
-    return;
+  // Nếu chưa có, tạo folder
+  if (!assetsFolder) {
+    const appName = fs.readdirSync(iosFolder)[0]; // lấy folder đầu tiên làm AppName
+    const xcassetsFolder = path.join(iosFolder, appName, "Images.xcassets");
+    if (!fs.existsSync(xcassetsFolder)) fs.mkdirSync(xcassetsFolder, { recursive: true });
+    assetsFolder = path.join(xcassetsFolder, "AppIcon.appiconset");
+    if (!fs.existsSync(assetsFolder)) fs.mkdirSync(assetsFolder, { recursive: true });
+    console.log("📦 Created iOS AppIcon folder:", assetsFolder);
+  } else {
+    console.log("📦 Found iOS AppIcon folder:", assetsFolder);
   }
-
-  const assetsFolder = path.join(appNameDir, "AppIcon.appiconset");
-  if (!fs.existsSync(assetsFolder)) fs.mkdirSync(assetsFolder, { recursive: true });
-  console.log("📦 iOS AppIcon folder:", assetsFolder);
 
   // Chuẩn icon Apple
   const icons = [
