@@ -47,6 +47,7 @@ async function generateAndroidIcons(buffer, root) {
 
 /**
  * Generate iOS Pro icons + Contents.json
+ * Auto create Images.xcassets/AppIcon.appiconset if missing
  */
 async function generateIOSProIcons(buffer, root) {
   const iosFolder = path.join(root, "platforms/ios");
@@ -57,9 +58,12 @@ async function generateIOSProIcons(buffer, root) {
 
   // 🔍 Tìm folder AppName chứa Images.xcassets
   let assetsFolder = null;
-  for (const d of fs.readdirSync(iosFolder)) {
-    const candidate1 = path.join(iosFolder, d, "Images.xcassets", "AppIcon.appiconset");
-    const candidate2 = path.join(iosFolder, d, "Resources", "Images.xcassets", "AppIcon.appiconset");
+  const iosFolders = fs.readdirSync(iosFolder).filter(f => fs.statSync(path.join(iosFolder, f)).isDirectory());
+
+  for (const d of iosFolders) {
+    const fullPath = path.join(iosFolder, d);
+    const candidate1 = path.join(fullPath, "Images.xcassets", "AppIcon.appiconset");
+    const candidate2 = path.join(fullPath, "Resources", "Images.xcassets", "AppIcon.appiconset");
 
     if (fs.existsSync(candidate1)) { assetsFolder = candidate1; break; }
     if (fs.existsSync(candidate2)) { assetsFolder = candidate2; break; }
@@ -67,7 +71,7 @@ async function generateIOSProIcons(buffer, root) {
 
   // Nếu chưa có, tạo folder
   if (!assetsFolder) {
-    const appName = fs.readdirSync(iosFolder)[0]; // lấy folder đầu tiên làm AppName
+    const appName = iosFolders[0]; // folder đầu tiên
     const xcassetsFolder = path.join(iosFolder, appName, "Images.xcassets");
     if (!fs.existsSync(xcassetsFolder)) fs.mkdirSync(xcassetsFolder, { recursive: true });
     assetsFolder = path.join(xcassetsFolder, "AppIcon.appiconset");
@@ -77,7 +81,7 @@ async function generateIOSProIcons(buffer, root) {
     console.log("📦 Found iOS AppIcon folder:", assetsFolder);
   }
 
-  // Chuẩn icon Apple
+  // Chuẩn icon Apple Pro
   const icons = [
     { size: 20, idiom: "iphone", scale: [2,3], role: "notification" },
     { size: 29, idiom: "iphone", scale: [2,3], role: "settings" },
