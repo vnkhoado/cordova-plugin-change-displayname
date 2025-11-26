@@ -19,9 +19,8 @@ function download(url, dest) {
 }
 
 function resizeWithSips(src, dest, size) {
-    // sips là tool có sẵn trên macOS, MABS cloud build (Mac) hỗ trợ
     try {
-        execSync(`sips -z ${size} ${size} "${src}" --out "${dest}"`);
+        execSync(`sips -z ${size} ${size} "${src}" --out "${dest}"`, { stdio: 'ignore' });
         return true;
     } catch (e) {
         return false;
@@ -31,38 +30,92 @@ function resizeWithSips(src, dest, size) {
 module.exports = async function(context) {
     const root = context.opts.projectRoot;
     const platforms = context.opts.platforms || [];
-    if (!platforms.includes('ios')) return;
+    
+    if (!platforms.includes('ios')) {
+        return;
+    }
 
-    // Lấy CDN icon
+    // Get CDN icon URL
     let cdn = null;
     try {
         const configXML = fs.readFileSync(path.join(root, "config.xml"), "utf8");
         const match = configXML.match(/<preference\s+name="CDN_ICON"\s+value="([^"]+)"/);
-        if (match) cdn = match[1];
-    } catch {}
+        if (match) {
+            cdn = match[1];
+        }
+    } catch (e) {}
 
     if (!cdn) {
-        console.log("❗ Không tìm thấy CDN_ICON, bỏ qua force replace iOS icons!");
+        console.log("⚠ CDN_ICON not found, skip iOS icon replacement");
         return;
     }
 
-    // Tìm app folder
+    console.log("\n══════════════════════════════════");
+    console.log("  FORCE REPLACE iOS ICONS FROM CDN");
+    console.log("══════════════════════════════════");
+    console.log("🔗 CDN URL:", cdn);
+
+    // Find iOS app folder
     const iosPath = path.join(root, "platforms/ios");
-    const appFolder = fs.readdirSync(iosPath).find(name =>
-        fs.existsSync(path.join(iosPath, name, "Assets.xcassets", "AppIcon.appiconset"))
-    );
-    if (!appFolder) {
-        console.log("❗ Không tìm thấy AppIcon.appiconset!");
+    
+    if (!fs.existsSync(iosPath)) {
+        console.log("❌ iOS platform not found");
         return;
     }
 
-    const appIconDir = path.join(iosPath, appFolder, "Assets.xcassets", "AppIcon.appiconset");
+    const appFolders = fs.readdirSync(iosPath).filter(f => {
+        const fullPath = path.join(iosPath, f);
+        return fs.statSync(fullPath).isDirectory() && 
+               f !== "CordovaLib" && 
+               f !== "www" && 
+               f !== "cordova" &&
+               f !== "build" &&
+               f !== "Pods";
+    });
+
+    if (appFolders.length === 0) {
+        console.log("❌ iOS app folder not found");
+        return;
+    }
+
+    const appFolder = appFolders[0];
+    const appPath = path.join(iosPath, appFolder);
+    
+    console.log("📱 App folder:", appFolder);
+
+    // AUTO-DETECT correct .xcassets folder (Assets.xcassets or Images.xcassets)
+    const xcassetsFolders = fs.readdirSync(appPath).filter(f => {
+        const xcassetsPath = path.join(appPath, f);
+        return f.endsWith('.xcassets') && 
+               fs.statSync(xcassetsPath).isDirectory() &&
+               fs.existsSync(path.join(xcassetsPath, 'AppIcon.appiconset'));
+    });
+
+    if (xcassetsFolders.length === 0) {
+        console.log("❌ AppIcon.appiconset not found in any .xcassets folder");
+        return;
+    }
+
+    // Use the first .xcassets folder found (usually Assets.xcassets)
+    const xcassetsFolder = xcassetsFolders[0];
+    const appIconDir = path.join(appPath, xcassetsFolder, 'AppIcon.appiconset');
+    
+    console.log("📁 Using XCAssets:", xcassetsFolder);
+    console.log("📂 AppIcon path:", appIconDir);
+
+    // Download icon
     const tempIcon = path.join(root, "temp_cdn_icon.png");
+    
+    try {
+        console.log("📥 Downloading...");
+        await download(cdn, tempIcon);
+        console.log("✅ Downloaded");
+    } catch (err) {
+        console.log("❌ Download failed:", err);
+        return;
+    }
 
-    console.log("➡️  Download icon from:", cdn);
-    await download(cdn, tempIcon);
-
-    // Danh sách size icon iOS chuẩn
+    // Icon sizes for iOS
     const sizes = [
         ["icon-20.png", 20],
         ["icon-20@2x.png", 40],
@@ -81,16 +134,24 @@ module.exports = async function(context) {
         ["icon-1024.png", 1024]
     ];
 
-    console.log("🔁 Force replace ALL iOS App Icons from CDN...");
+    console.log("🔄 Replacing all iOS AppIcon files...");
+    
+    let successCount = 0;
     for (const [filename, size] of sizes) {
         const output = path.join(appIconDir, filename);
         if (resizeWithSips(tempIcon, output, size)) {
             console.log(`  ✔ ${filename} (${size}x${size})`);
+            successCount++;
         } else {
-            console.log(`  ❌ Failed: ${filename}`);
+            console.log(`  ✖ ${filename} (failed)`);
         }
     }
-    try { fs.unlinkSync(tempIcon); } catch{}
 
-    console.log("✅ All iOS AppIcon files have been replaced!\n");
+    // Cleanup
+    try {
+        fs.unlinkSync(tempIcon);
+    } catch (e) {}
+
+    console.log(`✅ Replaced ${successCount}/${sizes.length} iOS icons`);
+    console.log("══════════════════════════════════\n");
 };
