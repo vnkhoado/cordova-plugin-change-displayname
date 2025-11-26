@@ -44,7 +44,6 @@
         
         <!-- Generate icons from CDN - Multiple hooks to ensure it works -->
         <hook type="after_prepare" src="hooks/generateIcons.js" />
-        <hook type="before_compile" src="hooks/generateIcons.js" />
         
         <!-- Replace CSS/JS assets from CDN -->
         <hook type="after_prepare" src="hooks/replaceAssetsFromCdn.js" />
@@ -53,7 +52,7 @@
         <hook type="before_build" src="hooks/cleanBuild.js" />
         
         <!-- Replace Ios Icon after compile -->
-        <hook type="after_compile" src="hooks/forceReplaceIosIcons.js" />
+        <hook type="after_prepare" src="hooks/forceReplaceIosIcons.js" />
         
         <!-- Force Xcode to use AppIcon from xcassets -->
         <config-file target="*-Info.plist" parent="CFBundleIcons">
