@@ -1,14 +1,3 @@
-cordova-plugin-change-app-info
-Cordova plugin để thay đổi app display name, package name, version và icon từ CDN lúc build time. Tối ưu cho OutSystems MABS.
-✨ Tính năng
-
-✅ Thay đổi package name / bundle ID
-✅ Thay đổi display name của app
-✅ Thay đổi version number và version code
-✅ Download và generate icon từ CDN URL
-✅ Tự động tạo tất cả kích thước icon cần thiết (iOS & Android)
-✅ Clean build cache để đảm bảo thay # cordova-plugin-change-app-info
-
 Cordova plugin để thay đổi app display name, package name, version và icon từ CDN lúc build time. Tối ưu cho **OutSystems MABS**.
 
 ---
