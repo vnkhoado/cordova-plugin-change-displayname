@@ -1,3 +1,5 @@
+# Cordova Plugin Change App Info
+
 Cordova plugin để thay đổi app display name, package name, version và icon từ CDN lúc build time. Tối ưu cho **OutSystems MABS**.
 
 ---
@@ -21,21 +23,23 @@ Cordova plugin để thay đổi app display name, package name, version và ico
 ### From Git
 ```bash
 cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
-đổi được áp dụng
-✅ Multiple hooks để tránh bị overwrite
-✅ Support iOS (xcassets) và Android (mipmap)
-✅ Compatible với OutSystems MABS
+```
 
-📦 Cài đặt
-From Git
-bashcordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
-Local
-bashcordova plugin add /path/to/cordova-plugin-change-app-info
-OutSystems MABS
-See QUICK_START.md for detailed instructions.
-⚙️ Cấu hình
-Với OutSystems - Extensibility Configurations (Recommended)
-json{
+### Local
+```bash
+cordova plugin add /path/to/cordova-plugin-change-app-info
+```
+
+### OutSystems MABS
+See `QUICK_START.md` for detailed instructions.
+
+---
+
+## ⚙️ Cấu hình
+
+### Với OutSystems - Extensibility Configurations (Recommended)
+```json
+{
     "plugin": {
         "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info.git",
         "variables": [
@@ -62,99 +66,124 @@ json{
         ]
     }
 }
-Variables:
+```
 
-PACKAGE_NAME: Bundle ID (iOS) / Package Name (Android)
-APP_NAME: Tên hiển thị của app
-VERSION_NUMBER: Version string (e.g., "1.0.0")
-VERSION_CODE: Build number (integer)
-CDN_ICON: URL của app icon (1024x1024px PNG)
+**Variables:**
+- `PACKAGE_NAME`: Bundle ID (iOS) / Package Name (Android)
+- `APP_NAME`: Tên hiển thị của app
+- `VERSION_NUMBER`: Version string (e.g., "1.0.0")
+- `VERSION_CODE`: Build number (integer)
+- `CDN_ICON`: URL của app icon (1024x1024px PNG)
 
-Config.xml (Alternative)
-xml<widget>
+### Config.xml (Alternative)
+```xml
+<widget>
     <preference name="PACKAGE_NAME" value="com.yourcompany.app" />
     <preference name="APP_NAME" value="Your App Name" />
     <preference name="VERSION_NUMBER" value="1.0.0" />
     <preference name="VERSION_CODE" value="1" />
     <preference name="CDN_ICON" value="https://cdn.example.com/icon.png" />
 </widget>
-📐 Yêu cầu Icon
-Icon Source
+```
 
-Format: PNG
-Size: 1024x1024px minimum
-Ratio: 1:1 (square)
-Background: Solid color (iOS không nên trong suốt)
-CDN: Public URL với CORS headers
+---
 
-Kích thước generated
-iOS
+## 📐 Yêu cầu Icon
 
-20x20 (@1x, @2x, @3x)
-29x29 (@1x, @2x, @3x)
-40x40 (@1x, @2x, @3x)
-60x60 (@2x, @3x)
-76x76 (@1x, @2x)
-83.5x83.5 (@2x)
-1024x1024 (App Store)
+### Icon Source
+- **Format**: PNG
+- **Size**: 1024x1024px minimum
+- **Ratio**: 1:1 (square)
+- **Background**: Solid color (iOS không nên trong suốt)
+- **CDN**: Public URL với CORS headers
 
-Android
+### Kích thước generated
 
-mdpi: 48x48
-hdpi: 72x72
-xhdpi: 96x96
-xxhdpi: 144x144
-xxxhdpi: 192x192
+#### iOS
+- 20x20 (@1x, @2x, @3x)
+- 29x29 (@1x, @2x, @3x)
+- 40x40 (@1x, @2x, @3x)
+- 60x60 (@2x, @3x)
+- 76x76 (@1x, @2x)
+- 83.5x83.5 (@2x)
+- 1024x1024 (App Store)
 
-🔧 Cách hoạt động
-Hooks
+#### Android
+- **mdpi**: 48x48
+- **hdpi**: 72x72
+- **xhdpi**: 96x96
+- **xxhdpi**: 144x144
+- **xxxhdpi**: 192x192
 
-after_prepare: Update app info và generate icons
-before_compile (iOS): Verify icons không bị overwrite
-before_build (iOS): Clean build cache
+---
 
-Config Files
+## 🔧 Cách hoạt động
 
-iOS: Update Info.plist và project.pbxproj
-Android: Update AndroidManifest.xml, strings.xml, build.gradle
+### Hooks
+- `after_prepare`: Update app info và generate icons
+- `before_compile` (iOS): Verify icons không bị overwrite
+- `before_build` (iOS): Clean build cache
 
-🐛 Troubleshooting
-❌ Icons không thay đổi trên iOS
-Giải pháp:
+### Config Files
+- **iOS**: Update `Info.plist` và `project.pbxproj`
+- **Android**: Update `AndroidManifest.xml`, `strings.xml`, `build.gradle`
 
-⭐ Xóa app hoàn toàn khỏi device
-Clean build: cordova clean ios
-Build lại: cordova build ios
-Install clean
+---
 
-❌ Build failed: "sharp not found"
-Giải pháp:
-bashcd plugins/cordova-plugin-change-app-info
+## 🐛 Troubleshooting
+
+### ❌ Icons không thay đổi trên iOS
+
+**Giải pháp:**
+1. ⭐ Xóa app hoàn toàn khỏi device
+2. Clean build: `cordova clean ios`
+3. Build lại: `cordova build ios`
+4. Install clean
+
+### ❌ Build failed: "sharp not found"
+
+**Giải pháp:**
+```bash
+cd plugins/cordova-plugin-change-app-info
 npm install
-❌ CDN icon không download được
-Check:
-bashcurl -I https://your-cdn.com/icon.png
-Phải trả về:
+```
 
+### ❌ CDN icon không download được
+
+**Check:**
+```bash
+curl -I https://your-cdn.com/icon.png
+```
+
+Phải trả về:
+```
 HTTP/1.1 200 OK
 Content-Type: image/png
 Access-Control-Allow-Origin: *
+```
 
-❌ Icons bị mờ
+### ❌ Icons bị mờ
 
-Đảm bảo icon source ≥ 1024x1024px
-Format PNG không nén
-Tránh JPG
+**Giải pháp:**
+- Đảm bảo icon source ≥ 1024x1024px
+- Format PNG không nén
+- Tránh JPG
 
-📚 Documentation
+---
 
-QUICK_START.md - Quick start cho OutSystems MABS
-CHANGELOG.md - Version history
-example-outsystems-config.json - Example config
+## 📚 Documentation
 
-🎯 Example Configs
-Development
-json{
+- `QUICK_START.md` - Quick start cho OutSystems MABS
+- `CHANGELOG.md` - Version history
+- `example-outsystems-config.json` - Example config
+
+---
+
+## 🎯 Example Configs
+
+### Development
+```json
+{
     "name": "PACKAGE_NAME",
     "value": "com.company.app.dev"
 },
@@ -166,8 +195,11 @@ json{
     "name": "CDN_ICON",
     "value": "https://cdn.com/icon-red.png"
 }
-Production
-json{
+```
+
+### Production
+```json
+{
     "name": "PACKAGE_NAME",
     "value": "com.company.app"
 },
@@ -179,7 +211,13 @@ json{
     "name": "CDN_ICON",
     "value": "https://cdn.com/icon.png"
 }
-📁 Structure
+```
+
+---
+
+## 📁 Structure
+
+```
 cordova-plugin-change-app-info/
 ├── plugin.xml
 ├── package.json
@@ -190,29 +228,48 @@ cordova-plugin-change-app-info/
 │   └── utils.js              # Helper functions
 └── scripts/
     └── postinstall.js        # Auto-install dependencies
-🔗 Dependencies
+```
 
-sharp@^0.33.0 - Image processing
-node-fetch@^2.7.0 - Download từ CDN
-xcode@^3.0.1 - iOS project manipulation
+---
 
-✅ Compatibility
+## 🔗 Dependencies
 
-Cordova: 9.0+
-iOS: 11.0+
-Android: 5.0+ (API 21+)
-Node.js: 14.0+
-OutSystems: MABS 8.0+
+- `sharp@^0.33.0` - Image processing
+- `node-fetch@^2.7.0` - Download từ CDN
+- `xcode@^3.0.1` - iOS project manipulation
 
-📝 License
+---
+
+## ✅ Compatibility
+
+- **Cordova**: 9.0+
+- **iOS**: 11.0+
+- **Android**: 5.0+ (API 21+)
+- **Node.js**: 14.0+
+- **OutSystems**: MABS 8.0+
+
+---
+
+## 📝 License
+
 MIT
-🤝 Contributing
+
+---
+
+## 🤝 Contributing
+
 Issues và Pull Requests welcome!
-📧 Support
 
-GitHub: https://github.com/vnkhoado/cordova-plugin-change-app-info/issues
-Email: support@example.com
+---
 
-🙏 Credits
-Forked from agoncalvesos/cordova-plugin-change-displayname
+## 📧 Support
+
+- **GitHub Issues**: https://github.com/vnkhoado/cordova-plugin-change-app-info/issues
+- **Email**: support@example.com
+
+---
+
+## 🙏 Credits
+
+Forked from [agoncalvesos/cordova-plugin-change-displayname](https://github.com/agoncalvesos/cordova-plugin-change-displayname)  
 Enhanced by OutSystems Experts team.
