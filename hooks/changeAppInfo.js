@@ -5,7 +5,7 @@ const path = require("path");
 const { getConfigParser } = require("./utils");
 
 /**
- * Get preferences from root config.xml (global preferences)
+ * Get preferences from root config.xml
  */
 function getPreferences(context) {
   const root = context.opts.projectRoot;
@@ -19,11 +19,11 @@ function getPreferences(context) {
   try {
     const config = getConfigParser(context, rootConfigPath);
     
-    // Get global preferences
-    const packageName = config.getGlobalPreference("PACKAGE_NAME") || "";
-    const appName = config.getGlobalPreference("APP_NAME") || "";
-    const versionNumber = config.getGlobalPreference("VERSION_NUMBER") || "";
-    const versionCode = config.getGlobalPreference("VERSION_CODE") || "";
+    // Get preferences (works with global preferences in OutSystems)
+    const packageName = config.getPreference("PACKAGE_NAME") || "";
+    const appName = config.getPreference("APP_NAME") || "";
+    const versionNumber = config.getPreference("VERSION_NUMBER") || "";
+    const versionCode = config.getPreference("VERSION_CODE") || "";
     
     // Validate VERSION_CODE and VERSION_NUMBER must exist together
     const hasVersionNumber = versionNumber.trim() !== "";
@@ -303,7 +303,7 @@ module.exports = function(context) {
   console.log("       CHANGE APP INFO HOOK        ");
   console.log("══════════════════════════════════");
 
-  // Get preferences from root config once (global preferences)
+  // Get preferences from root config
   const prefs = getPreferences(context);
 
   for (const platform of platforms) {
