@@ -5,7 +5,7 @@ const path = require("path");
 const { getConfigParser } = require("./utils");
 
 /**
- * Get preferences from root config.xml
+ * Get preferences from root config.xml (global preferences)
  */
 function getPreferences(context) {
   const root = context.opts.projectRoot;
@@ -19,11 +19,33 @@ function getPreferences(context) {
   try {
     const config = getConfigParser(context, rootConfigPath);
     
+    // Get global preferences
+    const packageName = config.getGlobalPreference("PACKAGE_NAME") || "";
+    const appName = config.getGlobalPreference("APP_NAME") || "";
+    const versionNumber = config.getGlobalPreference("VERSION_NUMBER") || "";
+    const versionCode = config.getGlobalPreference("VERSION_CODE") || "";
+    
+    // Validate VERSION_CODE and VERSION_NUMBER must exist together
+    const hasVersionNumber = versionNumber.trim() !== "";
+    const hasVersionCode = versionCode.trim() !== "";
+    
+    if (hasVersionNumber !== hasVersionCode) {
+      console.log("⚠️ VERSION_NUMBER và VERSION_CODE phải tồn tại cùng nhau!");
+      console.log(`   VERSION_NUMBER: ${versionNumber ? `'${versionNumber}'` : 'không có'}`);
+      console.log(`   VERSION_CODE: ${versionCode ? `'${versionCode}'` : 'không có'}`);
+      return {
+        packageName: packageName.trim() !== "" ? packageName : null,
+        appName: appName.trim() !== "" ? appName : null,
+        versionNumber: null,
+        versionCode: null
+      };
+    }
+    
     return {
-      packageName: config.getPreference("PACKAGE_NAME"),
-      appName: config.getPreference("APP_NAME"),
-      versionNumber: config.getPreference("VERSION_NUMBER"),
-      versionCode: config.getPreference("VERSION_CODE")
+      packageName: packageName.trim() !== "" ? packageName : null,
+      appName: appName.trim() !== "" ? appName : null,
+      versionNumber: hasVersionNumber ? versionNumber : null,
+      versionCode: hasVersionCode ? versionCode : null
     };
   } catch (err) {
     console.log("⚠ Could not read config.xml:", err.message);
@@ -37,11 +59,11 @@ function getPreferences(context) {
 function updateAndroidAppInfo(root, prefs) {
   const { packageName, appName, versionNumber, versionCode } = prefs;
 
-  console.log(`📦 Package: ${packageName || 'not set'}`);
-  console.log(`📝 App Name: ${appName || 'not set'}`);
-  console.log(`🔢 Version: ${versionNumber || 'not set'} (${versionCode || 'not set'})`);
+  console.log(`📦 Package: ${packageName || 'không thay đổi'}`);
+  console.log(`📝 App Name: ${appName || 'không thay đổi'}`);
+  console.log(`🔢 Version: ${versionNumber || 'không thay đổi'} (${versionCode || 'không thay đổi'})`);
 
-  // Update strings.xml
+  // Update strings.xml - only if appName is set
   if (appName) {
     const stringsPath = path.join(
       root,
@@ -52,7 +74,7 @@ function updateAndroidAppInfo(root, prefs) {
       try {
         let content = fs.readFileSync(stringsPath, "utf8");
         
-        // FIXED: Remove ALL existing app_name entries to prevent duplicates
+        // Remove ALL existing app_name entries to prevent duplicates
         content = content.replace(/<string name="app_name">.*?<\/string>\s*/g, '');
         
         // Add new app_name before closing </resources> tag
@@ -62,7 +84,7 @@ function updateAndroidAppInfo(root, prefs) {
         );
 
         fs.writeFileSync(stringsPath, content, "utf8");
-        console.log(`✅ Android app name updated (duplicates removed)`);
+        console.log(`✅ Android app name updated`);
       } catch (err) {
         console.error("✖ Failed to update strings.xml:", err.message);
       }
@@ -72,7 +94,8 @@ function updateAndroidAppInfo(root, prefs) {
   }
 
   // Update AndroidManifest.xml
-  if (packageName || versionNumber || versionCode) {
+  const needManifestUpdate = packageName || versionNumber || versionCode;
+  if (needManifestUpdate) {
     const manifestPath = path.join(
       root,
       "platforms/android/app/src/main/AndroidManifest.xml"
@@ -111,7 +134,7 @@ function updateAndroidAppInfo(root, prefs) {
     }
   }
 
-  // Update build.gradle
+  // Update build.gradle - only if packageName is set
   if (packageName) {
     const buildGradlePath = path.join(
       root,
@@ -142,9 +165,9 @@ function updateAndroidAppInfo(root, prefs) {
 function updateIOSAppInfo(root, appFolderName, prefs) {
   const { packageName, appName, versionNumber, versionCode } = prefs;
 
-  console.log(`📦 Bundle ID: ${packageName || 'not set'}`);
-  console.log(`📝 App Name: ${appName || 'not set'}`);
-  console.log(`🔢 Version: ${versionNumber || 'not set'} (${versionCode || 'not set'})`);
+  console.log(`📦 Bundle ID: ${packageName || 'không thay đổi'}`);
+  console.log(`📝 App Name: ${appName || 'không thay đổi'}`);
+  console.log(`🔢 Version: ${versionNumber || 'không thay đổi'} (${versionCode || 'không thay đổi'})`);
 
   const plistPath = path.join(
     root,
@@ -161,7 +184,7 @@ function updateIOSAppInfo(root, appFolderName, prefs) {
   try {
     let content = fs.readFileSync(plistPath, "utf8");
     
-    // Update CFBundleIdentifier (Package Name)
+    // Update CFBundleIdentifier (Package Name) - only if set
     if (packageName) {
       const bundleIdRegex = /<key>CFBundleIdentifier<\/key>\s*<string>.*?<\/string>/;
       if (bundleIdRegex.test(content)) {
@@ -172,7 +195,7 @@ function updateIOSAppInfo(root, appFolderName, prefs) {
       }
     }
     
-    // Update CFBundleDisplayName
+    // Update CFBundleDisplayName - only if set
     if (appName) {
       const displayNameRegex = /<key>CFBundleDisplayName<\/key>\s*<string>.*?<\/string>/;
       if (displayNameRegex.test(content)) {
@@ -197,7 +220,7 @@ function updateIOSAppInfo(root, appFolderName, prefs) {
       }
     }
 
-    // Update CFBundleShortVersionString (Version Number)
+    // Update CFBundleShortVersionString (Version Number) - only if set
     if (versionNumber) {
       const versionRegex = /<key>CFBundleShortVersionString<\/key>\s*<string>.*?<\/string>/;
       if (versionRegex.test(content)) {
@@ -208,7 +231,7 @@ function updateIOSAppInfo(root, appFolderName, prefs) {
       }
     }
 
-    // Update CFBundleVersion (Build Number)
+    // Update CFBundleVersion (Build Number) - only if set
     if (versionCode) {
       const buildRegex = /<key>CFBundleVersion<\/key>\s*<string>.*?<\/string>/;
       if (buildRegex.test(content)) {
@@ -234,6 +257,7 @@ function updateIOSAppInfo(root, appFolderName, prefs) {
 function updateIOSProject(root, appFolderName, prefs) {
   const { packageName } = prefs;
   
+  // Only update if packageName is set
   if (!packageName) return;
 
   try {
@@ -279,7 +303,7 @@ module.exports = function(context) {
   console.log("       CHANGE APP INFO HOOK        ");
   console.log("══════════════════════════════════");
 
-  // Get preferences from root config once
+  // Get preferences from root config once (global preferences)
   const prefs = getPreferences(context);
 
   for (const platform of platforms) {
@@ -315,7 +339,7 @@ module.exports = function(context) {
         }
 
         const appFolderName = iosFolders[0];
-        console.log(`ℹ iOS app folder: ${appFolderName}`);
+        console.log(`ℹ️ iOS app folder: ${appFolderName}`);
         
         updateIOSAppInfo(root, appFolderName, prefs);
         updateIOSProject(root, appFolderName, prefs);

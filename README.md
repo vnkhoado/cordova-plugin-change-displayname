@@ -38,11 +38,13 @@ See `QUICK_START.md` for detailed instructions.
 ## ⚙️ Cấu hình
 
 ### Với OutSystems - Extensibility Configurations (Recommended)
+
+Thêm vào **Extensibility Configurations** trong OutSystems:
+
 ```json
 {
-    "plugin": {
-        "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info.git",
-        "variables": [
+    "preferences": {
+        "global": [
             {
                 "name": "PACKAGE_NAME",
                 "value": "com.yourcompany.app"
@@ -68,11 +70,16 @@ See `QUICK_START.md` for detailed instructions.
 }
 ```
 
+**Lưu ý quan trọng:**
+- Tất cả preferences phải nằm trong `preferences.global` array
+- `VERSION_NUMBER` và `VERSION_CODE` **phải tồn tại cùng nhau** hoặc đều không có
+- Nếu không cần thay đổi preference nào, có thể bỏ qua (ngoại trừ VERSION)
+
 **Variables:**
 - `PACKAGE_NAME`: Bundle ID (iOS) / Package Name (Android)
 - `APP_NAME`: Tên hiển thị của app
-- `VERSION_NUMBER`: Version string (e.g., "1.0.0")
-- `VERSION_CODE`: Build number (integer)
+- `VERSION_NUMBER`: Version string (e.g., "1.0.0") - **Bắt buộc cùng VERSION_CODE**
+- `VERSION_CODE`: Build number (integer) - **Bắt buộc cùng VERSION_NUMBER**
 - `CDN_ICON`: URL của app icon (1024x1024px PNG)
 
 ### Config.xml (Alternative)
@@ -128,6 +135,10 @@ See `QUICK_START.md` for detailed instructions.
 - **iOS**: Update `Info.plist` và `project.pbxproj`
 - **Android**: Update `AndroidManifest.xml`, `strings.xml`, `build.gradle`
 
+### Validation Logic
+- Nếu preference không có hoặc rỗng (`""`), plugin sẽ bỏ qua không xử lý
+- `VERSION_NUMBER` và `VERSION_CODE` phải có cùng nhau, nếu thiếu 1 trong 2 sẽ bỏ qua cả 2
+
 ---
 
 ## 🐛 Troubleshooting
@@ -169,6 +180,14 @@ Access-Control-Allow-Origin: *
 - Format PNG không nén
 - Tránh JPG
 
+### ❌ VERSION_NUMBER và VERSION_CODE không được áp dụng
+
+**Nguyên nhân:** Cả 2 phải được set cùng nhau.
+
+**Giải pháp:**
+- Kiểm tra trong Extensibility Configurations có cả 2 values
+- Không được để trống (`""`) một trong hai
+
 ---
 
 ## 📚 Documentation
@@ -184,32 +203,74 @@ Access-Control-Allow-Origin: *
 ### Development
 ```json
 {
-    "name": "PACKAGE_NAME",
-    "value": "com.company.app.dev"
-},
-{
-    "name": "APP_NAME",
-    "value": "MyApp DEV"
-},
-{
-    "name": "CDN_ICON",
-    "value": "https://cdn.com/icon-red.png"
+    "preferences": {
+        "global": [
+            {
+                "name": "PACKAGE_NAME",
+                "value": "com.company.app.dev"
+            },
+            {
+                "name": "APP_NAME",
+                "value": "MyApp DEV"
+            },
+            {
+                "name": "VERSION_NUMBER",
+                "value": "1.0.0"
+            },
+            {
+                "name": "VERSION_CODE",
+                "value": "100"
+            },
+            {
+                "name": "CDN_ICON",
+                "value": "https://cdn.com/icon-red.png"
+            }
+        ]
+    }
 }
 ```
 
 ### Production
 ```json
 {
-    "name": "PACKAGE_NAME",
-    "value": "com.company.app"
-},
+    "preferences": {
+        "global": [
+            {
+                "name": "PACKAGE_NAME",
+                "value": "com.company.app"
+            },
+            {
+                "name": "APP_NAME",
+                "value": "MyApp"
+            },
+            {
+                "name": "VERSION_NUMBER",
+                "value": "1.0.0"
+            },
+            {
+                "name": "VERSION_CODE",
+                "value": "1"
+            },
+            {
+                "name": "CDN_ICON",
+                "value": "https://cdn.com/icon.png"
+            }
+        ]
+    }
+}
+```
+
+### Minimal (Chỉ thay đổi icon)
+```json
 {
-    "name": "APP_NAME",
-    "value": "MyApp"
-},
-{
-    "name": "CDN_ICON",
-    "value": "https://cdn.com/icon.png"
+    "preferences": {
+        "global": [
+            {
+                "name": "CDN_ICON",
+                "value": "https://cdn.com/icon.png"
+            }
+        ]
+    }
 }
 ```
 
