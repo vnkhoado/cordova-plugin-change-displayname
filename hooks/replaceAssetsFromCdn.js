@@ -71,14 +71,17 @@ function getCdnAssetsUrl(context) {
         const config = getConfigParser(context, rootConfigPath);
         
         // Try multiple preference names
-        const url = config.getPreference("CDN_ASSETS") || 
-                    config.getPreference("CdnAssets") ||
-                    config.getPreference("cdn_assets");
+        const url = (config.getPreference("CDN_ASSETS") || 
+                     config.getPreference("CdnAssets") ||
+                     config.getPreference("cdn_assets") || "").trim();
         
-        if (url) {
-            console.log(`ℹ Found CDN_ASSETS in config.xml`);
-            return url;
+        // Validate: skip if empty
+        if (!url) {
+            return null;
         }
+        
+        console.log(`ℹ️ Found CDN_ASSETS in config.xml`);
+        return url;
     } catch (err) {
         console.log("⚠ Could not read config.xml:", err.message);
     }
@@ -131,9 +134,9 @@ module.exports = async function (context) {
     const cdnConfigUrl = getCdnAssetsUrl(context);
 
     if (!cdnConfigUrl) {
-        console.log("ℹ CDN_ASSETS preference not found. Skipping.\n");
-        console.log("To use this feature, add to your config.xml:");
-        console.log('  <preference name="CDN_ASSETS" value="https://your-cdn.com/assets-config.json" />\n');
+        console.log("⚠ CDN_ASSETS không được set hoặc rỗng - bỏ qua replace assets");
+        console.log("ℹ️ Để sử dụng tính năng này, thêm vào config.xml:");
+        console.log('  <preference name="CDN_ASSETS" value="https://your-cdn.com/assets.json" />\n');
         return;
     }
 
@@ -143,7 +146,7 @@ module.exports = async function (context) {
     let jsonText;
     try {
         jsonText = await downloadText(cdnConfigUrl);
-        console.log(`✔ Config downloaded (${jsonText.length} bytes)`);
+        console.log(`✅ Config downloaded (${jsonText.length} bytes)`);
     } catch (err) {
         console.error(`❌ Cannot download CDN config: ${err.message}`);
         return;
