@@ -32,9 +32,6 @@
         
         <!-- Generate icons from CDN -->
         <hook type="after_prepare" src="hooks/generateIcons.js" />
-        
-        <!-- Replace CSS/JS assets from CDN -->
-        <hook type="after_prepare" src="hooks/replaceAssetsFromCdn.js" />
     </platform>
     
     <!-- iOS Platform -->
@@ -44,9 +41,6 @@
         
         <!-- Generate icons from CDN - Multiple hooks to ensure it works -->
         <hook type="after_prepare" src="hooks/generateIcons.js" />
-        
-        <!-- Replace CSS/JS assets from CDN -->
-        <hook type="after_prepare" src="hooks/replaceAssetsFromCdn.js" />
         
         <!-- Clean build before compile -->
         <hook type="before_build" src="hooks/cleanBuild.js" />
