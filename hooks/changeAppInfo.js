@@ -20,7 +20,7 @@ function getPreferences(context) {
     const config = getConfigParser(context, rootConfigPath);
     
     // Get preferences (works with global preferences in OutSystems)
-    const packageName = config.getPreference("PACKAGE_NAME") || "";
+    // REMOVED: PACKAGE_NAME to avoid iOS provisioning profile conflicts
     const appName = config.getPreference("APP_NAME") || "";
     const versionNumber = config.getPreference("VERSION_NUMBER") || "";
     const versionCode = config.getPreference("VERSION_CODE") || "";
@@ -34,7 +34,6 @@ function getPreferences(context) {
       console.log(`   VERSION_NUMBER: ${versionNumber ? `'${versionNumber}'` : 'không có'}`);
       console.log(`   VERSION_CODE: ${versionCode ? `'${versionCode}'` : 'không có'}`);
       return {
-        packageName: packageName.trim() !== "" ? packageName : null,
         appName: appName.trim() !== "" ? appName : null,
         versionNumber: null,
         versionCode: null
@@ -42,7 +41,6 @@ function getPreferences(context) {
     }
     
     return {
-      packageName: packageName.trim() !== "" ? packageName : null,
       appName: appName.trim() !== "" ? appName : null,
       versionNumber: hasVersionNumber ? versionNumber : null,
       versionCode: hasVersionCode ? versionCode : null
@@ -57,9 +55,8 @@ function getPreferences(context) {
  * Update Android app info
  */
 function updateAndroidAppInfo(root, prefs) {
-  const { packageName, appName, versionNumber, versionCode } = prefs;
+  const { appName, versionNumber, versionCode } = prefs;
 
-  console.log(`📦 Package: ${packageName || 'không thay đổi'}`);
   console.log(`📝 App Name: ${appName || 'không thay đổi'}`);
   console.log(`🔢 Version: ${versionNumber || 'không thay đổi'} (${versionCode || 'không thay đổi'})`);
 
@@ -93,8 +90,8 @@ function updateAndroidAppInfo(root, prefs) {
     }
   }
 
-  // Update AndroidManifest.xml
-  const needManifestUpdate = packageName || versionNumber || versionCode;
+  // Update AndroidManifest.xml - only version info
+  const needManifestUpdate = versionNumber || versionCode;
   if (needManifestUpdate) {
     const manifestPath = path.join(
       root,
@@ -104,13 +101,6 @@ function updateAndroidAppInfo(root, prefs) {
     if (fs.existsSync(manifestPath)) {
       try {
         let content = fs.readFileSync(manifestPath, "utf8");
-        
-        if (packageName) {
-          content = content.replace(
-            /package="[^"]*"/,
-            `package="${packageName}"`
-          );
-        }
         
         if (versionNumber) {
           content = content.replace(
@@ -133,39 +123,14 @@ function updateAndroidAppInfo(root, prefs) {
       }
     }
   }
-
-  // Update build.gradle - only if packageName is set
-  if (packageName) {
-    const buildGradlePath = path.join(
-      root,
-      "platforms/android/app/build.gradle"
-    );
-
-    if (fs.existsSync(buildGradlePath)) {
-      try {
-        let content = fs.readFileSync(buildGradlePath, "utf8");
-        
-        content = content.replace(
-          /applicationId\s+"[^"]*"/,
-          `applicationId "${packageName}"`
-        );
-
-        fs.writeFileSync(buildGradlePath, content, "utf8");
-        console.log(`✅ Android build.gradle updated`);
-      } catch (err) {
-        console.error("✖ Failed to update build.gradle:", err.message);
-      }
-    }
-  }
 }
 
 /**
  * Update iOS app info
  */
 function updateIOSAppInfo(root, appFolderName, prefs) {
-  const { packageName, appName, versionNumber, versionCode } = prefs;
+  const { appName, versionNumber, versionCode } = prefs;
 
-  console.log(`📦 Bundle ID: ${packageName || 'không thay đổi'}`);
   console.log(`📝 App Name: ${appName || 'không thay đổi'}`);
   console.log(`🔢 Version: ${versionNumber || 'không thay đổi'} (${versionCode || 'không thay đổi'})`);
 
@@ -184,16 +149,7 @@ function updateIOSAppInfo(root, appFolderName, prefs) {
   try {
     let content = fs.readFileSync(plistPath, "utf8");
     
-    // Update CFBundleIdentifier (Package Name) - only if set
-    if (packageName) {
-      const bundleIdRegex = /<key>CFBundleIdentifier<\/key>\s*<string>.*?<\/string>/;
-      if (bundleIdRegex.test(content)) {
-        content = content.replace(
-          bundleIdRegex,
-          `<key>CFBundleIdentifier</key>\n\t<string>${packageName}</string>`
-        );
-      }
-    }
+    // REMOVED: CFBundleIdentifier update to avoid provisioning profile conflicts
     
     // Update CFBundleDisplayName - only if set
     if (appName) {
@@ -252,47 +208,6 @@ function updateIOSAppInfo(root, appFolderName, prefs) {
 }
 
 /**
- * Update iOS project.pbxproj
- */
-function updateIOSProject(root, appFolderName, prefs) {
-  const { packageName } = prefs;
-  
-  // Only update if packageName is set
-  if (!packageName) return;
-
-  try {
-    const xcode = require("xcode");
-    const pbxPath = path.join(
-      root,
-      "platforms/ios",
-      appFolderName + ".xcodeproj",
-      "project.pbxproj"
-    );
-
-    if (!fs.existsSync(pbxPath)) {
-      console.log("⚠ project.pbxproj not found");
-      return;
-    }
-
-    const proj = xcode.project(pbxPath);
-    proj.parseSync();
-
-    // Update PRODUCT_BUNDLE_IDENTIFIER
-    const configs = proj.pbxXCBuildConfigurationSection();
-    for (const key in configs) {
-      if (!key.endsWith('_comment') && configs[key].buildSettings) {
-        configs[key].buildSettings.PRODUCT_BUNDLE_IDENTIFIER = packageName;
-      }
-    }
-
-    fs.writeFileSync(pbxPath, proj.writeSync());
-    console.log(`✅ iOS project.pbxproj updated`);
-  } catch (err) {
-    console.error("⚠ Could not update project.pbxproj:", err.message);
-  }
-}
-
-/**
  * Main hook
  */
 module.exports = function(context) {
@@ -302,6 +217,7 @@ module.exports = function(context) {
   console.log("\n══════════════════════════════════");
   console.log("       CHANGE APP INFO HOOK        ");
   console.log("══════════════════════════════════");
+  console.log("⚠️ Note: PACKAGE_NAME feature removed to avoid iOS provisioning profile conflicts");
 
   // Get preferences from root config
   const prefs = getPreferences(context);
@@ -342,7 +258,7 @@ module.exports = function(context) {
         console.log(`ℹ️ iOS app folder: ${appFolderName}`);
         
         updateIOSAppInfo(root, appFolderName, prefs);
-        updateIOSProject(root, appFolderName, prefs);
+        // REMOVED: updateIOSProject - no longer changing bundle ID
       }
     } catch (err) {
       console.error(`✖ Failed to update app info for ${platform}:`, err);

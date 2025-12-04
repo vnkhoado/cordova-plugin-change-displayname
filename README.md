@@ -1,12 +1,11 @@
 # Cordova Plugin Change App Info
 
-Cordova plugin để thay đổi app display name, package name, version và icon từ CDN lúc build time. Tối ưu cho **OutSystems MABS**.
+Cordova plugin để thay đổi app display name, version và icon từ CDN lúc build time. Tối ưu cho **OutSystems MABS**.
 
 ---
 
 ## ✨ Tính năng
 
-- ✅ Thay đổi package name / bundle ID  
 - ✅ Thay đổi display name của app  
 - ✅ Thay đổi version number và version code  
 - ✅ Download và generate icon từ CDN URL  
@@ -15,6 +14,7 @@ Cordova plugin để thay đổi app display name, package name, version và ico
 - ✅ Multiple hooks để tránh bị overwrite  
 - ✅ Support iOS (xcassets) và Android (mipmap)  
 - ✅ Compatible với OutSystems MABS  
+- ❌ **Đã loại bỏ**: Thay đổi package name / bundle ID (gây conflict với iOS provisioning profile)
 
 ---
 
@@ -46,10 +46,6 @@ Thêm vào **Extensibility Configurations** trong OutSystems:
     "preferences": {
         "global": [
             {
-                "name": "PACKAGE_NAME",
-                "value": "com.yourcompany.app"
-            },
-            {
                 "name": "APP_NAME",
                 "value": "Your App Name"
             },
@@ -74,9 +70,9 @@ Thêm vào **Extensibility Configurations** trong OutSystems:
 - Tất cả preferences phải nằm trong `preferences.global` array
 - `VERSION_NUMBER` và `VERSION_CODE` **phải tồn tại cùng nhau** hoặc đều không có
 - Nếu không cần thay đổi preference nào, có thể bỏ qua (ngoại trừ VERSION)
+- **PACKAGE_NAME không còn được support** do conflict với iOS provisioning profile
 
 **Variables:**
-- `PACKAGE_NAME`: Bundle ID (iOS) / Package Name (Android)
 - `APP_NAME`: Tên hiển thị của app
 - `VERSION_NUMBER`: Version string (e.g., "1.0.0") - **Bắt buộc cùng VERSION_CODE**
 - `VERSION_CODE`: Build number (integer) - **Bắt buộc cùng VERSION_NUMBER**
@@ -85,7 +81,6 @@ Thêm vào **Extensibility Configurations** trong OutSystems:
 ### Config.xml (Alternative)
 ```xml
 <widget>
-    <preference name="PACKAGE_NAME" value="com.yourcompany.app" />
     <preference name="APP_NAME" value="Your App Name" />
     <preference name="VERSION_NUMBER" value="1.0.0" />
     <preference name="VERSION_CODE" value="1" />
@@ -132,8 +127,8 @@ Thêm vào **Extensibility Configurations** trong OutSystems:
 - `before_build` (iOS): Clean build cache
 
 ### Config Files
-- **iOS**: Update `Info.plist` và `project.pbxproj`
-- **Android**: Update `AndroidManifest.xml`, `strings.xml`, `build.gradle`
+- **iOS**: Update `Info.plist` (CFBundleDisplayName, CFBundleShortVersionString, CFBundleVersion)
+- **Android**: Update `AndroidManifest.xml` (versionName, versionCode), `strings.xml` (app_name)
 
 ### Validation Logic
 - Nếu preference không có hoặc rỗng (`""`), plugin sẽ bỏ qua không xử lý
@@ -188,6 +183,14 @@ Access-Control-Allow-Origin: *
 - Kiểm tra trong Extensibility Configurations có cả 2 values
 - Không được để trống (`""`) một trong hai
 
+### ❌ iOS build lỗi: "provisioning profile don't match"
+
+**Nguyên nhân:** Plugin không còn thay đổi Bundle ID để tránh conflict với provisioning profile.
+
+**Giải pháp:**
+- Đảm bảo Bundle ID trong OutSystems config khớp với provisioning profile
+- Không sử dụng `PACKAGE_NAME` preference (không còn support)
+
 ---
 
 ## 📚 Documentation
@@ -205,10 +208,6 @@ Access-Control-Allow-Origin: *
 {
     "preferences": {
         "global": [
-            {
-                "name": "PACKAGE_NAME",
-                "value": "com.company.app.dev"
-            },
             {
                 "name": "APP_NAME",
                 "value": "MyApp DEV"
@@ -235,10 +234,6 @@ Access-Control-Allow-Origin: *
 {
     "preferences": {
         "global": [
-            {
-                "name": "PACKAGE_NAME",
-                "value": "com.company.app"
-            },
             {
                 "name": "APP_NAME",
                 "value": "MyApp"
