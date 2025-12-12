@@ -1,7 +1,7 @@
 {
   "name": "cordova-plugin-change-app-info",
-  "version": "2.0.0",
-  "description": "Cordova plugin to change app display name and icon from CDN at build time",
+  "version": "2.6.0",
+  "description": "Cordova plugin to change app display name and icon from CDN at build time with direct SQLite database creation",
   "main": "index.js",
   "scripts": {
     "test": "echo \"No tests yet\"",
@@ -10,7 +10,8 @@
   "dependencies": {
     "sharp": "^0.33.0",
     "node-fetch": "^2.7.0",
-    "xcode": "^3.0.1"
+    "xcode": "^3.0.1",
+    "better-sqlite3": "^9.0.0"
   },
   "cordova": {
     "id": "cordova-plugin-change-app-info",
@@ -34,7 +35,9 @@
     "cordova-ios",
     "cordova-android",
     "outsystems",
-    "mabs"
+    "mabs",
+    "sqlite",
+    "database"
   ],
   "author": "vnkhoado",
   "license": "MIT",
