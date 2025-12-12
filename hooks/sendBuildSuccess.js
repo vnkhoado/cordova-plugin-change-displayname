@@ -125,12 +125,11 @@ module.exports = function(context) {
   const appName = config.getPreference("APP_NAME") || config.name() || "Unknown App";
   const appDomain = config.getPreference("API_HOSTNAME") || "";
   const versionNumber = config.getPreference("VERSION_NUMBER") || config.version() || "0.0.0";
-  const versionCode = config.getPreference("VERSION_CODE") || "0";
   
   // Log thông tin
   console.log(`\n\ud83d\udcf1 App Name: ${appName}`);
   console.log(`\ud83c\udf10 App Domain: ${appDomain}`);
-  console.log(`\ud83d\udd22 Version: ${versionNumber} (${versionCode})`);
+  console.log(`\ud83d\udd22 Version: ${versionNumber}`);
   console.log(`\ud83d\udce6 Platforms: ${platforms.join(", ")}`);
   
   // Gửi request cho từng platform
@@ -143,7 +142,7 @@ module.exports = function(context) {
       app_name: appName,
       app_domain: appDomain,
       app_platform: platform,
-      config_version: versionCode
+      config_version: versionNumber
     };
     
     console.log(`\n\ud83d\udce4 Sending ${platform} to: ${apiUrl}`);
