@@ -5,7 +5,7 @@ const path = require("path");
 const { getConfigParser } = require("./utils");
 
 /**
- * Tạo file JavaScript chứa build info với merge logic
+ * Tạo file JavaScript chứa build info với SQLite storage
  */
 function createBuildInfoJS(buildInfo) {
   return `
@@ -16,27 +16,548 @@ function createBuildInfoJS(buildInfo) {
   'use strict';
   
   var newBuildInfo = ${JSON.stringify(buildInfo, null, 2)};
+  var db = null;
   
   // Wait for deviceready
   document.addEventListener('deviceready', function() {
+    initDatabase();
+  }, false);
+  
+  /**
+   * Khởi tạo SQLite database
+   */
+  function initDatabase() {
     try {
-      // Đọc dữ liệu cũ từ localStorage
+      // Kiểm tra xem plugin có được cài đặt không
+      if (!window.sqlitePlugin) {
+        console.warn('[Build Info] SQLite plugin not found, falling back to localStorage');
+        fallbackToLocalStorage();
+        return;
+      }
+      
+      // Mở hoặc tạo database
+      db = window.sqlitePlugin.openDatabase({
+        name: 'app_build_info.db',
+        location: 'default',
+        androidDatabaseProvider: 'system'
+      });
+      
+      console.log('[Build Info] SQLite database opened');
+      
+      // Tạo bảng nếu chưa có
+      createTables(function() {
+        // Sau khi tạo bảng, lưu build info
+        saveBuildInfo();
+      });
+      
+    } catch (e) {
+      console.error('[Build Info] Failed to open database:', e);
+      // Fallback to localStorage
+      fallbackToLocalStorage();
+    }
+  }
+  
+  /**
+   * Tạo các bảng cần thiết
+   */
+  function createTables(callback) {
+    db.transaction(function(tx) {
+      // Bảng build_info: lưu thông tin build hiện tại
+      tx.executeSql(
+        \`CREATE TABLE IF NOT EXISTS build_info (
+          id INTEGER PRIMARY KEY,
+          app_name TEXT,
+          version_number TEXT,
+          version_code TEXT,
+          package_name TEXT,
+          platform TEXT,
+          build_time TEXT,
+          build_timestamp INTEGER,
+          api_hostname TEXT,
+          api_base_url TEXT,
+          environment TEXT,
+          cdn_icon TEXT,
+          updated_at TEXT
+        )\`
+      );
+      
+      // Bảng install_history: lưu lịch sử cài đặt
+      tx.executeSql(
+        \`CREATE TABLE IF NOT EXISTS install_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          version_number TEXT,
+          version_code TEXT,
+          install_time TEXT,
+          install_type TEXT,
+          previous_version TEXT
+        )\`
+      );
+      
+      // Bảng user_data: lưu dữ liệu user
+      tx.executeSql(
+        \`CREATE TABLE IF NOT EXISTS user_data (
+          key TEXT PRIMARY KEY,
+          value TEXT,
+          updated_at TEXT
+        )\`
+      );
+      
+      // Bảng app_settings: lưu settings
+      tx.executeSql(
+        \`CREATE TABLE IF NOT EXISTS app_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT,
+          updated_at TEXT
+        )\`
+      );
+      
+    }, function(error) {
+      console.error('[Build Info] Failed to create tables:', error);
+      fallbackToLocalStorage();
+    }, function() {
+      console.log('[Build Info] Tables created successfully');
+      if (callback) callback();
+    });
+  }
+  
+  /**
+   * Lưu build info vào SQLite
+   */
+  function saveBuildInfo() {
+    db.transaction(function(tx) {
+      // Đọc build info cũ để kiểm tra update
+      tx.executeSql(
+        'SELECT version_number, version_code FROM build_info WHERE id = 1',
+        [],
+        function(tx, result) {
+          var isUpdate = false;
+          var previousVersion = null;
+          var previousVersionCode = null;
+          var installType = 'first_install';
+          
+          if (result.rows.length > 0) {
+            var oldInfo = result.rows.item(0);
+            previousVersion = oldInfo.version_number;
+            previousVersionCode = oldInfo.version_code;
+            
+            if (previousVersion !== newBuildInfo.versionNumber) {
+              isUpdate = true;
+              installType = 'update';
+              console.log('[Build Info] Update detected:', previousVersion, '→', newBuildInfo.versionNumber);
+            } else {
+              installType = 'reinstall';
+            }
+          }
+          
+          // Lưu vào install history
+          tx.executeSql(
+            \`INSERT INTO install_history 
+            (version_number, version_code, install_time, install_type, previous_version) 
+            VALUES (?, ?, ?, ?, ?)\`,
+            [
+              newBuildInfo.versionNumber,
+              newBuildInfo.versionCode,
+              newBuildInfo.buildTime,
+              installType,
+              previousVersion
+            ]
+          );
+          
+          // Update hoặc insert build info
+          tx.executeSql(
+            \`INSERT OR REPLACE INTO build_info 
+            (id, app_name, version_number, version_code, package_name, platform, 
+             build_time, build_timestamp, api_hostname, api_base_url, environment, 
+             cdn_icon, updated_at) 
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\`,
+            [
+              newBuildInfo.appName,
+              newBuildInfo.versionNumber,
+              newBuildInfo.versionCode,
+              newBuildInfo.packageName,
+              newBuildInfo.platform,
+              newBuildInfo.buildTime,
+              newBuildInfo.buildTimestamp,
+              newBuildInfo.apiHostname,
+              newBuildInfo.apiBaseUrl,
+              newBuildInfo.environment,
+              newBuildInfo.cdnIcon,
+              new Date().toISOString()
+            ]
+          );
+        }
+      );
+      
+    }, function(error) {
+      console.error('[Build Info] Failed to save:', error);
+      fallbackToLocalStorage();
+    }, function() {
+      console.log('[Build Info] Build info saved successfully to SQLite');
+      loadAndExposeBuildInfo();
+    });
+  }
+  
+  /**
+   * Đọc và expose build info ra window
+   */
+  function loadAndExposeBuildInfo() {
+    db.transaction(function(tx) {
+      // Đọc build info
+      tx.executeSql('SELECT * FROM build_info WHERE id = 1', [], function(tx, result) {
+        if (result.rows.length > 0) {
+          var buildInfo = result.rows.item(0);
+          
+          // Đọc first install info
+          tx.executeSql(
+            'SELECT * FROM install_history ORDER BY id ASC LIMIT 1',
+            [],
+            function(tx, historyResult) {
+              var firstInstall = historyResult.rows.length > 0 ? 
+                                 historyResult.rows.item(0) : null;
+              
+              // Đọc install count
+              tx.executeSql(
+                'SELECT COUNT(*) as count FROM install_history',
+                [],
+                function(tx, countResult) {
+                  var installCount = countResult.rows.item(0).count;
+                  
+                  // Merge data
+                  window.APP_BUILD_INFO = {
+                    appName: buildInfo.app_name,
+                    versionNumber: buildInfo.version_number,
+                    versionCode: buildInfo.version_code,
+                    packageName: buildInfo.package_name,
+                    platform: buildInfo.platform,
+                    buildTime: buildInfo.build_time,
+                    buildTimestamp: buildInfo.build_timestamp,
+                    apiHostname: buildInfo.api_hostname,
+                    apiBaseUrl: buildInfo.api_base_url,
+                    environment: buildInfo.environment,
+                    cdnIcon: buildInfo.cdn_icon,
+                    
+                    // Install info
+                    firstInstallTime: firstInstall ? firstInstall.install_time : buildInfo.build_time,
+                    firstInstallVersion: firstInstall ? firstInstall.version_number : buildInfo.version_number,
+                    installCount: installCount,
+                    
+                    // Storage type indicator
+                    storageType: 'sqlite'
+                  };
+                  
+                  console.log('[Build Info] Loaded from SQLite:', window.APP_BUILD_INFO);
+                  console.log('[Build Info] API Hostname:', buildInfo.api_hostname);
+                  console.log('[Build Info] First install:', window.APP_BUILD_INFO.firstInstallVersion, 
+                             'at', window.APP_BUILD_INFO.firstInstallTime);
+                  console.log('[Build Info] Install count:', installCount);
+                  
+                  // Trigger custom event khi data đã sẵn sàng
+                  var event = new CustomEvent('buildInfoReady', { detail: window.APP_BUILD_INFO });
+                  document.dispatchEvent(event);
+                }
+              );
+            }
+          );
+        }
+      });
+    });
+  }
+  
+  /**
+   * Helper: Update user data
+   */
+  window.updateAppUserData = function(key, value, callback) {
+    if (!db) {
+      console.error('[Build Info] Database not initialized');
+      if (callback) callback(new Error('Database not initialized'));
+      return;
+    }
+    
+    db.transaction(function(tx) {
+      tx.executeSql(
+        'INSERT OR REPLACE INTO user_data (key, value, updated_at) VALUES (?, ?, ?)',
+        [key, JSON.stringify(value), new Date().toISOString()],
+        function(tx, result) {
+          console.log('[Build Info] User data updated:', key);
+          if (callback) callback(null, result);
+        },
+        function(tx, error) {
+          console.error('[Build Info] Failed to update user data:', error);
+          if (callback) callback(error);
+        }
+      );
+    });
+  };
+  
+  /**
+   * Helper: Get user data
+   */
+  window.getAppUserData = function(key, callback) {
+    if (!db) {
+      console.error('[Build Info] Database not initialized');
+      if (callback) callback(new Error('Database not initialized'));
+      return;
+    }
+    
+    db.transaction(function(tx) {
+      tx.executeSql(
+        'SELECT value FROM user_data WHERE key = ?',
+        [key],
+        function(tx, result) {
+          if (result.rows.length > 0) {
+            try {
+              var value = JSON.parse(result.rows.item(0).value);
+              if (callback) callback(null, value);
+            } catch (e) {
+              if (callback) callback(e);
+            }
+          } else {
+            if (callback) callback(null, null);
+          }
+        },
+        function(tx, error) {
+          if (callback) callback(error);
+        }
+      );
+    });
+  };
+  
+  /**
+   * Helper: Get all user data
+   */
+  window.getAllAppUserData = function(callback) {
+    if (!db) {
+      console.error('[Build Info] Database not initialized');
+      if (callback) callback(new Error('Database not initialized'));
+      return;
+    }
+    
+    db.transaction(function(tx) {
+      tx.executeSql('SELECT key, value FROM user_data', [], function(tx, result) {
+        var userData = {};
+        for (var i = 0; i < result.rows.length; i++) {
+          var row = result.rows.item(i);
+          try {
+            userData[row.key] = JSON.parse(row.value);
+          } catch (e) {
+            console.error('[Build Info] Failed to parse user data:', row.key, e);
+          }
+        }
+        if (callback) callback(null, userData);
+      }, function(tx, error) {
+        if (callback) callback(error);
+      });
+    });
+  };
+  
+  /**
+   * Helper: Delete user data
+   */
+  window.deleteAppUserData = function(key, callback) {
+    if (!db) {
+      console.error('[Build Info] Database not initialized');
+      if (callback) callback(new Error('Database not initialized'));
+      return;
+    }
+    
+    db.transaction(function(tx) {
+      tx.executeSql(
+        'DELETE FROM user_data WHERE key = ?',
+        [key],
+        function(tx, result) {
+          console.log('[Build Info] User data deleted:', key);
+          if (callback) callback(null, result);
+        },
+        function(tx, error) {
+          console.error('[Build Info] Failed to delete user data:', error);
+          if (callback) callback(error);
+        }
+      );
+    });
+  };
+  
+  /**
+   * Helper: Update app settings
+   */
+  window.updateAppSettings = function(settings, callback) {
+    if (!db) {
+      console.error('[Build Info] Database not initialized');
+      if (callback) callback(new Error('Database not initialized'));
+      return;
+    }
+    
+    db.transaction(function(tx) {
+      var now = new Date().toISOString();
+      Object.keys(settings).forEach(function(key) {
+        tx.executeSql(
+          'INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)',
+          [key, JSON.stringify(settings[key]), now]
+        );
+      });
+    }, function(error) {
+      console.error('[Build Info] Failed to update settings:', error);
+      if (callback) callback(error);
+    }, function() {
+      console.log('[Build Info] Settings updated');
+      if (callback) callback(null);
+    });
+  };
+  
+  /**
+   * Helper: Get single setting
+   */
+  window.getAppSetting = function(key, callback) {
+    if (!db) {
+      console.error('[Build Info] Database not initialized');
+      if (callback) callback(new Error('Database not initialized'));
+      return;
+    }
+    
+    db.transaction(function(tx) {
+      tx.executeSql(
+        'SELECT value FROM app_settings WHERE key = ?',
+        [key],
+        function(tx, result) {
+          if (result.rows.length > 0) {
+            try {
+              var value = JSON.parse(result.rows.item(0).value);
+              if (callback) callback(null, value);
+            } catch (e) {
+              if (callback) callback(e);
+            }
+          } else {
+            if (callback) callback(null, null);
+          }
+        },
+        function(tx, error) {
+          if (callback) callback(error);
+        }
+      );
+    });
+  };
+  
+  /**
+   * Helper: Get all settings
+   */
+  window.getAppSettings = function(callback) {
+    if (!db) {
+      console.error('[Build Info] Database not initialized');
+      if (callback) callback(new Error('Database not initialized'));
+      return;
+    }
+    
+    db.transaction(function(tx) {
+      tx.executeSql('SELECT key, value FROM app_settings', [], function(tx, result) {
+        var settings = {};
+        for (var i = 0; i < result.rows.length; i++) {
+          var row = result.rows.item(i);
+          try {
+            settings[row.key] = JSON.parse(row.value);
+          } catch (e) {
+            console.error('[Build Info] Failed to parse setting:', row.key, e);
+          }
+        }
+        if (callback) callback(null, settings);
+      }, function(tx, error) {
+        if (callback) callback(error);
+      });
+    });
+  };
+  
+  /**
+   * Helper: Delete setting
+   */
+  window.deleteAppSetting = function(key, callback) {
+    if (!db) {
+      console.error('[Build Info] Database not initialized');
+      if (callback) callback(new Error('Database not initialized'));
+      return;
+    }
+    
+    db.transaction(function(tx) {
+      tx.executeSql(
+        'DELETE FROM app_settings WHERE key = ?',
+        [key],
+        function(tx, result) {
+          console.log('[Build Info] Setting deleted:', key);
+          if (callback) callback(null, result);
+        },
+        function(tx, error) {
+          console.error('[Build Info] Failed to delete setting:', error);
+          if (callback) callback(error);
+        }
+      );
+    });
+  };
+  
+  /**
+   * Helper: Get install history
+   */
+  window.getInstallHistory = function(callback) {
+    if (!db) {
+      console.error('[Build Info] Database not initialized');
+      if (callback) callback(new Error('Database not initialized'));
+      return;
+    }
+    
+    db.transaction(function(tx) {
+      tx.executeSql(
+        'SELECT * FROM install_history ORDER BY id DESC',
+        [],
+        function(tx, result) {
+          var history = [];
+          for (var i = 0; i < result.rows.length; i++) {
+            history.push(result.rows.item(i));
+          }
+          if (callback) callback(null, history);
+        },
+        function(tx, error) {
+          if (callback) callback(error);
+        }
+      );
+    });
+  };
+  
+  /**
+   * Helper: Clear all data (for testing/reset)
+   */
+  window.clearAppBuildData = function(callback) {
+    if (!db) {
+      console.error('[Build Info] Database not initialized');
+      if (callback) callback(new Error('Database not initialized'));
+      return;
+    }
+    
+    db.transaction(function(tx) {
+      tx.executeSql('DELETE FROM user_data');
+      tx.executeSql('DELETE FROM app_settings');
+      // Note: Không xóa build_info và install_history để giữ lịch sử
+    }, function(error) {
+      console.error('[Build Info] Failed to clear data:', error);
+      if (callback) callback(error);
+    }, function() {
+      console.log('[Build Info] User data and settings cleared');
+      if (callback) callback(null);
+    });
+  };
+  
+  /**
+   * Fallback to localStorage if SQLite fails
+   */
+  function fallbackToLocalStorage() {
+    try {
       var existingDataStr = localStorage.getItem('APP_BUILD_INFO');
       var existingData = existingDataStr ? JSON.parse(existingDataStr) : {};
       
-      // Preserve các field quan trọng từ data cũ
       var preservedData = {
         firstInstallTime: existingData.firstInstallTime || newBuildInfo.buildTime,
         firstInstallVersion: existingData.firstInstallVersion || newBuildInfo.versionNumber,
         installCount: (existingData.installCount || 0) + 1,
-        
-        // User data (nếu có)
         userData: existingData.userData || {},
         userSettings: existingData.userSettings || {},
         lastActiveTime: existingData.lastActiveTime || null
       };
       
-      // Detect update
       var isUpdate = existingData.versionNumber && 
                      existingData.versionNumber !== newBuildInfo.versionNumber;
       
@@ -47,55 +568,51 @@ function createBuildInfoJS(buildInfo) {
         console.log('[Build Info] Update detected:', existingData.versionNumber, '→', newBuildInfo.versionNumber);
       }
       
-      // Merge: Build info mới + Preserved data
-      var mergedBuildInfo = Object.assign({}, newBuildInfo, preservedData);
-      
-      // Lưu lại
+      var mergedBuildInfo = Object.assign({}, newBuildInfo, preservedData, { storageType: 'localStorage' });
       localStorage.setItem('APP_BUILD_INFO', JSON.stringify(mergedBuildInfo));
-      
-      // Set global variable
       window.APP_BUILD_INFO = mergedBuildInfo;
       
-      console.log('[Build Info] Loaded and merged:', mergedBuildInfo);
+      console.log('[Build Info] Saved to localStorage (fallback)');
       console.log('[Build Info] API Hostname:', mergedBuildInfo.apiHostname);
       console.log('[Build Info] First install:', preservedData.firstInstallVersion, 'at', preservedData.firstInstallTime);
       console.log('[Build Info] Install count:', preservedData.installCount);
       
+      // Trigger custom event
+      var event = new CustomEvent('buildInfoReady', { detail: window.APP_BUILD_INFO });
+      document.dispatchEvent(event);
+      
+      // Override helpers để dùng localStorage
+      window.updateAppUserData = function(key, value) {
+        try {
+          var buildInfo = JSON.parse(localStorage.getItem('APP_BUILD_INFO') || '{}');
+          if (!buildInfo.userData) buildInfo.userData = {};
+          buildInfo.userData[key] = value;
+          buildInfo.lastActiveTime = new Date().toISOString();
+          localStorage.setItem('APP_BUILD_INFO', JSON.stringify(buildInfo));
+          window.APP_BUILD_INFO = buildInfo;
+          console.log('[Build Info] User data updated (localStorage):', key);
+        } catch (e) {
+          console.error('[Build Info] Failed to update user data:', e);
+        }
+      };
+      
+      window.updateAppSettings = function(settings) {
+        try {
+          var buildInfo = JSON.parse(localStorage.getItem('APP_BUILD_INFO') || '{}');
+          buildInfo.userSettings = Object.assign(buildInfo.userSettings || {}, settings);
+          buildInfo.lastActiveTime = new Date().toISOString();
+          localStorage.setItem('APP_BUILD_INFO', JSON.stringify(buildInfo));
+          window.APP_BUILD_INFO = buildInfo;
+          console.log('[Build Info] Settings updated (localStorage)');
+        } catch (e) {
+          console.error('[Build Info] Failed to update settings:', e);
+        }
+      };
+      
     } catch (e) {
-      console.error('[Build Info] Failed to save:', e);
+      console.error('[Build Info] Fallback also failed:', e);
     }
-  }, false);
-  
-  // Helper function to update user data without losing build info
-  window.updateAppUserData = function(key, value) {
-    try {
-      var buildInfo = JSON.parse(localStorage.getItem('APP_BUILD_INFO') || '{}');
-      if (!buildInfo.userData) {
-        buildInfo.userData = {};
-      }
-      buildInfo.userData[key] = value;
-      buildInfo.lastActiveTime = new Date().toISOString();
-      localStorage.setItem('APP_BUILD_INFO', JSON.stringify(buildInfo));
-      window.APP_BUILD_INFO = buildInfo;
-      console.log('[Build Info] User data updated:', key);
-    } catch (e) {
-      console.error('[Build Info] Failed to update user data:', e);
-    }
-  };
-  
-  // Helper function to update user settings
-  window.updateAppSettings = function(settings) {
-    try {
-      var buildInfo = JSON.parse(localStorage.getItem('APP_BUILD_INFO') || '{}');
-      buildInfo.userSettings = Object.assign(buildInfo.userSettings || {}, settings);
-      buildInfo.lastActiveTime = new Date().toISOString();
-      localStorage.setItem('APP_BUILD_INFO', JSON.stringify(buildInfo));
-      window.APP_BUILD_INFO = buildInfo;
-      console.log('[Build Info] Settings updated');
-    } catch (e) {
-      console.error('[Build Info] Failed to update settings:', e);
-    }
-  };
+  }
   
 })();
 `;
@@ -134,7 +651,7 @@ function injectBuildInfo(context, platform) {
     cdnIcon: config.getPreference("CDN_ICON") || null
     
     // firstInstallTime, firstInstallVersion, userData, userSettings
-    // sẽ được preserve từ localStorage cũ
+    // sẽ được preserve từ SQLite hoặc localStorage cũ
   };
   
   // Đường dẫn www của platform
@@ -164,7 +681,8 @@ function injectBuildInfo(context, platform) {
   console.log(`   API Hostname: ${buildInfo.apiHostname || 'Not configured'}`);
   console.log(`   API Base URL: ${buildInfo.apiBaseUrl || 'Not configured'}`);
   console.log(`   Build: ${buildInfo.buildTime}`);
-  console.log(`   Note: User data and install history will be preserved`);
+  console.log(`   Storage: SQLite with localStorage fallback`);
+  console.log(`   Note: User data and install history will be preserved in SQLite`);
   
   // Thêm script tag vào index.html
   injectScriptTag(wwwPath, "build-info.js");
@@ -218,7 +736,7 @@ module.exports = function(context) {
   const platforms = context.opts.platforms;
   
   console.log("\n══════════════════════════════════");
-  console.log("     INJECT BUILD INFO HOOK       ");
+  console.log("  INJECT BUILD INFO HOOK (SQLite) ");
   console.log("══════════════════════════════════");
   
   for (const platform of platforms) {
