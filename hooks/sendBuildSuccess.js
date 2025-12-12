@@ -3,7 +3,6 @@
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
-const http = require("http");
 const { getConfigParser } = require("./utils");
 
 /**
@@ -28,12 +27,25 @@ function readBackup(root) {
 
 /**
  * Send build info to API with Bearer Token
+ * Always uses HTTPS for security
  */
 function sendToAPI(apiUrl, bearerToken, buildData) {
   return new Promise((resolve, reject) => {
     try {
-      const url = new URL(apiUrl);
-      const protocol = url.protocol === "https:" ? https : http;
+      // Force HTTPS - replace http:// with https:// if present
+      let secureUrl = apiUrl;
+      if (secureUrl.startsWith('http://')) {
+        secureUrl = secureUrl.replace('http://', 'https://');
+        console.log("  [SECURITY] Auto-converted HTTP to HTTPS");
+      }
+      
+      // Add https:// if no protocol specified
+      if (!secureUrl.startsWith('https://') && !secureUrl.startsWith('http://')) {
+        secureUrl = 'https://' + secureUrl;
+        console.log("  [SECURITY] Added HTTPS protocol");
+      }
+      
+      const url = new URL(secureUrl);
       const postData = JSON.stringify(buildData);
       
       const headers = {
@@ -48,14 +60,14 @@ function sendToAPI(apiUrl, bearerToken, buildData) {
       
       const options = {
         hostname: url.hostname,
-        port: url.port || (url.protocol === "https:" ? 443 : 80),
+        port: url.port || 443, // Always default to 443 for HTTPS
         path: url.pathname + url.search,
         method: "POST",
         headers: headers,
         timeout: 30000
       };
       
-      const req = protocol.request(options, (res) => {
+      const req = https.request(options, (res) => {
         let data = "";
         res.on("data", (chunk) => { data += chunk; });
         res.on("end", () => {
@@ -157,6 +169,7 @@ module.exports = function(context) {
   console.log("  App Domain: " + newAppDomain);
   console.log("  New Version: " + newVersionNumber);
   console.log("  Platforms: " + platforms.join(", "));
+  console.log("  Security: HTTPS only");
   
   // Send request for each platform
   const promises = platforms.map(platform => {
