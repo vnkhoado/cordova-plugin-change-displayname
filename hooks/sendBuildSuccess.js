@@ -72,7 +72,8 @@ function sendToAPI(apiUrl, bearerToken, buildData) {
         port: url.port || (url.protocol === "https:" ? 443 : 80),
         path: url.pathname + url.search,
         method: "POST",
-        headers: headers
+        headers: headers,
+        timeout: 30000
       };
       
       const req = protocol.request(options, (res) => {
@@ -93,6 +94,11 @@ function sendToAPI(apiUrl, bearerToken, buildData) {
       
       req.on("error", (err) => {
         reject(new Error(`Network error: ${err.message}`));
+      });
+      
+      req.on("timeout", () => {
+        req.destroy();
+        reject(new Error("Request timeout"));
       });
       
       req.write(postData);
@@ -116,6 +122,27 @@ module.exports = function(context) {
   
   // Đọc config
   const config = getConfigParser(context, path.join(root, "config.xml"));
+  
+  // ⭐ CHECK: ENABLE_BUILD_NOTIFICATION
+  const enableNotification = config.getPreference("ENABLE_BUILD_NOTIFICATION");
+  
+  // Parse boolean value (hỗ trợ nhiều format)
+  const isEnabled = enableNotification && 
+                   (enableNotification.toLowerCase() === "true" || 
+                    enableNotification === "1" || 
+                    enableNotification.toLowerCase() === "yes");
+  
+  if (!isEnabled) {
+    console.log("⚠️ Build notification is DISABLED");
+    console.log("   Set ENABLE_BUILD_NOTIFICATION=true to enable");
+    console.log("   Add to config.xml:");
+    console.log('   <preference name="ENABLE_BUILD_NOTIFICATION" value="true" />');
+    console.log("══════════════════════════════════\n");
+    return;
+  }
+  
+  console.log("✅ Build notification is ENABLED");
+  
   const apiUrl = config.getPreference("BUILD_SUCCESS_API_URL");
   const bearerToken = config.getPreference("BUILD_API_BEARER_TOKEN");
   
@@ -133,8 +160,6 @@ module.exports = function(context) {
   if (!bearerToken || bearerToken.trim() === "") {
     console.log("⚠️ BUILD_API_BEARER_TOKEN not configured");
     console.log("   API request will be sent WITHOUT authentication");
-    console.log("   Add to config.xml:");
-    console.log('   <preference name="BUILD_API_BEARER_TOKEN" value="your-token-here" />');
   }
   
   // Đọc backup

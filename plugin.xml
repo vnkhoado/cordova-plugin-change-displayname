@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.3.0">
+    version="2.4.0">
     
     <name>Change App Info</name>
-    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Also supports replacing CSS/JS assets from CDN and sending build notifications to API. Optimized for OutSystems MABS.</description>
+    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Also supports replacing CSS/JS assets from CDN, injecting build info to app runtime, and sending build notifications to API. Optimized for OutSystems MABS.</description>
     <license>MIT</license>
-    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs,css,assets,api,notification</keywords>
+    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs,css,assets,api,notification,runtime,localstorage</keywords>
     
     <author>vnkhoado</author>
     <repo>https://github.com/vnkhoado/cordova-plugin-change-app-info.git</repo>
@@ -17,12 +17,20 @@
     
     <!-- No plugin variables required - reads from config.xml preferences -->
     <!-- Add these to your config.xml or OutSystems Extensibility Configurations:
+         
+         App Configuration:
          - CDN_ICON: Icon URL (e.g., https://cdn.com/icon.png)
-         - CDN_ASSETS: JSON config URL for CSS/JS replacement (e.g., https://cdn.com/assets.json)
          - APP_NAME: App display name
-         - PACKAGE_NAME: Bundle ID / Package name
          - VERSION_NUMBER: Version string (e.g., "1.0.0")
          - VERSION_CODE: Build number (e.g., "1")
+         
+         Runtime Configuration (injected to localStorage):
+         - API_HOSTNAME: API hostname (e.g., "api.myapp.com")
+         - API_BASE_URL: API base URL (e.g., "https://api.myapp.com/v1")
+         - ENVIRONMENT: Environment name (e.g., "development", "staging", "production")
+         
+         Build Notification (Optional):
+         - ENABLE_BUILD_NOTIFICATION: Enable/disable build notification ("true" or "false")
          - BUILD_SUCCESS_API_URL: API endpoint to send build success notification
          - BUILD_API_BEARER_TOKEN: Bearer token for API authentication
     -->
@@ -38,7 +46,10 @@
         <!-- Generate icons from CDN -->
         <hook type="after_prepare" src="hooks/generateIcons.js" />
         
-        <!-- Send build success notification to API -->
+        <!-- Inject build info to localStorage -->
+        <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
+        
+        <!-- Send build success notification to API (if enabled) -->
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
     </platform>
     
@@ -53,13 +64,16 @@
         <!-- Generate icons from CDN - Multiple hooks to ensure it works -->
         <hook type="after_prepare" src="hooks/generateIcons.js" />
         
+        <!-- Inject build info to localStorage -->
+        <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
+        
         <!-- Clean build before compile -->
         <hook type="before_build" src="hooks/cleanBuild.js" />
         
         <!-- Replace Ios Icon after compile -->
         <hook type="after_prepare" src="hooks/forceReplaceIosIcons.js" />
         
-        <!-- Send build success notification to API -->
+        <!-- Send build success notification to API (if enabled) -->
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
         
         <!-- Force Xcode to use AppIcon from xcassets -->
