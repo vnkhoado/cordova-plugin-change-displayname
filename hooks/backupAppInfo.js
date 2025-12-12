@@ -2,9 +2,10 @@
 
 const fs = require("fs");
 const path = require("path");
+const { getConfigParser } = require("./utils");
 
 /**
- * Đọc thông tin app gốc từ platform files
+ * Read app info from platform files
  */
 function getOriginalAppInfo(context, platform) {
   const root = context.opts.projectRoot;
@@ -16,7 +17,7 @@ function getOriginalAppInfo(context, platform) {
   };
 
   if (platform === "android") {
-    // Đọc AndroidManifest.xml
+    // Read AndroidManifest.xml
     const manifestPath = path.join(
       root,
       "platforms/android/app/src/main/AndroidManifest.xml"
@@ -31,7 +32,7 @@ function getOriginalAppInfo(context, platform) {
       info.versionCode = versionCode ? versionCode[1] : null;
     }
     
-    // Đọc strings.xml
+    // Read strings.xml
     const stringsPath = path.join(
       root,
       "platforms/android/app/src/main/res/values/strings.xml"
@@ -50,7 +51,7 @@ function getOriginalAppInfo(context, platform) {
       return info;
     }
     
-    // Tìm iOS app folder
+    // Find iOS app folder
     const iosFolders = fs.readdirSync(platformPath).filter(f => {
       const fullPath = path.join(platformPath, f);
       return fs.statSync(fullPath).isDirectory() && 
@@ -82,7 +83,7 @@ function getOriginalAppInfo(context, platform) {
 }
 
 /**
- * Lưu backup vào file JSON
+ * Save backup to JSON file
  */
 function saveBackup(root, backupData) {
   const backupDir = path.join(root, ".cordova-build-backup");
@@ -94,39 +95,48 @@ function saveBackup(root, backupData) {
   const backupFile = path.join(backupDir, "app-info-backup.json");
   fs.writeFileSync(backupFile, JSON.stringify(backupData, null, 2), "utf8");
   
-  console.log(`💾 App info backed up to: ${backupFile}`);
+  console.log("Backup saved: " + backupFile);
 }
 
 /**
- * Hook chính - chạy TRƯỚC changeAppInfo
+ * Main hook - runs BEFORE changeAppInfo
  */
 module.exports = function(context) {
   const root = context.opts.projectRoot;
   const platforms = context.opts.platforms;
 
-  console.log("\n══════════════════════════════════");
-  console.log("       BACKUP APP INFO HOOK        ");
-  console.log("══════════════════════════════════");
+  console.log("\n==================================");
+  console.log("      BACKUP APP INFO HOOK        ");
+  console.log("==================================");
+
+  // Read config to get API_HOSTNAME (from MABS)
+  const config = getConfigParser(context, path.join(root, "config.xml"));
+  const apiHostname = config.getPreference("API_HOSTNAME") || "";
+  
+  console.log("\n[CONFIG VALUES]");
+  console.log("  API_HOSTNAME: " + (apiHostname || "(not set)"));
 
   const backupData = {
     timestamp: new Date().toISOString(),
+    apiHostname: apiHostname,
     platforms: {}
   };
 
   for (const platform of platforms) {
-    console.log(`\n📱 Backing up ${platform} info...`);
+    console.log("\n[" + platform.toUpperCase() + "]");
+    console.log("  Reading original values...");
     
     const originalInfo = getOriginalAppInfo(context, platform);
     backupData.platforms[platform] = originalInfo;
     
-    console.log(`   App Name: ${originalInfo.appName || 'N/A'}`);
-    console.log(`   Version: ${originalInfo.versionNumber || 'N/A'} (${originalInfo.versionCode || 'N/A'})`);
+    console.log("  App Name: " + (originalInfo.appName || "N/A"));
+    console.log("  Version: " + (originalInfo.versionNumber || "N/A") + " (" + (originalInfo.versionCode || "N/A") + ")");
   }
 
-  // Lưu backup
+  // Save backup
   saveBackup(root, backupData);
 
-  console.log("\n══════════════════════════════════");
-  console.log("✅ Backup completed!");
-  console.log("══════════════════════════════════\n");
+  console.log("\n==================================");
+  console.log("Backup completed!");
+  console.log("==================================\n");
 };

@@ -28,15 +28,21 @@ function readBackup(root) {
 /**
  * Get app domain from multiple sources
  */
-function getAppDomain(config) {
-  // Try 1: API_HOSTNAME preference (from MABS)
+function getAppDomain(config, backup) {
+  // Try 1: From backup (captured during before_prepare)
+  if (backup && backup.apiHostname && backup.apiHostname.trim() !== "") {
+    console.log("  [SOURCE] From backup (MABS injected)");
+    return backup.apiHostname.trim();
+  }
+  
+  // Try 2: API_HOSTNAME preference (direct read)
   let domain = config.getPreference("API_HOSTNAME");
   if (domain && domain.trim() !== "") {
     console.log("  [SOURCE] API_HOSTNAME preference");
     return domain.trim();
   }
   
-  // Try 2: Extract from widget id (e.g., com.company.app -> company.com)
+  // Try 3: Extract from widget id (e.g., com.company.app -> company.com)
   try {
     const widgetId = config.packageName();
     if (widgetId && widgetId.includes('.')) {
@@ -52,7 +58,7 @@ function getAppDomain(config) {
     // Continue to next method
   }
   
-  // Try 3: BACKEND_URL preference (custom)
+  // Try 4: BACKEND_URL preference (custom)
   domain = config.getPreference("BACKEND_URL");
   if (domain && domain.trim() !== "") {
     console.log("  [SOURCE] BACKEND_URL preference");
@@ -207,7 +213,7 @@ module.exports = function(context) {
   
   // Get app domain with fallback logic
   console.log("\n[DOMAIN DETECTION]");
-  const newAppDomain = getAppDomain(config);
+  const newAppDomain = getAppDomain(config, backup);
   console.log("  App Domain: " + (newAppDomain || "(not available)"));
   
   console.log("\n[PLATFORMS]");
