@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.4.0">
+    version="2.5.0">
     
     <name>Change App Info</name>
-    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Also supports replacing CSS/JS assets from CDN, injecting build info to app runtime, and sending build notifications to API. Optimized for OutSystems MABS.</description>
+    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Also supports replacing CSS/JS assets from CDN, injecting build info to app runtime with SQLite storage, and sending build notifications to API. Optimized for OutSystems MABS.</description>
     <license>MIT</license>
-    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs,css,assets,api,notification,runtime,localstorage</keywords>
+    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs,css,assets,api,notification,runtime,sqlite,storage</keywords>
     
     <author>vnkhoado</author>
     <repo>https://github.com/vnkhoado/cordova-plugin-change-app-info.git</repo>
@@ -14,6 +14,9 @@
     <engines>
         <engine name="cordova" version=">=9.0.0" />
     </engines>
+    
+    <!-- Dependency: SQLite Storage Plugin -->
+    <dependency id="cordova-sqlite-storage" version="^6.1.0" />
     
     <!-- No plugin variables required - reads from config.xml preferences -->
     <!-- Add these to your config.xml or OutSystems Extensibility Configurations:
@@ -24,7 +27,7 @@
          - VERSION_NUMBER: Version string (e.g., "1.0.0")
          - VERSION_CODE: Build number (e.g., "1")
          
-         Runtime Configuration (injected to localStorage):
+         Runtime Configuration (injected to SQLite database):
          - API_HOSTNAME: API hostname (e.g., "api.myapp.com")
          - API_BASE_URL: API base URL (e.g., "https://api.myapp.com/v1")
          - ENVIRONMENT: Environment name (e.g., "development", "staging", "production")
@@ -46,7 +49,7 @@
         <!-- Generate icons from CDN -->
         <hook type="after_prepare" src="hooks/generateIcons.js" />
         
-        <!-- Inject build info to localStorage -->
+        <!-- Inject build info to SQLite -->
         <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
         
         <!-- Send build success notification to API (if enabled) -->
@@ -64,7 +67,7 @@
         <!-- Generate icons from CDN - Multiple hooks to ensure it works -->
         <hook type="after_prepare" src="hooks/generateIcons.js" />
         
-        <!-- Inject build info to localStorage -->
+        <!-- Inject build info to SQLite -->
         <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
         
         <!-- Clean build before compile -->
