@@ -7,7 +7,27 @@ const http = require("http");
 const { getConfigParser } = require("./utils");
 
 /**
- * Gửi thông tin qua API với Bearer Token
+ * Read backup data
+ */
+function readBackup(root) {
+  const backupFile = path.join(root, ".cordova-build-backup", "app-info-backup.json");
+  
+  if (!fs.existsSync(backupFile)) {
+    console.log("Warning: Backup file not found");
+    return null;
+  }
+  
+  try {
+    const data = fs.readFileSync(backupFile, "utf8");
+    return JSON.parse(data);
+  } catch (err) {
+    console.error("Error: Failed to read backup:", err.message);
+    return null;
+  }
+}
+
+/**
+ * Send build info to API with Bearer Token
  */
 function sendToAPI(apiUrl, bearerToken, buildData) {
   return new Promise((resolve, reject) => {
@@ -21,7 +41,7 @@ function sendToAPI(apiUrl, bearerToken, buildData) {
         "Content-Length": Buffer.byteLength(postData)
       };
       
-      // Thêm Bearer Token nếu có
+      // Add Bearer Token if provided
       if (bearerToken && bearerToken.trim() !== "") {
         headers["Authorization"] = `Bearer ${bearerToken.trim()}`;
       }
@@ -69,116 +89,129 @@ function sendToAPI(apiUrl, bearerToken, buildData) {
 }
 
 /**
- * Hook chính - chạy SAU khi build thành công
+ * Main hook - runs AFTER successful build
  */
 module.exports = function(context) {
   const root = context.opts.projectRoot;
   const platforms = context.opts.platforms;
   
-  console.log("\n\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
-  console.log("    SEND BUILD SUCCESS TO API     ");
-  console.log("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
+  console.log("\n==================================");
+  console.log("   SEND BUILD SUCCESS TO API     ");
+  console.log("==================================");
   
-  // Đọc config
+  // Read config
   const config = getConfigParser(context, path.join(root, "config.xml"));
   
-  // ⭐ CHECK: ENABLE_BUILD_NOTIFICATION
+  // CHECK: ENABLE_BUILD_NOTIFICATION
   const enableNotification = config.getPreference("ENABLE_BUILD_NOTIFICATION");
   
-  // Parse boolean value (hỗ trợ nhiều format)
+  // Parse boolean value (support multiple formats)
   const isEnabled = enableNotification && 
                    (enableNotification.toLowerCase() === "true" || 
                     enableNotification === "1" || 
                     enableNotification.toLowerCase() === "yes");
   
   if (!isEnabled) {
-    console.log("\u26a0\ufe0f Build notification is DISABLED");
-    console.log("   Set ENABLE_BUILD_NOTIFICATION=true to enable");
-    console.log("   Add to config.xml:");
-    console.log('   <preference name="ENABLE_BUILD_NOTIFICATION" value="true" />');
-    console.log("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n");
+    console.log("[INFO] Build notification is DISABLED");
+    console.log("       Set ENABLE_BUILD_NOTIFICATION=true to enable");
+    console.log("==================================\n");
     return;
   }
   
-  console.log("\u2705 Build notification is ENABLED");
+  console.log("[INFO] Build notification is ENABLED");
   
   const apiBaseUrl = config.getPreference("BUILD_SUCCESS_API_URL");
   const bearerToken = config.getPreference("BUILD_API_BEARER_TOKEN");
   
   // Validate API URL
   if (!apiBaseUrl || apiBaseUrl.trim() === "") {
-    console.log("\u26a0\ufe0f BUILD_SUCCESS_API_URL not configured");
-    console.log("   Add to config.xml or Extensibility Configurations:");
-    console.log('   <preference name="BUILD_SUCCESS_API_URL" value="https://your-api.com/builds" />');
-    console.log('   <preference name="BUILD_API_BEARER_TOKEN" value="your-token-here" />');
-    console.log("\n\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n");
+    console.log("[ERROR] BUILD_SUCCESS_API_URL not configured");
+    console.log("        Add to config.xml or Extensibility Configurations:");
+    console.log('        <preference name="BUILD_SUCCESS_API_URL" value="https://api.com/builds" />');
+    console.log("==================================\n");
     return;
   }
   
   // Validate Bearer Token
   if (!bearerToken || bearerToken.trim() === "") {
-    console.log("\u26a0\ufe0f BUILD_API_BEARER_TOKEN not configured");
-    console.log("   API request will be sent WITHOUT authentication");
+    console.log("[WARN] BUILD_API_BEARER_TOKEN not configured");
+    console.log("       API request will be sent WITHOUT authentication");
   }
   
-  // Đọc thông tin từ config
-  const appName = config.getPreference("APP_NAME") || config.name() || "Unknown App";
-  const appDomain = config.getPreference("API_HOSTNAME") || "";
-  const versionNumber = config.getPreference("VERSION_NUMBER") || config.version() || "0.0.0";
+  // Read backup to get ORIGINAL version from MABS
+  const backup = readBackup(root);
+  if (!backup || !backup.platforms) {
+    console.log("[ERROR] No backup found or invalid backup data");
+    console.log("        Cannot determine original version from MABS");
+    console.log("==================================\n");
+    return;
+  }
   
-  // Log thông tin
-  console.log(`\n\ud83d\udcf1 App Name: ${appName}`);
-  console.log(`\ud83c\udf10 App Domain: ${appDomain}`);
-  console.log(`\ud83d\udd22 Version: ${versionNumber}`);
-  console.log(`\ud83d\udce6 Platforms: ${platforms.join(", ")}`);
+  // Read NEW config values
+  const newAppName = config.getPreference("APP_NAME") || config.name() || "Unknown App";
+  const newAppDomain = config.getPreference("API_HOSTNAME") || "";
+  const newVersionNumber = config.getPreference("VERSION_NUMBER") || config.version() || "0.0.0";
   
-  // Gửi request cho từng platform
+  console.log("\n[BUILD INFO]");
+  console.log("  App Name: " + newAppName);
+  console.log("  App Domain: " + newAppDomain);
+  console.log("  New Version: " + newVersionNumber);
+  console.log("  Platforms: " + platforms.join(", "));
+  
+  // Send request for each platform
   const promises = platforms.map(platform => {
-    // Build URL với version trên path: /builds/{version}
-    const apiUrl = `${apiBaseUrl.replace(/\/$/, '')}/${encodeURIComponent(versionNumber)}`;
+    // Get ORIGINAL version from backup (from MABS)
+    const originalVersion = backup.platforms[platform] 
+      ? (backup.platforms[platform].versionNumber || "0.0.0")
+      : "0.0.0";
     
-    // Chuẩn bị payload
+    // Build URL with ORIGINAL version on path: /builds/{originalVersion}
+    const apiUrl = `${apiBaseUrl.replace(/\/$/, '')}/${encodeURIComponent(originalVersion)}`;
+    
+    // Prepare payload with NEW config values
     const payload = {
-      app_name: appName,
-      app_domain: appDomain,
+      app_name: newAppName,
+      app_domain: newAppDomain,
       app_platform: platform,
-      config_version: versionNumber
+      config_version: newVersionNumber
     };
     
-    console.log(`\n\ud83d\udce4 Sending ${platform} to: ${apiUrl}`);
-    console.log(`   Body: ${JSON.stringify(payload)}`);
+    console.log("\n[" + platform.toUpperCase() + "]");
+    console.log("  URL: " + apiUrl);
+    console.log("  Original Version (MABS): " + originalVersion);
+    console.log("  Config Version (New): " + newVersionNumber);
+    console.log("  Body: " + JSON.stringify(payload));
     
     return sendToAPI(apiUrl, bearerToken, payload)
       .then(result => {
-        console.log(`\u2705 ${platform}: API notification sent successfully (${result.statusCode})`);
+        console.log("  [SUCCESS] Status: " + result.statusCode);
         if (result.data) {
           try {
             const jsonResponse = JSON.parse(result.data);
-            console.log(`   Response: ${JSON.stringify(jsonResponse)}`);
+            console.log("  Response: " + JSON.stringify(jsonResponse));
           } catch {
-            console.log(`   Response: ${result.data.substring(0, 100)}`);
+            console.log("  Response: " + result.data.substring(0, 100));
           }
         }
         return { platform, success: true };
       })
       .catch(err => {
-        console.error(`\u274c ${platform}: Failed to send API notification`);
-        console.error(`   Error: ${err.message}`);
+        console.error("  [FAILED] Error: " + err.message);
         return { platform, success: false, error: err.message };
       });
   });
   
-  // Đợi tất cả requests hoàn thành
+  // Wait for all requests to complete
   Promise.all(promises)
     .then(results => {
-      console.log("\n\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
+      console.log("\n==================================");
       const successCount = results.filter(r => r.success).length;
       const failCount = results.filter(r => !r.success).length;
-      console.log(`\ud83d\udce6 Build notifications completed:`);
-      console.log(`   \u2705 Success: ${successCount}`);
+      console.log("Build notifications completed:");
+      console.log("  Success: " + successCount);
       if (failCount > 0) {
-        console.log(`   \u274c Failed: ${failCount}`);
+        console.log("  Failed: " + failCount);
       }
-      console.log("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n");
+      console.log("==================================\n");
     });
 };
