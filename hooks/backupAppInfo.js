@@ -111,14 +111,27 @@ module.exports = function(context) {
 
   // Read config to get API_HOSTNAME (from MABS)
   const config = getConfigParser(context, path.join(root, "config.xml"));
-  const apiHostname = config.getPreference("API_HOSTNAME") || "";
+  
+  // Try multiple ways to get hostname
+  const apiHostname = config.getPreference("API_HOSTNAME");
+  const serverUrl = config.getPreference("SERVER_URL");
+  const hostname = config.getPreference("hostname");
+  
+  console.log("\n[DEBUG: READING CONFIG.XML]");
+  console.log("  API_HOSTNAME: " + (apiHostname || "(not found)"));
+  console.log("  SERVER_URL: " + (serverUrl || "(not found)"));
+  console.log("  hostname: " + (hostname || "(not found)"));
+  console.log("  Widget ID: " + (config.packageName() || "(not found)"));
+  
+  // Use first available hostname
+  const finalHostname = apiHostname || serverUrl || hostname || "";
   
   console.log("\n[CONFIG VALUES]");
-  console.log("  API_HOSTNAME: " + (apiHostname || "(not set)"));
+  console.log("  Selected Hostname: " + (finalHostname || "(NONE - will use fallback)"));
 
   const backupData = {
     timestamp: new Date().toISOString(),
-    apiHostname: apiHostname,
+    apiHostname: finalHostname,
     platforms: {}
   };
 
@@ -135,6 +148,9 @@ module.exports = function(context) {
 
   // Save backup
   saveBackup(root, backupData);
+  
+  console.log("\n[BACKUP CONTENT]");
+  console.log(JSON.stringify(backupData, null, 2));
 
   console.log("\n==================================");
   console.log("Backup completed!");

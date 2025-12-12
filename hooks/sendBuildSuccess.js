@@ -12,15 +12,18 @@ function readBackup(root) {
   const backupFile = path.join(root, ".cordova-build-backup", "app-info-backup.json");
   
   if (!fs.existsSync(backupFile)) {
-    console.log("Warning: Backup file not found");
+    console.log("[ERROR] Backup file not found: " + backupFile);
     return null;
   }
   
   try {
     const data = fs.readFileSync(backupFile, "utf8");
-    return JSON.parse(data);
+    const backup = JSON.parse(data);
+    console.log("[DEBUG] Backup loaded successfully");
+    console.log("[DEBUG] Backup apiHostname: " + (backup.apiHostname || "(empty)"));
+    return backup;
   } catch (err) {
-    console.error("Error: Failed to read backup:", err.message);
+    console.error("[ERROR] Failed to read backup:", err.message);
     return null;
   }
 }
@@ -29,6 +32,8 @@ function readBackup(root) {
  * Get app domain from multiple sources
  */
 function getAppDomain(config, backup) {
+  console.log("[DEBUG] Checking backup.apiHostname: " + (backup && backup.apiHostname ? backup.apiHostname : "(null or empty)"));
+  
   // Try 1: From backup (captured during before_prepare)
   if (backup && backup.apiHostname && backup.apiHostname.trim() !== "") {
     console.log("  [SOURCE] From backup (MABS injected)");
@@ -38,11 +43,18 @@ function getAppDomain(config, backup) {
   // Try 2: API_HOSTNAME preference (direct read)
   let domain = config.getPreference("API_HOSTNAME");
   if (domain && domain.trim() !== "") {
-    console.log("  [SOURCE] API_HOSTNAME preference");
+    console.log("  [SOURCE] API_HOSTNAME preference (direct read)");
     return domain.trim();
   }
   
-  // Try 3: Extract from widget id (e.g., com.company.app -> company.com)
+  // Try 3: SERVER_URL preference
+  domain = config.getPreference("SERVER_URL");
+  if (domain && domain.trim() !== "") {
+    console.log("  [SOURCE] SERVER_URL preference");
+    return domain.trim();
+  }
+  
+  // Try 4: Extract from widget id (e.g., com.company.app -> company.com)
   try {
     const widgetId = config.packageName();
     if (widgetId && widgetId.includes('.')) {
@@ -51,6 +63,7 @@ function getAppDomain(config, backup) {
         // Reverse domain notation: com.company.app -> company.com
         domain = parts[1] + '.' + parts[0];
         console.log("  [SOURCE] Extracted from widget id: " + widgetId);
+        console.log("  [WARN] Using fallback - MABS hostname not found in backup!");
         return domain;
       }
     }
@@ -58,14 +71,14 @@ function getAppDomain(config, backup) {
     // Continue to next method
   }
   
-  // Try 4: BACKEND_URL preference (custom)
+  // Try 5: BACKEND_URL preference (custom)
   domain = config.getPreference("BACKEND_URL");
   if (domain && domain.trim() !== "") {
     console.log("  [SOURCE] BACKEND_URL preference");
     return domain.trim();
   }
   
-  console.log("  [WARN] Could not determine app domain from any source");
+  console.log("  [ERROR] Could not determine app domain from any source");
   return "";
 }
 
