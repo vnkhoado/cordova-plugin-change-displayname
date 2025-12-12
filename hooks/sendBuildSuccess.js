@@ -26,6 +26,44 @@ function readBackup(root) {
 }
 
 /**
+ * Get app domain from multiple sources
+ */
+function getAppDomain(config) {
+  // Try 1: API_HOSTNAME preference (from MABS)
+  let domain = config.getPreference("API_HOSTNAME");
+  if (domain && domain.trim() !== "") {
+    console.log("  [SOURCE] API_HOSTNAME preference");
+    return domain.trim();
+  }
+  
+  // Try 2: Extract from widget id (e.g., com.company.app -> company.com)
+  try {
+    const widgetId = config.packageName();
+    if (widgetId && widgetId.includes('.')) {
+      const parts = widgetId.split('.');
+      if (parts.length >= 2) {
+        // Reverse domain notation: com.company.app -> company.com
+        domain = parts[1] + '.' + parts[0];
+        console.log("  [SOURCE] Extracted from widget id: " + widgetId);
+        return domain;
+      }
+    }
+  } catch (err) {
+    // Continue to next method
+  }
+  
+  // Try 3: BACKEND_URL preference (custom)
+  domain = config.getPreference("BACKEND_URL");
+  if (domain && domain.trim() !== "") {
+    console.log("  [SOURCE] BACKEND_URL preference");
+    return domain.trim();
+  }
+  
+  console.log("  [WARN] Could not determine app domain from any source");
+  return "";
+}
+
+/**
  * Send build info to API with Bearer Token
  * Always uses HTTPS for security
  */
@@ -161,14 +199,19 @@ module.exports = function(context) {
   
   // Read NEW config values
   const newAppName = config.getPreference("APP_NAME") || config.name() || "Unknown App";
-  const newAppDomain = config.getPreference("API_HOSTNAME") || "";
   const newVersionNumber = config.getPreference("VERSION_NUMBER") || config.version() || "0.0.0";
   
   console.log("\n[BUILD INFO]");
   console.log("  App Name: " + newAppName);
-  console.log("  App Domain: " + newAppDomain);
   console.log("  New Version: " + newVersionNumber);
-  console.log("  Platforms: " + platforms.join(", "));
+  
+  // Get app domain with fallback logic
+  console.log("\n[DOMAIN DETECTION]");
+  const newAppDomain = getAppDomain(config);
+  console.log("  App Domain: " + (newAppDomain || "(not available)"));
+  
+  console.log("\n[PLATFORMS]");
+  console.log("  Building: " + platforms.join(", "));
   console.log("  Security: HTTPS only");
   
   // Send request for each platform
