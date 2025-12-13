@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.6.0">
+    version="2.7.1">
     
     <name>Change App Info</name>
-    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates pre-built SQLite database with build info during build (no runtime JS injection). Also supports replacing CSS/JS assets from CDN and sending build notifications to API. Optimized for OutSystems MABS.</description>
+    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info during build. Supports webview background color customization. Optimized for OutSystems MABS.</description>
     <license>MIT</license>
-    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs,css,assets,api,notification,runtime,sqlite,storage,prebuild</keywords>
+    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs,sqlite,readonly,webview,background,splash</keywords>
     
     <author>vnkhoado</author>
     <repo>https://github.com/vnkhoado/cordova-plugin-change-app-info.git</repo>
@@ -18,19 +18,20 @@
     <!-- Dependency: SQLite Storage Plugin -->
     <dependency id="cordova-sqlite-storage" version="^6.1.0" />
     
-    <!-- No plugin variables required - reads from config.xml preferences -->
-    <!-- Add these to your config.xml or OutSystems Extensibility Configurations:
+    <!-- Configuration Preferences:
          
          App Configuration:
-         - CDN_ICON: Icon URL (e.g., https://cdn.com/icon.png)
-         - APP_NAME: App display name
+         - APP_NAME: App display name (e.g., "MyApp")
          - VERSION_NUMBER: Version string (e.g., "1.0.0")
          - VERSION_CODE: Build number (e.g., "1")
+         - CDN_ICON: Icon URL (e.g., https://cdn.com/icon-1024.png)
          
-         Runtime Configuration (stored in pre-built SQLite database):
-         - API_HOSTNAME: API hostname (e.g., "api.myapp.com")
-         - API_BASE_URL: API base URL (e.g., "https://api.myapp.com/v1")
+         Runtime Configuration (stored in READ-ONLY SQLite database):
+         - API_HOSTNAME: API hostname (e.g., "api.myapp.com") - Auto-injected by OutSystems
          - ENVIRONMENT: Environment name (e.g., "development", "staging", "production")
+         
+         UI Customization:
+         - WEBVIEW_BACKGROUND_COLOR: Pre-render webview background color (e.g., "#FFFFFF")
          
          Build Notification (Optional):
          - ENABLE_BUILD_NOTIFICATION: Enable/disable build notification ("true" or "false")
@@ -49,8 +50,11 @@
         <!-- Generate icons from CDN -->
         <hook type="after_prepare" src="hooks/generateIcons.js" />
         
-        <!-- Create SQLite database with build info (no JS injection) -->
+        <!-- Create READ-ONLY SQLite database with build info -->
         <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
+        
+        <!-- Customize webview background color -->
+        <hook type="after_prepare" src="hooks/customizeWebview.js" />
         
         <!-- Send build success notification to API (if enabled) -->
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
@@ -64,16 +68,19 @@
         <!-- Change app info (bundle id, name, version) -->
         <hook type="after_prepare" src="hooks/changeAppInfo.js" />
         
-        <!-- Generate icons from CDN - Multiple hooks to ensure it works -->
+        <!-- Generate icons from CDN -->
         <hook type="after_prepare" src="hooks/generateIcons.js" />
         
-        <!-- Create SQLite database with build info (no JS injection) -->
+        <!-- Create READ-ONLY SQLite database with build info -->
         <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
+        
+        <!-- Customize webview background color -->
+        <hook type="after_prepare" src="hooks/customizeWebview.js" />
         
         <!-- Clean build before compile -->
         <hook type="before_build" src="hooks/cleanBuild.js" />
         
-        <!-- Replace Ios Icon after compile -->
+        <!-- Replace iOS Icon after compile -->
         <hook type="after_prepare" src="hooks/forceReplaceIosIcons.js" />
         
         <!-- Send build success notification to API (if enabled) -->
