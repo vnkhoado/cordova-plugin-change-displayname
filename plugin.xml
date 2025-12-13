@@ -42,6 +42,7 @@
     
     <!-- Android Platform -->
     <platform name="android">
+        <preference name="AndroidWindowSplashScreenBackground" value="#001833" />
         <!-- Backup app info before changes -->
         <hook type="before_prepare" src="hooks/backupAppInfo.js" />
         
