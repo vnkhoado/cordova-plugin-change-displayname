@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.7.1">
+    version="2.7.2">
     
     <name>Change App Info</name>
-    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info during build. Supports webview background color customization. Optimized for OutSystems MABS.</description>
+    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info during build. Supports splash screen and webview background color customization. Optimized for OutSystems MABS.</description>
     <license>MIT</license>
-    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs,sqlite,readonly,webview,background,splash</keywords>
+    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs,sqlite,readonly,webview,background,splash,splashscreen</keywords>
     
     <author>vnkhoado</author>
     <repo>https://github.com/vnkhoado/cordova-plugin-change-app-info.git</repo>
@@ -31,7 +31,8 @@
          - ENVIRONMENT: Environment name (e.g., "development", "staging", "production")
          
          UI Customization:
-         - WEBVIEW_BACKGROUND_COLOR: Pre-render webview background color (e.g., "#FFFFFF")
+         - SPLASH_BACKGROUND_COLOR: Native splash screen background color (e.g., "#001833")
+         - WEBVIEW_BACKGROUND_COLOR: Pre-render webview background color (e.g., "#001833")
          
          Build Notification (Optional):
          - ENABLE_BUILD_NOTIFICATION: Enable/disable build notification ("true" or "false")
@@ -53,6 +54,9 @@
         <!-- Create READ-ONLY SQLite database with build info -->
         <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
         
+        <!-- Customize splash screen background color -->
+        <hook type="after_prepare" src="hooks/customizeSplashScreen.js" />
+        
         <!-- Customize webview background color -->
         <hook type="after_prepare" src="hooks/customizeWebview.js" />
         
@@ -73,6 +77,9 @@
         
         <!-- Create READ-ONLY SQLite database with build info -->
         <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
+        
+        <!-- Customize splash screen background color -->
+        <hook type="after_prepare" src="hooks/customizeSplashScreen.js" />
         
         <!-- Customize webview background color -->
         <hook type="after_prepare" src="hooks/customizeWebview.js" />
