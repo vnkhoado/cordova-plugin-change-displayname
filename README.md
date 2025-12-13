@@ -1,551 +1,367 @@
-# Cordova Plugin Change App Info
+# cordova-plugin-change-app-info
 
-Cordova plugin để thay đổi app display name, version và icon từ CDN lúc build time. Hỗ trợ inject build info vào app runtime và gửi build notification qua API. Tối ưu cho **OutSystems MABS**.
+Cordova plugin to change app info (package name, display name, version, icon) from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info. Supports webview background color customization. **Optimized for OutSystems MABS**.
 
----
+## Features
 
-## ✨ Tính năng
+✅ **Dynamic App Configuration**
+- Change package name/bundle ID at build time
+- Set app display name dynamically
+- Configure version number and build code
+- Download and set app icon from CDN URL
 
-### Build Time
-- ✅ Thay đổi display name của app  
-- ✅ Thay đổi version number và version code  
-- ✅ Download và generate icon từ CDN URL  
-- ✅ Tự động tạo tất cả kích thước icon cần thiết (iOS & Android)  
-- ✅ Clean build cache để đảm bảo thay đổi được áp dụng  
-- ✅ Multiple hooks để tránh bị overwrite  
-- ✅ Support iOS (xcassets) và Android (mipmap)  
+✅ **Build Info Database (READ-ONLY)**
+- Pre-built SQLite database with build information
+- Accessible via JavaScript API
+- Contains: app name, version, environment, API hostname, build timestamp
+- **READ-ONLY**: No runtime modifications, secure and fast
 
-### Runtime (NEW)
-- ✅ **Inject build info vào localStorage** - App có thể đọc version, API config, etc.
-- ✅ **Preserve user data** - User data không bị mất khi update app
-- ✅ **Offline mode** - Hoạt động hoàn toàn offline, không cần internet
-- ✅ **Global variable** - `window.APP_BUILD_INFO` sẵn sàng khi app khởi động
+✅ **UI Customization**
+- **Webview background color**: Eliminate white flash on app launch
+- **Native splash screen**: Use Cordova native preferences (recommended)
 
-### Build Notification (NEW)
-- ✅ **Gửi build notification qua API** - Track builds thành công
-- ✅ **Toggle on/off** - Bật/tắt notification bằng config
-- ✅ **Bearer Token authentication** - Secure API calls
-- ✅ **Backup original values** - So sánh thay đổi trước/sau build
+✅ **Build Success Notification**
+- Send HTTP POST notification to API when build completes
+- Configurable endpoint and bearer token
+- Useful for CI/CD pipelines
 
-### Compatible với OutSystems MABS
-- ✅ Tự động đọc `API_HOSTNAME` từ MABS
-- ❌ **Đã loại bỏ**: Thay đổi package name / bundle ID (gây conflict với iOS provisioning profile)
+## Installation
 
----
+### OutSystems (MABS)
 
-## 📦 Cài đặt
+Add to **Extensibility Configurations**:
 
-### From Git
+```json
+{
+  "plugin": {
+    "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info.git#master"
+  },
+  "preferences": {
+    "global": [
+      {
+        "name": "APP_NAME",
+        "value": "MyApp"
+      },
+      {
+        "name": "VERSION_NUMBER",
+        "value": "1.0.0"
+      },
+      {
+        "name": "VERSION_CODE",
+        "value": "1"
+      },
+      {
+        "name": "CDN_ICON",
+        "value": "https://cdn.com/icon-1024.png"
+      },
+      {
+        "name": "ENVIRONMENT",
+        "value": "production"
+      },
+      {
+        "name": "SplashScreenBackgroundColor",
+        "value": "#001833"
+      },
+      {
+        "name": "WEBVIEW_BACKGROUND_COLOR",
+        "value": "#001833"
+      }
+    ]
+  },
+  "dependencies": [
+    {
+      "plugin": {
+        "url": "cordova-sqlite-storage@6.1.0"
+      }
+    }
+  ]
+}
+```
+
+### Cordova CLI
+
 ```bash
 cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
 ```
 
-### Local
-```bash
-cordova plugin add /path/to/cordova-plugin-change-app-info
-```
+## Configuration
 
-### OutSystems MABS
-See `QUICK_START.md` for detailed instructions.
+### App Configuration
 
----
+| Preference | Description | Example |
+|------------|-------------|----------|
+| `APP_NAME` | App display name | `"MyApp"` |
+| `VERSION_NUMBER` | Version string | `"1.0.0"` |
+| `VERSION_CODE` | Build number | `"1"` |
+| `CDN_ICON` | Icon URL (1024x1024 PNG) | `"https://cdn.com/icon.png"` |
+| `ENVIRONMENT` | Environment name | `"production"` |
+| `API_HOSTNAME` | API hostname (auto-set by OutSystems) | `"api.myapp.com"` |
 
-## ⚙️ Cấu hình
+### UI Customization
 
-### Với OutSystems - Extensibility Configurations (Recommended)
+#### Native Splash Screen (RECOMMENDED)
 
-Thêm vào **Extensibility Configurations** trong OutSystems:
+Use **Cordova native preferences** for splash screen customization:
 
+| Preference | Description | Example |
+|------------|-------------|----------|
+| `SplashScreenBackgroundColor` | Splash background color | `"#001833"` |
+| `SplashScreenDelay` | Splash duration (ms) | `"3000"` |
+| `FadeSplashScreen` | Enable fade effect | `"true"` |
+| `FadeSplashScreenDuration` | Fade duration (ms) | `"300"` |
+| `AutoHideSplashScreen` | Auto hide splash | `"true"` |
+
+#### Webview Background
+
+| Preference | Description | Example |
+|------------|-------------|----------|
+| `WEBVIEW_BACKGROUND_COLOR` | Pre-render webview background | `"#001833"` |
+
+**Best Practice**: Match splash and webview colors for smooth transition:
 ```json
 {
-    "preferences": {
-        "global": [
-            {
-                "name": "APP_NAME",
-                "value": "Your App Name"
-            },
-            {
-                "name": "VERSION_NUMBER",
-                "value": "1.0.0"
-            },
-            {
-                "name": "VERSION_CODE",
-                "value": "1"
-            },
-            {
-                "name": "CDN_ICON",
-                "value": "https://your-cdn.com/icon-1024.png"
-            },
-            {
-                "name": "ENABLE_BUILD_NOTIFICATION",
-                "value": "true"
-            },
-            {
-                "name": "BUILD_SUCCESS_API_URL",
-                "value": "https://your-api.com/build-success"
-            },
-            {
-                "name": "BUILD_API_BEARER_TOKEN",
-                "value": "your-bearer-token"
-            }
-        ]
-    }
+  "name": "SplashScreenBackgroundColor",
+  "value": "#001833"
+},
+{
+  "name": "WEBVIEW_BACKGROUND_COLOR",
+  "value": "#001833"
 }
 ```
 
-**Lưu ý quan trọng:**
-- Tất cả preferences phải nằm trong `preferences.global` array
-- `VERSION_NUMBER` và `VERSION_CODE` **phải tồn tại cùng nhau** hoặc đều không có
-- `API_HOSTNAME` **TỰ ĐỘNG** được inject bởi OutSystems MABS - KHÔNG CẦN thêm thủ công
-- `ENABLE_BUILD_NOTIFICATION` mặc định là `false` - set `true` để bật
+### Build Notification (Optional)
 
-**Variables:**
+| Preference | Description | Example |
+|------------|-------------|----------|
+| `ENABLE_BUILD_NOTIFICATION` | Enable notification | `"true"` |
+| `BUILD_SUCCESS_API_URL` | API endpoint | `"https://api.com/build"` |
+| `BUILD_API_BEARER_TOKEN` | Bearer token | `"your-token"` |
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `APP_NAME` | Optional | Tên hiển thị của app |
-| `VERSION_NUMBER` | Optional | Version string (e.g., "1.0.0") - Bắt buộc cùng VERSION_CODE |
-| `VERSION_CODE` | Optional | Build number (integer) - Bắt buộc cùng VERSION_NUMBER |
-| `CDN_ICON` | Optional | URL của app icon (1024x1024px PNG) |
-| `API_HOSTNAME` | Auto | ⚠️ **Tự động inject bởi MABS** - không cần thêm |
-| `ENABLE_BUILD_NOTIFICATION` | Optional | `true` hoặc `false` - bật/tắt build notification |
-| `BUILD_SUCCESS_API_URL` | If enabled | API endpoint để gửi build notification |
-| `BUILD_API_BEARER_TOKEN` | If enabled | Bearer token cho API authentication |
+## JavaScript API
 
-### Config.xml (Alternative)
-```xml
-<widget>
-    <preference name="APP_NAME" value="Your App Name" />
-    <preference name="VERSION_NUMBER" value="1.0.0" />
-    <preference name="VERSION_CODE" value="1" />
-    <preference name="CDN_ICON" value="https://cdn.example.com/icon.png" />
-    
-    <!-- Build Notification (Optional) -->
-    <preference name="ENABLE_BUILD_NOTIFICATION" value="true" />
-    <preference name="BUILD_SUCCESS_API_URL" value="https://api.com/build" />
-    <preference name="BUILD_API_BEARER_TOKEN" value="token" />
-</widget>
-```
+### Accessing Build Info
 
----
-
-## 🚀 Sử dụng Build Info trong App
-
-### Đọc từ Global Variable (Recommended)
+#### Method 1: waitForReady() - RECOMMENDED ⭐
 
 ```javascript
-document.addEventListener('deviceready', function() {
-  // Build info có sẵn trong window.APP_BUILD_INFO
-  const buildInfo = window.APP_BUILD_INFO;
-  
-  console.log('App Name:', buildInfo.appName);
-  console.log('Version:', buildInfo.versionNumber);
-  console.log('Build Code:', buildInfo.versionCode);
-  console.log('Backend Host:', buildInfo.apiHostname); // Từ MABS
-  console.log('Platform:', buildInfo.platform);
-  console.log('Build Time:', buildInfo.buildTime);
-  
-  // Sử dụng để gọi API
-  const backendUrl = `https://${buildInfo.apiHostname}/api`;
-  fetch(backendUrl + '/users');
-  
-}, false);
+// Promise-based, handles race conditions
+window.AppBuildInfo.waitForReady(5000)
+  .then(function(info) {
+    console.log('App:', info.appName);
+    console.log('Version:', info.versionNumber);
+    console.log('Environment:', info.environment);
+    console.log('API:', info.apiHostname);
+  })
+  .catch(function(error) {
+    console.error('Build info not available:', error);
+  });
 ```
 
-### Đọc từ localStorage
+#### Method 2: Event Listener
 
 ```javascript
-// Backup method
-const buildInfoStr = localStorage.getItem('APP_BUILD_INFO');
-const buildInfo = JSON.parse(buildInfoStr);
-
-console.log('Version:', buildInfo.versionNumber);
-```
-
-### Lưu User Data (Không mất khi update app)
-
-```javascript
-// Lưu user data
-window.updateAppUserData('userId', '12345');
-window.updateAppUserData('userName', 'John Doe');
-
-// Lưu settings
-window.updateAppSettings({
-  theme: 'dark',
-  notifications: true,
-  language: 'vi'
+// Listen for ready event
+document.addEventListener('buildInfoReady', function(event) {
+  var info = event.detail;
+  console.log('Build info ready:', info);
 });
-
-// Data này sẽ KHÔNG MẤT khi build/update app mới
 ```
 
-### Cấu trúc dữ liệu trong localStorage
+#### Method 3: Direct Access
 
-```json
-{
-  "appName": "MyApp",
-  "versionNumber": "1.0.0",
-  "versionCode": "100",
-  "packageName": "com.example.myapp",
-  "platform": "android",
-  "buildTime": "2025-12-12T04:21:00.000Z",
-  "buildTimestamp": 1733977260000,
-  
-  "apiHostname": "yourapp.outsystemscloud.com",
-  
-  "firstInstallTime": "2025-11-01T10:00:00.000Z",
-  "firstInstallVersion": "0.9.0",
-  "installCount": 3,
-  
-  "userData": {
-    "userId": "12345",
-    "userName": "John Doe"
-  },
-  "userSettings": {
-    "theme": "dark",
-    "notifications": true
-  },
-  
-  "lastUpdateTime": "2025-12-12T04:21:00.000Z",
-  "previousVersion": "0.9.0"
+```javascript
+// Check if ready first
+if (window.AppBuildInfo.isReady()) {
+  var info = window.AppBuildInfo.getData();
+  console.log('Version:', info.versionNumber);
 }
 ```
 
----
+### Available Data
 
-## 📐 Yêu cầu Icon
-
-### Icon Source
-- **Format**: PNG
-- **Size**: 1024x1024px minimum
-- **Ratio**: 1:1 (square)
-- **Background**: Solid color (iOS không nên trong suốt)
-- **CDN**: Public URL với CORS headers
-
-### Kích thước generated
-
-#### iOS
-- 20x20 (@1x, @2x, @3x)
-- 29x29 (@1x, @2x, @3x)
-- 40x40 (@1x, @2x, @3x)
-- 60x60 (@2x, @3x)
-- 76x76 (@1x, @2x)
-- 83.5x83.5 (@2x)
-- 1024x1024 (App Store)
-
-#### Android
-- **mdpi**: 48x48
-- **hdpi**: 72x72
-- **xhdpi**: 96x96
-- **xxhdpi**: 144x144
-- **xxxhdpi**: 192x192
-
----
-
-## 🔧 Cách hoạt động
-
-### Build Process
-
-```
-1. before_prepare
-   └─ backupAppInfo.js - Backup original app info
-
-2. after_prepare
-   ├─ changeAppInfo.js - Update app name, version
-   ├─ generateIcons.js - Download & generate icons from CDN
-   └─ injectBuildInfo.js - Inject build info to localStorage
-
-3. before_build (iOS)
-   └─ cleanBuild.js - Clean build cache
-
-4. BUILD PROCESS
-   └─ Cordova builds .apk/.ipa
-
-5. after_build (only if build SUCCESS)
-   └─ sendBuildSuccess.js - Send notification to API (if enabled)
-```
-
-### Hooks
-- `before_prepare`: Backup app info
-- `after_prepare`: Update app info, generate icons, inject build info
-- `before_build` (iOS): Clean build cache
-- `after_build`: Send build notification (nếu `ENABLE_BUILD_NOTIFICATION=true`)
-
-### Config Files Modified
-- **iOS**: `Info.plist` (CFBundleDisplayName, CFBundleShortVersionString, CFBundleVersion)
-- **Android**: `AndroidManifest.xml` (versionName, versionCode), `strings.xml` (app_name)
-- **Both**: `www/build-info.js` (injected), `www/index.html` (script tag added)
-
-### Validation Logic
-- Nếu preference không có hoặc rỗng (`""`), plugin sẽ bỏ qua không xử lý
-- `VERSION_NUMBER` và `VERSION_CODE` phải có cùng nhau, nếu thiếu 1 trong 2 sẽ bỏ qua cả 2
-- `ENABLE_BUILD_NOTIFICATION` mặc định `false`, chỉ gửi API khi set `true`
-
----
-
-## 🌐 Build Notification API
-
-### API Request
-
-```http
-POST /build-success
-Content-Type: application/json
-Authorization: Bearer your-token-here
-
+```javascript
 {
-  "timestamp": "2025-12-12T04:21:00.000Z",
-  "buildStatus": "success",
-  "platforms": ["android", "ios"],
-  "original": {
-    "android": {
-      "appName": "Old App",
-      "versionNumber": "0.9.0",
-      "versionCode": "90"
-    }
+  appName: "MyApp",
+  versionNumber: "1.0.0",
+  versionCode: "1",
+  packageName: "com.myapp",
+  platform: "android",
+  buildTime: "2024-01-01T12:00:00.000Z",
+  buildTimestamp: 1704110400000,
+  apiHostname: "api.myapp.com",
+  environment: "production",
+  storageType: "sqlite-readonly"
+}
+```
+
+### Helper Methods
+
+```javascript
+// Check if ready
+window.AppBuildInfo.isReady(); // boolean
+
+// Get build timestamp
+window.AppBuildInfo.getBuildTimestamp(); // number
+
+// Get API hostname
+window.AppBuildInfo.getApiHostname(); // string
+
+// Check if production
+window.AppBuildInfo.isProduction(); // boolean
+```
+
+## OutSystems Integration
+
+### OnApplicationReady Example
+
+**Client Action: InitBuildInfo**
+
+```javascript
+window.AppBuildInfo.waitForReady(5000)
+  .then(function(info) {
+    $parameters.Success = true;
+    $parameters.AppName = info.appName;
+    $parameters.Version = info.versionNumber;
+    $parameters.Environment = info.environment;
+    $parameters.ApiHostname = info.apiHostname;
+    $resolve();
+  })
+  .catch(function(error) {
+    $parameters.Success = false;
+    $parameters.ErrorMessage = error.message;
+    $resolve();
+  });
+```
+
+**Flow**:
+```
+OnApplicationReady
+  └─ InitBuildInfo
+      ├─ If Success
+      │   ├─ Session.AppName = InitBuildInfo.AppName
+      │   ├─ Session.Version = InitBuildInfo.Version
+      │   └─ Session.Environment = InitBuildInfo.Environment
+      └─ Else
+          └─ Handle error
+```
+
+## Complete Example
+
+```json
+{
+  "plugin": {
+    "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info.git#master"
   },
-  "new": {
-    "appName": "MyApp Production",
-    "versionNumber": "1.0.0",
-    "versionCode": "100"
-  },
-  "changes": {
-    "android": {
-      "appName": {
-        "from": "Old App",
-        "to": "MyApp Production",
-        "changed": true
+  "preferences": {
+    "global": [
+      {
+        "name": "APP_NAME",
+        "value": "MyApp"
       },
-      "versionNumber": {
-        "from": "0.9.0",
-        "to": "1.0.0",
-        "changed": true
+      {
+        "name": "VERSION_NUMBER",
+        "value": "1.0.0"
+      },
+      {
+        "name": "VERSION_CODE",
+        "value": "100"
+      },
+      {
+        "name": "CDN_ICON",
+        "value": "https://cdn.myapp.com/icon-1024.png"
+      },
+      {
+        "name": "ENVIRONMENT",
+        "value": "production"
+      },
+      {
+        "name": "SplashScreenBackgroundColor",
+        "value": "#001833"
+      },
+      {
+        "name": "SplashScreenDelay",
+        "value": "3000"
+      },
+      {
+        "name": "FadeSplashScreen",
+        "value": "true"
+      },
+      {
+        "name": "FadeSplashScreenDuration",
+        "value": "300"
+      },
+      {
+        "name": "WEBVIEW_BACKGROUND_COLOR",
+        "value": "#001833"
+      },
+      {
+        "name": "ENABLE_BUILD_NOTIFICATION",
+        "value": "true"
+      },
+      {
+        "name": "BUILD_SUCCESS_API_URL",
+        "value": "https://api.myapp.com/webhook/build-success"
+      },
+      {
+        "name": "BUILD_API_BEARER_TOKEN",
+        "value": "your-secret-token"
+      }
+    ]
+  },
+  "dependencies": [
+    {
+      "plugin": {
+        "url": "cordova-sqlite-storage@6.1.0"
       }
     }
-  }
+  ]
 }
 ```
 
-### API Response (Expected)
+## Documentation
 
-```json
-{
-  "status": "success",
-  "message": "Build notification received",
-  "buildId": "12345"
-}
-```
+- [OutSystems OnApplicationReady Integration](docs/OUTSYSTEMS_ONAPPLICATIONREADY.md)
+- [Webview Color Troubleshooting](docs/WEBVIEW_COLOR_TROUBLESHOOTING.md)
+- [Complete Config Examples](examples/)
 
----
+## Changelog
 
-## 🐛 Troubleshooting
+### v2.7.3 (2024-12-13)
+- **BREAKING**: Removed custom splash screen hook
+- **Recommended**: Use Cordova native `SplashScreenBackgroundColor` preference instead
+- Updated documentation for splash screen configuration
+- Better OutSystems compatibility
 
-### ❌ Icons không thay đổi trên iOS
+### v2.7.2 (2024-12-13)
+- Added custom splash screen background color hook
+- Support for both Android and iOS splash customization
 
-**Giải pháp:**
-1. ⭐ Xóa app hoàn toàn khỏi device
-2. Clean build: `cordova clean ios`
-3. Build lại: `cordova build ios`
-4. Install clean
+### v2.7.1 (2024-12-12)
+- Added webview background color customization
+- Fixed race condition in buildInfoReady event
+- Added `waitForReady()` promise-based API
 
-### ❌ Build failed: "sharp not found"
+### v2.7.0 (2024-12-10)
+- Migrated to READ-ONLY pre-built SQLite database
+- Improved performance (no runtime database writes)
+- Simplified codebase
+- Better security (read-only data)
 
-**Giải pháp:**
-```bash
-cd plugins/cordova-plugin-change-app-info
-npm install
-```
+## Requirements
 
-### ❌ Build notification không được gửi
+- Cordova >= 9.0.0
+- cordova-sqlite-storage >= 6.1.0
+- Node.js >= 12.0.0
+- For icon generation: sharp or jimp (auto-installed)
 
-**Kiểm tra:**
-1. `ENABLE_BUILD_NOTIFICATION` có set `true` không?
-2. `BUILD_SUCCESS_API_URL` có đúng không?
-3. Check console output trong build log
-4. Verify Bearer Token có đúng không?
-
-### ❌ window.APP_BUILD_INFO là undefined
-
-**Nguyên nhân:** Đọc trước khi `deviceready` event
-
-**Giải pháp:**
-```javascript
-// ✅ ĐÚNG
-document.addEventListener('deviceready', function() {
-  const info = window.APP_BUILD_INFO; // OK
-}, false);
-
-// ❌ SAI
-const info = window.APP_BUILD_INFO; // undefined
-```
-
-### ❌ User data bị mất sau update
-
-**Kiểm tra:**
-- User có uninstall app không? (uninstall sẽ xóa localStorage)
-- Có clear app data không?
-- Build info có được inject đúng không?
-
----
-
-## 📚 Documentation
-
-- `QUICK_START.md` - Quick start cho OutSystems MABS
-- `CHANGELOG.md` - Version history
-- `example-outsystems-config.json` - Example config
-
----
-
-## 🎯 Example Configs
-
-### Development (No notification)
-```json
-{
-    "preferences": {
-        "global": [
-            {
-                "name": "APP_NAME",
-                "value": "MyApp DEV"
-            },
-            {
-                "name": "VERSION_NUMBER",
-                "value": "1.0.0"
-            },
-            {
-                "name": "VERSION_CODE",
-                "value": "100"
-            },
-            {
-                "name": "CDN_ICON",
-                "value": "https://cdn.com/icon-red.png"
-            },
-            {
-                "name": "ENABLE_BUILD_NOTIFICATION",
-                "value": "false"
-            }
-        ]
-    }
-}
-```
-
-### Production (With notification)
-```json
-{
-    "preferences": {
-        "global": [
-            {
-                "name": "APP_NAME",
-                "value": "MyApp"
-            },
-            {
-                "name": "VERSION_NUMBER",
-                "value": "1.0.0"
-            },
-            {
-                "name": "VERSION_CODE",
-                "value": "1"
-            },
-            {
-                "name": "CDN_ICON",
-                "value": "https://cdn.com/icon.png"
-            },
-            {
-                "name": "ENABLE_BUILD_NOTIFICATION",
-                "value": "true"
-            },
-            {
-                "name": "BUILD_SUCCESS_API_URL",
-                "value": "https://api.myapp.com/build-success"
-            },
-            {
-                "name": "BUILD_API_BEARER_TOKEN",
-                "value": "prod-bearer-token"
-            }
-        ]
-    }
-}
-```
-
-### Minimal (Chỉ inject build info)
-```json
-{
-    "preferences": {
-        "global": [
-            {
-                "name": "APP_NAME",
-                "value": "MyApp"
-            },
-            {
-                "name": "VERSION_NUMBER",
-                "value": "1.0.0"
-            },
-            {
-                "name": "VERSION_CODE",
-                "value": "1"
-            }
-        ]
-    }
-}
-```
-
----
-
-## 📁 Structure
-
-```
-cordova-plugin-change-app-info/
-├── plugin.xml
-├── package.json
-├── hooks/
-│   ├── backupAppInfo.js       # Backup original app info
-│   ├── changeAppInfo.js       # Update app info
-│   ├── generateIcons.js       # Generate icons from CDN
-│   ├── injectBuildInfo.js     # Inject build info to localStorage
-│   ├── sendBuildSuccess.js    # Send build notification
-│   ├── cleanBuild.js          # Clean build cache
-│   └── utils.js               # Helper functions
-└── scripts/
-    └── postinstall.js         # Auto-install dependencies
-```
-
----
-
-## 🔗 Dependencies
-
-- `sharp@^0.33.0` - Image processing
-- `node-fetch@^2.7.0` - Download từ CDN
-- `xcode@^3.0.1` - iOS project manipulation
-
----
-
-## ✅ Compatibility
-
-- **Cordova**: 9.0+
-- **iOS**: 11.0+
-- **Android**: 5.0+ (API 21+)
-- **Node.js**: 14.0+
-- **OutSystems**: MABS 8.0+
-
----
-
-## 📝 License
+## License
 
 MIT
 
----
+## Author
 
-## 🤝 Contributing
+vnkhoado
 
-Issues và Pull Requests welcome!
+## Repository
 
----
-
-## 📧 Support
-
-- **GitHub Issues**: https://github.com/vnkhoado/cordova-plugin-change-app-info/issues
-
----
-
-## 🙏 Credits
-
-Forked from [agoncalvesos/cordova-plugin-change-displayname](https://github.com/agoncalvesos/cordova-plugin-change-displayname)  
-Enhanced by OutSystems Experts team.
+https://github.com/vnkhoado/cordova-plugin-change-app-info
