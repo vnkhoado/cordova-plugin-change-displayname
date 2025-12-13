@@ -13,25 +13,22 @@ try {
 }
 
 /**
- * Tạo SQLite database với build info
+ * Tạo SQLite database READ-ONLY với build info (minimal)
  */
 function createBuildInfoDatabase(buildInfo, dbPath) {
-  console.log(`📦 Creating SQLite database: ${dbPath}`);
+  console.log(`📦 Creating READ-ONLY SQLite database: ${dbPath}`);
   
-  // Xóa database cũ nếu tồn tại
   if (fs.existsSync(dbPath)) {
     fs.unlinkSync(dbPath);
     console.log(`   Removed old database`);
   }
   
-  // Tạo database mới
   const db = new Database(dbPath);
   
   try {
-    // Bật WAL mode để cải thiện performance
     db.pragma('journal_mode = WAL');
     
-    // Tạo bảng build_info
+    // Simplified schema - only essential build info
     db.exec(`
       CREATE TABLE IF NOT EXISTS build_info (
         id INTEGER PRIMARY KEY,
@@ -43,52 +40,18 @@ function createBuildInfoDatabase(buildInfo, dbPath) {
         build_time TEXT,
         build_timestamp INTEGER,
         api_hostname TEXT,
-        api_base_url TEXT,
         environment TEXT,
-        cdn_icon TEXT,
         updated_at TEXT
       )
     `);
     
-    // Tạo bảng install_history
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS install_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        version_number TEXT,
-        version_code TEXT,
-        install_time TEXT,
-        install_type TEXT,
-        previous_version TEXT
-      )
-    `);
+    console.log(`   ✓ Table created (minimal schema)`);
     
-    // Tạo bảng user_data
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS user_data (
-        key TEXT PRIMARY KEY,
-        value TEXT,
-        updated_at TEXT
-      )
-    `);
-    
-    // Tạo bảng app_settings
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS app_settings (
-        key TEXT PRIMARY KEY,
-        value TEXT,
-        updated_at TEXT
-      )
-    `);
-    
-    console.log(`   ✓ Tables created`);
-    
-    // Insert build info
     const insertBuildInfo = db.prepare(`
-      INSERT OR REPLACE INTO build_info 
+      INSERT INTO build_info 
       (id, app_name, version_number, version_code, package_name, platform, 
-       build_time, build_timestamp, api_hostname, api_base_url, environment, 
-       cdn_icon, updated_at) 
-      VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       build_time, build_timestamp, api_hostname, environment, updated_at) 
+      VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     insertBuildInfo.run(
@@ -100,39 +63,19 @@ function createBuildInfoDatabase(buildInfo, dbPath) {
       buildInfo.buildTime,
       buildInfo.buildTimestamp,
       buildInfo.apiHostname,
-      buildInfo.apiBaseUrl,
       buildInfo.environment,
-      buildInfo.cdnIcon,
       new Date().toISOString()
     );
     
     console.log(`   ✓ Build info inserted`);
     
-    // Insert initial install record
-    const insertInstallHistory = db.prepare(`
-      INSERT INTO install_history 
-      (version_number, version_code, install_time, install_type, previous_version) 
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    
-    insertInstallHistory.run(
-      buildInfo.versionNumber,
-      buildInfo.versionCode,
-      buildInfo.buildTime,
-      'build',
-      null
-    );
-    
-    console.log(`   ✓ Initial install record created`);
-    
-    // Verify data
     const row = db.prepare('SELECT * FROM build_info WHERE id = 1').get();
     if (row) {
       console.log(`   ✓ Verified: ${row.app_name} v${row.version_number}`);
     }
     
     db.close();
-    console.log(`   ✓ Database created successfully`);
+    console.log(`   ✓ READ-ONLY database created`);
     
   } catch (error) {
     db.close();
@@ -140,9 +83,6 @@ function createBuildInfoDatabase(buildInfo, dbPath) {
   }
 }
 
-/**
- * Copy database vào assets folder cho Android
- */
 function copyDatabaseToAndroid(dbPath, root) {
   const assetsPath = path.join(root, "platforms/android/app/src/main/assets");
   
@@ -152,18 +92,13 @@ function copyDatabaseToAndroid(dbPath, root) {
   
   const destPath = path.join(assetsPath, "app_build_info.db");
   fs.copyFileSync(dbPath, destPath);
-  
-  console.log(`   ✓ Copied to Android assets: ${destPath}`);
+  console.log(`   ✓ Copied to Android assets`);
 }
 
-/**
- * Copy database vào Resources folder cho iOS và update Xcode project
- */
 function copyDatabaseToIOS(dbPath, root, config) {
   const xcode = require('xcode');
-  
-  // Tìm project name
   const iosPath = path.join(root, "platforms/ios");
+  
   if (!fs.existsSync(iosPath)) {
     console.log("   ⚠️  iOS platform not found");
     return;
@@ -178,10 +113,8 @@ function copyDatabaseToIOS(dbPath, root, config) {
   
   const destPath = path.join(resourcesPath, "app_build_info.db");
   fs.copyFileSync(dbPath, destPath);
+  console.log(`   ✓ Copied to iOS Resources`);
   
-  console.log(`   ✓ Copied to iOS Resources: ${destPath}`);
-  
-  // Update Xcode project
   try {
     const pbxprojPath = path.join(iosPath, `${projectName}.xcodeproj/project.pbxproj`);
     
@@ -189,324 +122,193 @@ function copyDatabaseToIOS(dbPath, root, config) {
       const proj = xcode.project(pbxprojPath);
       proj.parseSync();
       
-      // Add file reference nếu chưa có
       const dbFileRelPath = `${projectName}/Resources/app_build_info.db`;
-      
-      // Check xem file đã được add chưa
       const existingFile = proj.hasFile(dbFileRelPath);
       
       if (!existingFile) {
         proj.addResourceFile(dbFileRelPath);
         fs.writeFileSync(pbxprojPath, proj.writeSync());
-        console.log(`   ✓ Added database to Xcode project`);
-      } else {
-        console.log(`   ✓ Database already in Xcode project`);
+        console.log(`   ✓ Added to Xcode project`);
       }
     }
   } catch (error) {
-    console.log(`   ⚠️  Could not update Xcode project: ${error.message}`);
-    console.log(`   Note: Database file is copied, but you may need to add it manually in Xcode`);
+    console.log(`   ⚠️  Xcode update skipped`);
   }
 }
 
-/**
- * Tạo helper JavaScript file để đọc database
- */
-function createHelperJS(wwwPath) {
+function createHelperJS(wwwPath, buildInfo) {
+  const isProduction = buildInfo.environment === 'production';
+  
   const helperContent = `
-// Auto-generated by cordova-plugin-change-app-info
-// This file provides helpers to read build info from pre-built SQLite database
+// Auto-generated by cordova-plugin-change-app-info v2.7.0
+// READ-ONLY version - Essential build info only
 
 (function() {
   'use strict';
   
+  var IS_PRODUCTION = ${isProduction};
   var db = null;
   var buildInfoCache = null;
+  var isInitialized = false;
   
-  // Wait for deviceready
+  function safeLog(message, data) {
+    if (!IS_PRODUCTION) {
+      console.log(message, data || '');
+    }
+  }
+  
+  function safeError(message, error) {
+    if (!IS_PRODUCTION) {
+      console.error(message, error);
+    } else {
+      console.error(message);
+    }
+  }
+  
   document.addEventListener('deviceready', function() {
     initDatabase();
   }, false);
   
-  /**
-   * Khởi tạo SQLite database
-   */
   function initDatabase() {
     try {
       if (!window.sqlitePlugin) {
-        console.warn('[Build Info] SQLite plugin not found');
+        safeError('[Build Info] SQLite plugin not found');
         return;
       }
       
-      // Mở database đã có sẵn từ build time
       db = window.sqlitePlugin.openDatabase({
         name: 'app_build_info.db',
         location: 'default',
-        createFromLocation: 1, // Đọc từ www/assets
+        createFromLocation: 1,
         androidDatabaseProvider: 'system'
       });
       
-      console.log('[Build Info] SQLite database opened from build-time data');
-      
-      // Load build info
+      safeLog('[Build Info] Database opened (READ-ONLY)');
       loadBuildInfo();
       
     } catch (e) {
-      console.error('[Build Info] Failed to open database:', e);
+      safeError('[Build Info] Failed to open database:', e);
     }
   }
   
-  /**
-   * Đọc build info từ database
-   */
   function loadBuildInfo() {
     if (!db) return;
     
     db.transaction(function(tx) {
       tx.executeSql('SELECT * FROM build_info WHERE id = 1', [], function(tx, result) {
         if (result.rows.length > 0) {
-          var buildInfo = result.rows.item(0);
-          
-          // Check if this is first run after install/update
-          checkAndRecordInstall(buildInfo);
+          var info = result.rows.item(0);
           
           buildInfoCache = {
-            appName: buildInfo.app_name,
-            versionNumber: buildInfo.version_number,
-            versionCode: buildInfo.version_code,
-            packageName: buildInfo.package_name,
-            platform: buildInfo.platform,
-            buildTime: buildInfo.build_time,
-            buildTimestamp: buildInfo.build_timestamp,
-            apiHostname: buildInfo.api_hostname,
-            apiBaseUrl: buildInfo.api_base_url,
-            environment: buildInfo.environment,
-            cdnIcon: buildInfo.cdn_icon,
-            storageType: 'sqlite-prebuild'
+            appName: info.app_name,
+            versionNumber: info.version_number,
+            versionCode: info.version_code,
+            packageName: info.package_name,
+            platform: info.platform,
+            buildTime: info.build_time,
+            buildTimestamp: info.build_timestamp,
+            apiHostname: info.api_hostname,
+            environment: info.environment,
+            storageType: 'sqlite-readonly'
           };
           
-          window.APP_BUILD_INFO = buildInfoCache;
+          isInitialized = true;
           
-          console.log('[Build Info] Loaded from pre-built database:', buildInfoCache);
-          console.log('[Build Info] API Hostname:', buildInfo.api_hostname);
-          console.log('[Build Info] Environment:', buildInfo.environment);
+          safeLog('[Build Info] Loaded');
+          safeLog('[Build Info] ' + info.app_name + ' v' + info.version_number);
           
-          // Trigger event
-          var event = new CustomEvent('buildInfoReady', { detail: buildInfoCache });
+          var event = new CustomEvent('buildInfoReady', { 
+            detail: Object.freeze(Object.assign({}, buildInfoCache))
+          });
           document.dispatchEvent(event);
         }
+      }, function(tx, error) {
+        safeError('[Build Info] Load failed:', error);
       });
     });
   }
   
-  /**
-   * Kiểm tra và ghi lại install/update
-   */
-  function checkAndRecordInstall(currentBuildInfo) {
-    db.transaction(function(tx) {
-      // Lấy install record cuối cùng (không phải build type)
-      tx.executeSql(
-        "SELECT * FROM install_history WHERE install_type != 'build' ORDER BY id DESC LIMIT 1",
-        [],
-        function(tx, result) {
-          var lastInstall = result.rows.length > 0 ? result.rows.item(0) : null;
-          var installType = 'first_install';
-          var previousVersion = null;
-          
-          if (lastInstall) {
-            if (lastInstall.version_number === currentBuildInfo.version_number) {
-              // Cùng version - skip
-              return;
-            } else {
-              installType = 'update';
-              previousVersion = lastInstall.version_number;
-            }
-          }
-          
-          // Ghi lại install record mới
-          tx.executeSql(
-            'INSERT INTO install_history (version_number, version_code, install_time, install_type, previous_version) VALUES (?, ?, ?, ?, ?)',
-            [
-              currentBuildInfo.version_number,
-              currentBuildInfo.version_code,
-              new Date().toISOString(),
-              installType,
-              previousVersion
-            ],
-            function() {
-              console.log('[Build Info] Recorded ' + installType + ' event');
-            }
-          );
-        }
-      );
+  // PUBLIC API - READ-ONLY
+  window.AppBuildInfo = {
+    getData: function() {
+      if (!isInitialized) {
+        throw new Error('Not initialized. Wait for buildInfoReady event.');
+      }
+      return Object.freeze(Object.assign({}, buildInfoCache));
+    },
+    
+    isReady: function() {
+      return isInitialized;
+    },
+    
+    getBuildTimestamp: function() {
+      return isInitialized ? buildInfoCache.buildTimestamp : null;
+    },
+    
+    getApiHostname: function() {
+      return isInitialized ? buildInfoCache.apiHostname : null;
+    },
+    
+    isProduction: function() {
+      return isInitialized && buildInfoCache.environment === 'production';
+    }
+  };
+  
+  Object.freeze(window.AppBuildInfo);
+  
+  // Legacy API (deprecated)
+  if (!IS_PRODUCTION) {
+    Object.defineProperty(window, 'APP_BUILD_INFO', {
+      get: function() {
+        console.warn('[DEPRECATED] Use AppBuildInfo.getData()');
+        return buildInfoCache ? Object.freeze(Object.assign({}, buildInfoCache)) : null;
+      },
+      set: function() {
+        console.error('[READONLY] Cannot modify');
+      }
     });
   }
-  
-  // Helper functions
-  window.updateAppUserData = function(key, value, callback) {
-    if (!db) {
-      if (callback) callback(new Error('Database not initialized'));
-      return;
-    }
-    
-    db.transaction(function(tx) {
-      tx.executeSql(
-        'INSERT OR REPLACE INTO user_data (key, value, updated_at) VALUES (?, ?, ?)',
-        [key, JSON.stringify(value), new Date().toISOString()],
-        function(tx, result) {
-          if (callback) callback(null, result);
-        },
-        function(tx, error) {
-          if (callback) callback(error);
-        }
-      );
-    });
-  };
-  
-  window.getAppUserData = function(key, callback) {
-    if (!db) {
-      if (callback) callback(new Error('Database not initialized'));
-      return;
-    }
-    
-    db.transaction(function(tx) {
-      tx.executeSql('SELECT value FROM user_data WHERE key = ?', [key], function(tx, result) {
-        if (result.rows.length > 0) {
-          try {
-            var value = JSON.parse(result.rows.item(0).value);
-            if (callback) callback(null, value);
-          } catch (e) {
-            if (callback) callback(e);
-          }
-        } else {
-          if (callback) callback(null, null);
-        }
-      });
-    });
-  };
-  
-  window.updateAppSettings = function(settings, callback) {
-    if (!db) {
-      if (callback) callback(new Error('Database not initialized'));
-      return;
-    }
-    
-    db.transaction(function(tx) {
-      var now = new Date().toISOString();
-      Object.keys(settings).forEach(function(key) {
-        tx.executeSql(
-          'INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)',
-          [key, JSON.stringify(settings[key]), now]
-        );
-      });
-    }, function(error) {
-      if (callback) callback(error);
-    }, function() {
-      if (callback) callback(null);
-    });
-  };
-  
-  window.getAppSetting = function(key, callback) {
-    if (!db) {
-      if (callback) callback(new Error('Database not initialized'));
-      return;
-    }
-    
-    db.transaction(function(tx) {
-      tx.executeSql('SELECT value FROM app_settings WHERE key = ?', [key], function(tx, result) {
-        if (result.rows.length > 0) {
-          try {
-            var value = JSON.parse(result.rows.item(0).value);
-            if (callback) callback(null, value);
-          } catch (e) {
-            if (callback) callback(e);
-          }
-        } else {
-          if (callback) callback(null, null);
-        }
-      });
-    });
-  };
-  
-  window.getInstallHistory = function(callback) {
-    if (!db) {
-      if (callback) callback(new Error('Database not initialized'));
-      return;
-    }
-    
-    db.transaction(function(tx) {
-      tx.executeSql('SELECT * FROM install_history ORDER BY id DESC', [], function(tx, result) {
-        var history = [];
-        for (var i = 0; i < result.rows.length; i++) {
-          history.push(result.rows.item(i));
-        }
-        if (callback) callback(null, history);
-      });
-    });
-  };
   
 })();
 `;
   
   const helperPath = path.join(wwwPath, "build-info-helper.js");
   fs.writeFileSync(helperPath, helperContent, "utf8");
-  console.log(`   ✓ Created helper JS: ${helperPath}`);
+  console.log(`   ✓ Created helper JS`);
 }
 
-/**
- * Thêm <script> tag vào index.html
- */
 function injectScriptTag(wwwPath) {
   const indexPath = path.join(wwwPath, "index.html");
   
   if (!fs.existsSync(indexPath)) {
-    console.log("   ⚠️  index.html not found");
     return;
   }
   
   let html = fs.readFileSync(indexPath, "utf8");
-  
-  // Remove old build-info.js if exists
   html = html.replace(/<script[^>]*src=["']build-info\.js["'][^>]*><\/script>\s*/g, '');
   
-  // Check xem đã có helper script chưa
   if (html.includes('build-info-helper.js')) {
-    console.log("   Script tag already exists in index.html");
     return;
   }
   
-  const scriptTag = `    <script src="build-info-helper.js"></script>`;
+  const scriptTag = '    <script src="build-info-helper.js"></script>';
   
-  // Thêm trước cordova.js
   if (html.includes('cordova.js')) {
     html = html.replace(
       /<script[^>]*src=["']cordova\.js["'][^>]*><\/script>/,
-      `${scriptTag}\n    $&`
+      scriptTag + '\n    $&'
     );
   } else if (html.includes("</head>")) {
-    html = html.replace("</head>", `${scriptTag}\n  </head>");
-  } else if (html.includes("</body>")) {
-    html = html.replace("</body>", `${scriptTag}\n  </body>");
-  } else {
-    console.log("   ⚠️  Could not find suitable location in index.html");
-    return;
+    html = html.replace("</head>", scriptTag + '\n  </head>');
   }
   
   fs.writeFileSync(indexPath, html, "utf8");
-  console.log(`   ✓ Added <script> tag to index.html`);
+  console.log(`   ✓ Injected script tag`);
 }
 
-/**
- * Main injection function
- */
 function injectBuildInfo(context, platform) {
   const root = context.opts.projectRoot;
   const config = getConfigParser(context, path.join(root, "config.xml"));
-  
-  // Read config
-  const apiHostname = config.getPreference("API_HOSTNAME") || "";
-  const apiBaseUrl = config.getPreference("API_BASE_URL") || "";
-  const environment = config.getPreference("ENVIRONMENT") || "production";
   
   const buildInfo = {
     appName: config.getPreference("APP_NAME") || config.name() || "Unknown",
@@ -516,17 +318,13 @@ function injectBuildInfo(context, platform) {
     platform: platform,
     buildTime: new Date().toISOString(),
     buildTimestamp: Date.now(),
-    apiHostname: apiHostname,
-    apiBaseUrl: apiBaseUrl,
-    environment: environment,
-    cdnIcon: config.getPreference("CDN_ICON") || null
+    apiHostname: config.getPreference("API_HOSTNAME") || "",
+    environment: config.getPreference("ENVIRONMENT") || "production"
   };
   
-  // Create temporary database
   const tmpDbPath = path.join(root, "app_build_info.db");
   createBuildInfoDatabase(buildInfo, tmpDbPath);
   
-  // Đường dẫn www của platform
   let wwwPath;
   if (platform === "android") {
     wwwPath = path.join(root, "platforms/android/app/src/main/assets/www");
@@ -534,54 +332,37 @@ function injectBuildInfo(context, platform) {
   } else if (platform === "ios") {
     wwwPath = path.join(root, "platforms/ios/www");
     copyDatabaseToIOS(tmpDbPath, root, config);
-  } else {
-    console.log(`   ⚠️  Platform ${platform} not supported`);
-    return;
   }
   
-  // Clean up temp database
   fs.unlinkSync(tmpDbPath);
   
-  if (!fs.existsSync(wwwPath)) {
-    console.log(`   ⚠️  WWW path not found: ${wwwPath}`);
-    return;
+  if (fs.existsSync(wwwPath)) {
+    createHelperJS(wwwPath, buildInfo);
+    injectScriptTag(wwwPath);
   }
   
-  // Create helper JS and inject to index.html
-  createHelperJS(wwwPath);
-  injectScriptTag(wwwPath);
-  
-  console.log(`\n   ✅ Build info database created successfully!`);
-  console.log(`   App: ${buildInfo.appName} v${buildInfo.versionNumber} (${buildInfo.versionCode})`);
+  console.log(`\n   ✅ Build info created (READ-ONLY)`);
+  console.log(`   ${buildInfo.appName} v${buildInfo.versionNumber}`);
   console.log(`   Environment: ${buildInfo.environment}`);
-  console.log(`   API Hostname: ${buildInfo.apiHostname || 'Not configured'}`);
-  console.log(`   API Base URL: ${buildInfo.apiBaseUrl || 'Not configured'}`);
-  console.log(`   Build: ${buildInfo.buildTime}`);
-  console.log(`   Storage: Pre-built SQLite database`);
-  console.log(`   Note: Database is created at build time, no runtime injection needed`);
 }
 
-/**
- * Hook entry point
- */
 module.exports = function(context) {
   const platforms = context.opts.platforms;
   
-  console.log("\n══════════════════════════════════════════");
-  console.log("  INJECT BUILD INFO HOOK (Direct SQLite) ");
-  console.log("══════════════════════════════════════════");
+  console.log("\n══════════════════════════════════════════════");
+  console.log("  BUILD INFO v2.7.0 (READ-ONLY - MINIMAL)     ");
+  console.log("══════════════════════════════════════════════");
   
   for (const platform of platforms) {
-    console.log(`\n📱 Processing ${platform}...`);
+    console.log(`\n📱 ${platform}...`);
     try {
       injectBuildInfo(context, platform);
     } catch (error) {
-      console.error(`\n❌ Error processing ${platform}:`, error);
+      console.error(`\n❌ Error:`, error);
       throw error;
     }
   }
   
-  console.log("\n══════════════════════════════════════════");
-  console.log("✅ Build info injection completed!");
-  console.log("══════════════════════════════════════════\n");
+  console.log("\n══════════════════════════════════════════════");
+  console.log("✅ Completed!\n");
 };
