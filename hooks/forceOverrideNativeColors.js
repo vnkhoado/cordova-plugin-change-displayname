@@ -9,6 +9,7 @@
  * iOS:
  * - MainViewController.m background color
  * - LaunchScreen.storyboard background (DEEP SCAN - all nested views)
+ * - Assets.xcassets color assets (named colors)
  * - Info.plist UILaunchStoryboardBackgroundColor
  * 
  * Android:
@@ -67,6 +68,102 @@ function findFile(baseDir, patterns) {
   }
   
   return searchDir(baseDir);
+}
+
+function findAllFiles(baseDir, patterns, maxDepth = 3) {
+  const results = [];
+  
+  function searchDir(dir, depth = 0) {
+    if (depth > maxDepth) return;
+    
+    try {
+      const items = fs.readdirSync(dir);
+      
+      for (const item of items) {
+        const fullPath = path.join(dir, item);
+        const stat = fs.statSync(fullPath);
+        
+        if (stat.isFile()) {
+          for (const pattern of patterns) {
+            if (item === pattern || item.endsWith(pattern)) {
+              results.push(fullPath);
+            }
+          }
+        } else if (stat.isDirectory()) {
+          if (['node_modules', 'build', 'Pods', '.git'].includes(item)) {
+            continue;
+          }
+          searchDir(fullPath, depth + 1);
+        }
+      }
+    } catch (error) {
+      // Skip permission errors
+    }
+  }
+  
+  searchDir(baseDir);
+  return results;
+}
+
+function overrideIOSColorAssets(appPath, newColor, newRgb) {
+  console.log('\n   🎨 Searching for Color Assets in Assets.xcassets...');
+  
+  // Find all colorset Contents.json files
+  const colorAssetPaths = findAllFiles(appPath, ['Contents.json']);
+  
+  const colorSetFiles = colorAssetPaths.filter(p => 
+    p.includes('.colorset') && p.endsWith('Contents.json')
+  );
+  
+  if (colorSetFiles.length === 0) {
+    console.log('   ℹ️  No color assets found');
+    return 0;
+  }
+  
+  console.log(`   🔍 Found ${colorSetFiles.length} color asset(s)`);
+  let updatedAssets = 0;
+  
+  for (const colorFile of colorSetFiles) {
+    try {
+      const colorName = path.basename(path.dirname(colorFile));
+      console.log(`   📝 Processing: ${colorName}`);
+      
+      let content = fs.readFileSync(colorFile, 'utf8');
+      const original = content;
+      
+      // Parse JSON
+      const colorData = JSON.parse(content);
+      
+      // Update color components for all appearances
+      if (colorData.colors && Array.isArray(colorData.colors)) {
+        colorData.colors.forEach(colorEntry => {
+          if (colorEntry.color && colorEntry.color.components) {
+            // Update RGB values
+            colorEntry.color.components.red = newRgb.r.toFixed(3);
+            colorEntry.color.components.green = newRgb.g.toFixed(3);
+            colorEntry.color.components.blue = newRgb.b.toFixed(3);
+            if (!colorEntry.color.components.alpha) {
+              colorEntry.color.components.alpha = "1.000";
+            }
+            
+            console.log(`      ✓ Updated ${colorEntry.idiom || 'universal'} appearance`);
+          }
+        });
+        
+        // Write back
+        const newContent = JSON.stringify(colorData, null, 2);
+        if (newContent !== original) {
+          fs.writeFileSync(colorFile, newContent, 'utf8');
+          console.log(`   ✅ Updated ${colorName} to ${newColor}`);
+          updatedAssets++;
+        }
+      }
+    } catch (error) {
+      console.log(`   ⚠️  Error updating ${path.basename(path.dirname(colorFile))}: ${error.message}`);
+    }
+  }
+  
+  return updatedAssets;
 }
 
 function overrideIOSNativeColors(iosPath, newColor, oldColor) {
@@ -138,7 +235,14 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
     console.log('   ⚠️  MainViewController.m not found');
   }
   
-  // 2. Override LaunchScreen.storyboard - DEEP SCAN ALL COLORS
+  // 2. Override Color Assets in Assets.xcassets
+  const colorAssetsUpdated = overrideIOSColorAssets(appPath, newColor, newRgb);
+  if (colorAssetsUpdated > 0) {
+    console.log(`   🎯 Updated ${colorAssetsUpdated} color asset(s)`);
+    updatedCount++;
+  }
+  
+  // 3. Override LaunchScreen.storyboard - DEEP SCAN ALL COLORS
   console.log('\n   🔍 Searching for LaunchScreen.storyboard...');
   const storyboardPath = findFile(appPath, ['LaunchScreen.storyboard', 'CDVLaunchScreen.storyboard']);
   
@@ -184,16 +288,17 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
         console.log(`   ✅ Replaced ${systemMatches.length} system color(s)`);
       }
       
-      // Pattern 3: Named color assets
+      // Pattern 3: Named color assets - REPLACE with hardcoded RGB
       const namedColorRegex = /<color[^>]*key="[^"]*"[^>]*name="[^"]+"[^>]*\/>/g;
       const namedMatches = content.match(namedColorRegex);
       
       if (namedMatches && namedMatches.length > 0) {
         console.log(`   ℹ️  Found ${namedMatches.length} named color asset(s)`);
+        console.log('   🔄 Replacing named colors with hardcoded RGB...');
         const newColorTag = `<color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
         content = content.replace(namedColorRegex, newColorTag);
         totalReplaced += namedMatches.length;
-        console.log(`   ✅ Replaced ${namedMatches.length} named color(s)`);
+        console.log(`   ✅ Replaced ${namedMatches.length} named color(s) with hardcoded RGB`);
       }
       
       // Strategy 4: If NO colors found at all, add to all view tags
@@ -236,7 +341,7 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
     console.log('   ⚠️  LaunchScreen.storyboard not found');
   }
   
-  // 3. Override Info.plist
+  // 4. Override Info.plist
   console.log('\n   🔍 Searching for Info.plist...');
   const plistPath = findFile(appPath, ['-Info.plist', 'Info.plist']);
   
