@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.8.2">
+    version="2.9.0">
     
     <name>Change App Info</name>
     <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info during build. Supports splash screen and webview background color customization with auto-override for OutSystems. Optimized for OutSystems MABS.</description>
@@ -33,6 +33,7 @@
          UI Customization:
          - SplashScreenBackgroundColor: Native splash background (e.g., "#001833") - AUTO-OVERRIDE OutSystems theme
          - WEBVIEW_BACKGROUND_COLOR: Pre-render webview background (e.g., "#001833")
+         - OLD_COLOR: (Optional) Old color to scan and replace (e.g., "#59ABE3")
          
          Additional Splash Preferences (optional):
          - SplashScreenDelay: Splash duration in ms (e.g., "3000")
@@ -69,6 +70,9 @@
         <!-- FORCE OVERRIDE: Prevent OutSystems from overriding splash colors -->
         <hook type="before_compile" src="hooks/forceOverrideSplashColor.js" />
         
+        <!-- NATIVE OVERRIDE: Override pre-splash native colors -->
+        <hook type="before_compile" src="hooks/forceOverrideNativeColors.js" />
+        
         <!-- SCAN & REPLACE: Find and replace cached old colors -->
         <hook type="before_compile" src="hooks/scanAndReplaceColor.js" />
         
@@ -98,6 +102,9 @@
         
         <!-- FORCE OVERRIDE: Prevent OutSystems from overriding splash colors -->
         <hook type="before_compile" src="hooks/forceOverrideSplashColor.js" />
+        
+        <!-- NATIVE OVERRIDE: Override pre-splash native colors (iOS MainViewController) -->
+        <hook type="before_compile" src="hooks/forceOverrideNativeColors.js" />
         
         <!-- SCAN & REPLACE: Find and replace cached old colors -->
         <hook type="before_compile" src="hooks/scanAndReplaceColor.js" />
