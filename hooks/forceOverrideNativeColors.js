@@ -9,7 +9,7 @@
  * iOS:
  * - MainViewController.m background color
  * - LaunchScreen.storyboard background (DEEP SCAN - all nested views)
- * - Assets.xcassets color assets (named colors)
+ * - Assets.xcassets color assets (named colors) - CREATE if not exists
  * - Info.plist UILaunchStoryboardBackgroundColor
  * 
  * Android:
@@ -105,61 +105,111 @@ function findAllFiles(baseDir, patterns, maxDepth = 3) {
   return results;
 }
 
+function createOrUpdateColorSet(xcassetsPath, colorSetName, newColor, newRgb) {
+  const colorSetDir = path.join(xcassetsPath, `${colorSetName}.colorset`);
+  const contentsJsonPath = path.join(colorSetDir, 'Contents.json');
+  
+  // Create colorset directory if not exists
+  if (!fs.existsSync(colorSetDir)) {
+    console.log(`   📁 Creating new color set: ${colorSetName}`);
+    fs.mkdirSync(colorSetDir, { recursive: true });
+  }
+  
+  // Create Contents.json with color values
+  const colorData = {
+    "colors": [
+      {
+        "idiom": "universal",
+        "color": {
+          "color-space": "srgb",
+          "components": {
+            "red": newRgb.r.toFixed(3),
+            "green": newRgb.g.toFixed(3),
+            "blue": newRgb.b.toFixed(3),
+            "alpha": "1.000"
+          }
+        }
+      }
+    ],
+    "info": {
+      "author": "xcode",
+      "version": 1
+    }
+  };
+  
+  fs.writeFileSync(contentsJsonPath, JSON.stringify(colorData, null, 2), 'utf8');
+  console.log(`   ✅ ${fs.existsSync(contentsJsonPath) ? 'Updated' : 'Created'} ${colorSetName} → ${newColor}`);
+  
+  return true;
+}
+
 function overrideIOSColorAssets(appPath, newColor, newRgb) {
-  console.log('\n   🎨 Searching for Color Assets in Assets.xcassets...');
+  console.log('\n   🎨 Managing Color Assets in Assets.xcassets...');
   
-  // Find all colorset Contents.json files
-  const colorAssetPaths = findAllFiles(appPath, ['Contents.json']);
+  // Find Assets.xcassets folder
+  const xcassetsPaths = findAllFiles(appPath, ['Assets.xcassets']);
   
-  const colorSetFiles = colorAssetPaths.filter(p => 
-    p.includes('.colorset') && p.endsWith('Contents.json')
-  );
-  
-  if (colorSetFiles.length === 0) {
-    console.log('   ℹ️  No color assets found');
+  if (xcassetsPaths.length === 0) {
+    console.log('   ⚠️  Assets.xcassets not found');
     return 0;
   }
   
-  console.log(`   🔍 Found ${colorSetFiles.length} color asset(s)`);
+  const xcassetsPath = xcassetsPaths[0].replace('/Contents.json', '');
+  console.log(`   📂 Found Assets.xcassets at: ${path.basename(path.dirname(xcassetsPath))}`);
+  
   let updatedAssets = 0;
   
-  for (const colorFile of colorSetFiles) {
-    try {
-      const colorName = path.basename(path.dirname(colorFile));
-      console.log(`   📝 Processing: ${colorName}`);
-      
-      let content = fs.readFileSync(colorFile, 'utf8');
-      const original = content;
-      
-      // Parse JSON
-      const colorData = JSON.parse(content);
-      
-      // Update color components for all appearances
-      if (colorData.colors && Array.isArray(colorData.colors)) {
-        colorData.colors.forEach(colorEntry => {
-          if (colorEntry.color && colorEntry.color.components) {
-            // Update RGB values
-            colorEntry.color.components.red = newRgb.r.toFixed(3);
-            colorEntry.color.components.green = newRgb.g.toFixed(3);
-            colorEntry.color.components.blue = newRgb.b.toFixed(3);
-            if (!colorEntry.color.components.alpha) {
-              colorEntry.color.components.alpha = "1.000";
-            }
-            
-            console.log(`      ✓ Updated ${colorEntry.idiom || 'universal'} appearance`);
-          }
-        });
+  // 1. CRITICAL: Create or update SplashScreenBackgroundColor color set
+  console.log('\n   🎯 Ensuring SplashScreenBackgroundColor exists...');
+  if (createOrUpdateColorSet(xcassetsPath, 'SplashScreenBackgroundColor', newColor, newRgb)) {
+    updatedAssets++;
+  }
+  
+  // 2. Update any other existing color sets
+  const colorAssetPaths = findAllFiles(appPath, ['Contents.json']);
+  const colorSetFiles = colorAssetPaths.filter(p => 
+    p.includes('.colorset') && 
+    p.endsWith('Contents.json') &&
+    !p.includes('SplashScreenBackgroundColor') // Skip the one we just created
+  );
+  
+  if (colorSetFiles.length > 0) {
+    console.log(`\n   🔍 Found ${colorSetFiles.length} additional color set(s)`);
+    
+    for (const colorFile of colorSetFiles) {
+      try {
+        const colorName = path.basename(path.dirname(colorFile));
+        console.log(`   📝 Processing: ${colorName}`);
         
-        // Write back
-        const newContent = JSON.stringify(colorData, null, 2);
-        if (newContent !== original) {
-          fs.writeFileSync(colorFile, newContent, 'utf8');
-          console.log(`   ✅ Updated ${colorName} to ${newColor}`);
-          updatedAssets++;
+        let content = fs.readFileSync(colorFile, 'utf8');
+        const original = content;
+        
+        // Parse JSON
+        const colorData = JSON.parse(content);
+        
+        // Update color components for all appearances
+        if (colorData.colors && Array.isArray(colorData.colors)) {
+          colorData.colors.forEach(colorEntry => {
+            if (colorEntry.color && colorEntry.color.components) {
+              colorEntry.color.components.red = newRgb.r.toFixed(3);
+              colorEntry.color.components.green = newRgb.g.toFixed(3);
+              colorEntry.color.components.blue = newRgb.b.toFixed(3);
+              if (!colorEntry.color.components.alpha) {
+                colorEntry.color.components.alpha = "1.000";
+              }
+            }
+          });
+          
+          const newContent = JSON.stringify(colorData, null, 2);
+          if (newContent !== original) {
+            fs.writeFileSync(colorFile, newContent, 'utf8');
+            console.log(`   ✅ Updated ${colorName} to ${newColor}`);
+            updatedAssets++;
+          }
         }
+      } catch (error) {
+        console.log(`   ⚠️  Error updating ${path.basename(path.dirname(colorFile))}: ${error.message}`);
       }
-    } catch (error) {
-      console.log(`   ⚠️  Error updating ${path.basename(path.dirname(colorFile))}: ${error.message}`);
     }
   }
   
@@ -235,14 +285,14 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
     console.log('   ⚠️  MainViewController.m not found');
   }
   
-  // 2. Override Color Assets in Assets.xcassets
+  // 2. Override Color Assets in Assets.xcassets (CREATES SplashScreenBackgroundColor if missing)
   const colorAssetsUpdated = overrideIOSColorAssets(appPath, newColor, newRgb);
   if (colorAssetsUpdated > 0) {
-    console.log(`   🎯 Updated ${colorAssetsUpdated} color asset(s)`);
+    console.log(`   🎯 Managed ${colorAssetsUpdated} color asset(s)`);
     updatedCount++;
   }
   
-  // 3. Override LaunchScreen.storyboard - ULTRA AGGRESSIVE: STRIP ALL ATTRIBUTES
+  // 3. Override LaunchScreen.storyboard - KEEP name attribute if color set exists
   console.log('\n   🔍 Searching for LaunchScreen.storyboard...');
   const storyboardPath = findFile(appPath, ['LaunchScreen.storyboard', 'CDVLaunchScreen.storyboard']);
   
@@ -253,10 +303,10 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
       const originalContent = content;
       let totalReplaced = 0;
       
-      console.log('   🔬 ULTRA AGGRESSIVE REPLACEMENT: Strip ALL color attributes...');
+      console.log('   🔬 SMART REPLACEMENT: Analyzing storyboard...');
       
-      // NEW STRATEGY: Replace ALL color tags, STRIP ALL ATTRIBUTES except RGB
-      // This prevents named color references like name="SplashScreenBackgroundColor"
+      // Strategy: Replace color tags but KEEP name="SplashScreenBackgroundColor" 
+      // since we just created/updated that color set!
       const allColorRegex = /<color\s+[^>]*\/>/g;
       const allColorMatches = content.match(allColorRegex);
       
@@ -270,15 +320,21 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
           console.log(`      ... and ${allColorMatches.length - 5} more`);
         }
         
-        // Create the new color tag - ONLY backgroundColor + RGB, NO OTHER ATTRIBUTES
-        // This prevents iOS from using named color lookups
-        const newColorTag = `<color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
+        // Replace each color tag
+        content = content.replace(allColorRegex, (match) => {
+          // If it references SplashScreenBackgroundColor, keep the reference 
+          // (we just updated that color set)
+          if (match.includes('name="SplashScreenBackgroundColor"')) {
+            console.log('   ✓ Keeping SplashScreenBackgroundColor reference (color set updated)');
+            return match; // Keep as is
+          }
+          
+          // Otherwise, replace with inline RGB
+          return `<color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
+        });
         
-        // Replace ALL color tags with our clean RGB-only tag
-        content = content.replace(allColorRegex, newColorTag);
         totalReplaced = allColorMatches.length;
-        console.log(`   ✅ Replaced ${totalReplaced} color tag(s) with RGB-only backgroundColor`);
-        console.log(`   🚫 Removed ALL 'name' attributes to prevent named color lookups`);
+        console.log(`   ✅ Processed ${totalReplaced} color tag(s)`);
       }
       
       // Strategy 2: If NO color tags found, inject into ALL view elements
@@ -291,7 +347,7 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
         if (viewMatches && viewMatches.length > 0) {
           console.log(`   ℹ️  Found ${viewMatches.length} view opening tag(s)`);
           
-          const colorInjection = `\n                <color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
+          const colorInjection = `\n                <color key="backgroundColor" name="SplashScreenBackgroundColor"/>`;
           
           content = content.replace(
             viewOpenTagRegex,
@@ -299,7 +355,7 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
           );
           
           totalReplaced = viewMatches.length;
-          console.log(`   ✅ Injected RGB-only backgroundColor into ${totalReplaced} view(s)`);
+          console.log(`   ✅ Injected SplashScreenBackgroundColor reference into ${totalReplaced} view(s)`);
         } else {
           console.log('   ⚠️  No view tags found in storyboard');
         }
@@ -311,8 +367,6 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
         console.log(`   🎯 Total modifications in storyboard: ${totalReplaced}`);
         console.log(`   ✅ LaunchScreen.storyboard updated to ${newColor}`);
         updatedCount++;
-      } else {
-        console.log('   ⚠️  Storyboard unchanged - this may indicate an edge case');
       }
       
     } catch (error) {
