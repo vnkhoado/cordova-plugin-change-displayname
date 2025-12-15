@@ -8,7 +8,7 @@
  * 
  * iOS:
  * - MainViewController.m background color
- * - LaunchScreen.storyboard background (hex + RGB decimal format)
+ * - LaunchScreen.storyboard background (DEEP SCAN - all nested views)
  * - Info.plist UILaunchStoryboardBackgroundColor
  * 
  * Android:
@@ -138,7 +138,7 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
     console.log('   ⚠️  MainViewController.m not found');
   }
   
-  // 2. Override LaunchScreen.storyboard
+  // 2. Override LaunchScreen.storyboard - DEEP SCAN ALL COLORS
   console.log('\n   🔍 Searching for LaunchScreen.storyboard...');
   const storyboardPath = findFile(appPath, ['LaunchScreen.storyboard', 'CDVLaunchScreen.storyboard']);
   
@@ -146,62 +146,89 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
     console.log(`   ✓ Found at: ${path.relative(iosPath, storyboardPath)}`);
     try {
       let content = fs.readFileSync(storyboardPath, 'utf8');
-      let replaceCount = 0;
+      const originalContent = content;
+      let totalReplaced = 0;
       
-      // Strategy 1: Replace backgroundColor tags with exact RGB match (if old color provided)
-      if (oldRgb) {
-        const oldRgbPattern = `red="${oldRgb.r.toFixed(3)}" green="${oldRgb.g.toFixed(3)}" blue="${oldRgb.b.toFixed(3)}"`;
-        const newRgbPattern = `red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}"`;
+      // NEW: Deep scan - replace ALL color tags
+      console.log('   🔬 DEEP SCAN: Analyzing all color elements...');
+      
+      // Pattern 1: RGB color tags (custom colors)
+      const rgbColorRegex = /<color[^>]*key="[^"]*"[^>]*red="[0-9.]+"[^>]*green="[0-9.]+"[^>]*blue="[0-9.]+"[^>]*\/>/g;
+      const rgbMatches = content.match(rgbColorRegex);
+      
+      if (rgbMatches && rgbMatches.length > 0) {
+        console.log(`   ℹ️  Found ${rgbMatches.length} RGB color tag(s)`);
+        console.log('   📋 Existing colors:');
+        rgbMatches.forEach((match, idx) => {
+          console.log(`      ${idx + 1}. ${match.substring(0, 80)}...`);
+        });
         
-        const beforeCount = (content.match(new RegExp(oldRgbPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
-        if (beforeCount > 0) {
-          content = content.replace(new RegExp(oldRgbPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), newRgbPattern);
-          console.log(`   ✅ Replaced ${beforeCount} old RGB color(s) with new RGB`);
-          replaceCount += beforeCount;
-        }
-      }
-      
-      // Strategy 2: Replace ALL backgroundColor tags
-      const colorRegex = /<color[^>]*key="backgroundColor"[^>]*red="[^"]+"[^>]*green="[^"]+"[^>]*blue="[^"]+"[^>]*\/>/g;
-      const matches = content.match(colorRegex);
-      
-      if (matches && matches.length > 0) {
-        console.log(`   ℹ️  Found ${matches.length} backgroundColor tag(s)`);
+        // Replace ALL with new color
         const newColorTag = `<color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
-        content = content.replace(colorRegex, newColorTag);
-        replaceCount += matches.length;
+        
+        // Replace each occurrence
+        content = content.replace(rgbColorRegex, newColorTag);
+        totalReplaced += rgbMatches.length;
+        console.log(`   ✅ Replaced ${rgbMatches.length} RGB color(s) with new color`);
       }
       
-      // Strategy 3: Replace systemColor references
-      const systemColorRegex = /<color[^>]*key="backgroundColor"[^>]*systemColor="[^"]+"[^>]*\/>/g;
+      // Pattern 2: System color references (iOS 13+)
+      const systemColorRegex = /<color[^>]*key="[^"]*"[^>]*systemColor="[^"]+"[^>]*\/>/g;
       const systemMatches = content.match(systemColorRegex);
+      
       if (systemMatches && systemMatches.length > 0) {
-        console.log(`   ℹ️  Found ${systemMatches.length} systemColor backgroundColor(s)`);
+        console.log(`   ℹ️  Found ${systemMatches.length} system color reference(s)`);
         const newColorTag = `<color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
         content = content.replace(systemColorRegex, newColorTag);
-        replaceCount += systemMatches.length;
+        totalReplaced += systemMatches.length;
+        console.log(`   ✅ Replaced ${systemMatches.length} system color(s)`);
       }
       
-      if (replaceCount > 0) {
-        fs.writeFileSync(storyboardPath, content, 'utf8');
-        console.log(`   ✅ Updated LaunchScreen.storyboard (${replaceCount} color(s) changed)`);
-        updatedCount++;
-      } else {
-        // Strategy 4: Add backgroundColor if none found
-        console.log('   ℹ️  No backgroundColor found, adding to main view...');
-        const viewRegex = /(<view [^>]*>)/;
-        if (viewRegex.test(content)) {
+      // Pattern 3: Named color assets
+      const namedColorRegex = /<color[^>]*key="[^"]*"[^>]*name="[^"]+"[^>]*\/>/g;
+      const namedMatches = content.match(namedColorRegex);
+      
+      if (namedMatches && namedMatches.length > 0) {
+        console.log(`   ℹ️  Found ${namedMatches.length} named color asset(s)`);
+        const newColorTag = `<color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
+        content = content.replace(namedColorRegex, newColorTag);
+        totalReplaced += namedMatches.length;
+        console.log(`   ✅ Replaced ${namedMatches.length} named color(s)`);
+      }
+      
+      // Strategy 4: If NO colors found at all, add to all view tags
+      if (totalReplaced === 0) {
+        console.log('   ℹ️  No color tags found, adding backgroundColor to view elements...');
+        
+        // Find all <view> tags and add backgroundColor
+        const viewTagRegex = /(<view [^>]*)(>)/g;
+        const viewMatches = content.match(viewTagRegex);
+        
+        if (viewMatches && viewMatches.length > 0) {
+          console.log(`   ℹ️  Found ${viewMatches.length} view element(s)`);
+          
+          // Add color as child element after each view tag
           content = content.replace(
-            viewRegex,
-            `$1\n            <color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`
+            viewTagRegex,
+            `$1$2\n            <color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`
           );
-          fs.writeFileSync(storyboardPath, content, 'utf8');
-          console.log(`   ✅ Added backgroundColor to LaunchScreen.storyboard`);
-          updatedCount++;
+          totalReplaced += viewMatches.length;
+          console.log(`   ✅ Added backgroundColor to ${viewMatches.length} view(s)`);
         } else {
-          console.log('   ⚠️  Could not find view tag to add backgroundColor');
+          console.log('   ⚠️  Could not find any view tags');
         }
       }
+      
+      // Write back if any changes made
+      if (content !== originalContent) {
+        fs.writeFileSync(storyboardPath, content, 'utf8');
+        console.log(`   🎯 Total colors overridden in storyboard: ${totalReplaced}`);
+        console.log(`   ✅ LaunchScreen.storyboard updated successfully`);
+        updatedCount++;
+      } else {
+        console.log('   ⚠️  No changes made to storyboard');
+      }
+      
     } catch (error) {
       console.log(`   ❌ Error updating LaunchScreen.storyboard: ${error.message}`);
     }
