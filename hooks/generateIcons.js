@@ -3,7 +3,6 @@
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
-const { execSync } = require("child_process");
 
 function download(url, dest) {
     return new Promise((resolve, reject) => {
@@ -18,11 +17,45 @@ function download(url, dest) {
     });
 }
 
-function resizeWithSips(src, dest, size) {
+// Try to load image processing library
+let sharp = null;
+let Jimp = null;
+
+try {
+    sharp = require('sharp');
+    console.log('📦 Using Sharp for image processing');
+} catch (e) {
     try {
-        execSync(`sips -z ${size} ${size} "${src}" --out "${dest}"`, { stdio: 'ignore' });
-        return true;
-    } catch (e) {
+        Jimp = require('jimp');
+        console.log('📦 Using Jimp for image processing');
+    } catch (e2) {
+        console.log('❌ Neither Sharp nor Jimp available');
+    }
+}
+
+async function resizeImage(src, dest, size) {
+    try {
+        if (sharp) {
+            // Use Sharp (faster, better quality)
+            await sharp(src)
+                .resize(size, size, {
+                    fit: 'contain',
+                    background: { r: 255, g: 255, b: 255, alpha: 0 }
+                })
+                .png()
+                .toFile(dest);
+            return true;
+        } else if (Jimp) {
+            // Use Jimp (fallback)
+            const image = await Jimp.read(src);
+            await image.resize(size, size).writeAsync(dest);
+            return true;
+        } else {
+            console.log('⚠️ No image processing library available');
+            return false;
+        }
+    } catch (error) {
+        console.log(`   ❌ Error resizing to ${size}x${size}:`, error.message);
         return false;
     }
 }
@@ -40,12 +73,20 @@ module.exports = async function(context) {
     console.log("Hook type:", context.hook);
     console.log("Platforms:", platforms.join(", "));
     
+    // Check if image processing available
+    if (!sharp && !Jimp) {
+        console.log("❌ Cannot generate icons: No image processing library found");
+        console.log("   Install: npm install sharp OR npm install jimp");
+        console.log("══════════════════════════════════\n");
+        return;
+    }
+    
     // Get CDN_ICON preference
     const cdnUrl = (config.getPreference("CDN_ICON") || "").trim();
     
     // Validate: skip if empty
     if (!cdnUrl) {
-        console.log("⚠ CDN_ICON không được set hoặc rỗng - bỏ qua generate icons");
+        console.log("⚠ CDN_ICON not configured - skipping icon generation");
         console.log("══════════════════════════════════\n");
         return;
     }
@@ -136,7 +177,7 @@ async function generateAndroidIcons(root, iconPath) {
         }
         
         const output = path.join(folderPath, "ic_launcher.png");
-        if (resizeWithSips(iconPath, output, size)) {
+        if (await resizeImage(iconPath, output, size)) {
             console.log(`  ✔ ${folder}/ic_launcher.png (${size}x${size})`);
             successCount++;
         }
@@ -209,11 +250,8 @@ async function generateIOSIcons(root, iconPath) {
         ["icon-60@2x.png", 120],
         ["icon-60@3x.png", 180],
         ["icon-20.png", 20],
-        ["icon-20@2x.png", 40],
         ["icon-29.png", 29],
-        ["icon-29@2x.png", 58],
         ["icon-40.png", 40],
-        ["icon-40@2x.png", 80],
         ["icon-76.png", 76],
         ["icon-76@2x.png", 152],
         ["icon-83.5@2x.png", 167],
@@ -223,7 +261,7 @@ async function generateIOSIcons(root, iconPath) {
     let successCount = 0;
     for (const [filename, size] of iosSizes) {
         const output = path.join(appIconPath, filename);
-        if (resizeWithSips(iconPath, output, size)) {
+        if (await resizeImage(iconPath, output, size)) {
             console.log(`  ✔ ${filename} (${size}x${size})`);
             successCount++;
         }
@@ -243,11 +281,8 @@ async function generateIOSIcons(root, iconPath) {
             { "size": "60x60", "idiom": "iphone", "filename": "icon-60@2x.png", "scale": "2x" },
             { "size": "60x60", "idiom": "iphone", "filename": "icon-60@3x.png", "scale": "3x" },
             { "size": "20x20", "idiom": "ipad", "filename": "icon-20.png", "scale": "1x" },
-            { "size": "20x20", "idiom": "ipad", "filename": "icon-20@2x.png", "scale": "2x" },
             { "size": "29x29", "idiom": "ipad", "filename": "icon-29.png", "scale": "1x" },
-            { "size": "29x29", "idiom": "ipad", "filename": "icon-29@2x.png", "scale": "2x" },
             { "size": "40x40", "idiom": "ipad", "filename": "icon-40.png", "scale": "1x" },
-            { "size": "40x40", "idiom": "ipad", "filename": "icon-40@2x.png", "scale": "2x" },
             { "size": "76x76", "idiom": "ipad", "filename": "icon-76.png", "scale": "1x" },
             { "size": "76x76", "idiom": "ipad", "filename": "icon-76@2x.png", "scale": "2x" },
             { "size": "83.5x83.5", "idiom": "ipad", "filename": "icon-83.5@2x.png", "scale": "2x" },
@@ -262,52 +297,4 @@ async function generateIOSIcons(root, iconPath) {
     const contentsPath = path.join(appIconPath, "Contents.json");
     fs.writeFileSync(contentsPath, JSON.stringify(contentsJson, null, 2));
     console.log("✅ Contents.json created");
-    
-    // Verify
-    const allExist = iosSizes.every(([filename]) => 
-        fs.existsSync(path.join(appIconPath, filename))
-    );
-    
-    if (allExist) {
-        console.log(`✅ All ${iosSizes.length} iOS icons verified`);
-    } else {
-        console.log("⚠ Some icons are missing");
-    }
-    
-    // Update Xcode project
-    const projectPath = path.join(iosPath, appFolder + ".xcodeproj", "project.pbxproj");
-    
-    if (fs.existsSync(projectPath)) {
-        try {
-            let projectContent = fs.readFileSync(projectPath, "utf8");
-            
-            // Ensure ASSETCATALOG_COMPILER_APPICON_NAME is set
-            const regex = /ASSETCATALOG_COMPILER_APPICON_NAME = [^;]+;/g;
-            const replacement = 'ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;';
-            
-            let changeCount = 0;
-            projectContent = projectContent.replace(regex, (match) => {
-                changeCount++;
-                return replacement;
-            });
-            
-            if (changeCount > 0) {
-                fs.writeFileSync(projectPath, projectContent);
-                console.log(`✅ Updated Xcode project (${changeCount} configs)`);
-            }
-            
-            // Touch xcassets to force Xcode refresh
-            const now = new Date();
-            fs.utimesSync(xcassetsPath, now, now);
-            console.log("✅ Forced Xcode to refresh assets");
-            
-        } catch (err) {
-            console.log("⚠ Warning: Could not update Xcode project:", err.message);
-        }
-    }
-    
-    console.log("\n⚠️ Để thấy icon mới trên thiết bị:");
-    console.log("   1. Xóa app hoàn toàn khỏi device");
-    console.log("   2. Khởi động lại device");
-    console.log("   3. Cài đặt app lại");
 }
