@@ -204,8 +204,9 @@ module.exports = function(context) {
   const config = getConfigParser(context, path.join(root, 'config.xml'));
   
   // Try both preference names (backwards compatible)
-  let backgroundColor = config.getPreference('SplashScreenBackgroundColor') || 
-                        config.getPreference('SPLASH_BACKGROUND_COLOR');
+  let backgroundColor = config.getPreference("SplashScreenBackgroundColor") ||
+                      config.getPreference("AndroidWindowSplashScreenBackground") ||
+                      config.getPreference("SPLASH_BACKGROUND_COLOR");
   
   if (!backgroundColor) {
     console.log('\n🎨 Splash color not configured, skipping');
