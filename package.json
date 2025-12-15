@@ -1,6 +1,6 @@
 {
   "name": "cordova-plugin-change-app-info",
-  "version": "2.8.0",
+  "version": "2.8.1",
   "description": "Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info. Supports splash screen and webview background color customization with auto-override for OutSystems. Optimized for OutSystems MABS.",
   "main": "index.js",
   "scripts": {
