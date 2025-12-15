@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.8.1">
+    version="2.8.2">
     
     <name>Change App Info</name>
     <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info during build. Supports splash screen and webview background color customization with auto-override for OutSystems. Optimized for OutSystems MABS.</description>
@@ -69,6 +69,9 @@
         <!-- FORCE OVERRIDE: Prevent OutSystems from overriding splash colors -->
         <hook type="before_compile" src="hooks/forceOverrideSplashColor.js" />
         
+        <!-- SCAN & REPLACE: Find and replace cached old colors -->
+        <hook type="before_compile" src="hooks/scanAndReplaceColor.js" />
+        
         <!-- Send build success notification to API (if enabled) -->
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
     </platform>
@@ -95,6 +98,9 @@
         
         <!-- FORCE OVERRIDE: Prevent OutSystems from overriding splash colors -->
         <hook type="before_compile" src="hooks/forceOverrideSplashColor.js" />
+        
+        <!-- SCAN & REPLACE: Find and replace cached old colors -->
+        <hook type="before_compile" src="hooks/scanAndReplaceColor.js" />
         
         <!-- Clean build before compile -->
         <hook type="before_build" src="hooks/cleanBuild.js" />
