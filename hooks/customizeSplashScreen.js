@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * Hook để customize màu background của native splash screen
- * Chỉnh sửa splash screen config và theme colors
+ * Hook to customize native splash screen background color
+ * Auto-override OutSystems theme colors
+ * Works with both SplashScreenBackgroundColor and SPLASH_BACKGROUND_COLOR
  */
 
 const fs = require('fs');
@@ -12,7 +13,7 @@ const { getConfigParser } = require('./utils');
 function customizeAndroidSplash(context, backgroundColor) {
   const root = context.opts.projectRoot;
   
-  // 1. Update colors.xml
+  // 1. Update colors.xml - FORCE override all splash-related colors
   const colorsPath = path.join(
     root,
     'platforms/android/app/src/main/res/values/colors.xml'
@@ -20,30 +21,50 @@ function customizeAndroidSplash(context, backgroundColor) {
   
   if (fs.existsSync(colorsPath)) {
     let colors = fs.readFileSync(colorsPath, 'utf8');
+    let updated = false;
     
-    // Check if already has custom splash color
+    // Override OutSystems primary colors
+    if (colors.includes('colorPrimary')) {
+      colors = colors.replace(
+        /<color name="colorPrimary">[^<]*<\/color>/,
+        `<color name="colorPrimary">${backgroundColor}</color>`
+      );
+      console.log(`   ✓ Overrode colorPrimary`);
+      updated = true;
+    }
+    
+    if (colors.includes('colorPrimaryDark')) {
+      colors = colors.replace(
+        /<color name="colorPrimaryDark">[^<]*<\/color>/,
+        `<color name="colorPrimaryDark">${backgroundColor}</color>`
+      );
+      console.log(`   ✓ Overrode colorPrimaryDark`);
+      updated = true;
+    }
+    
+    // Add splash_background if not exists
     if (!colors.includes('splash_background')) {
-      // Add splash background color
       colors = colors.replace(
         '</resources>',
         `    <color name="splash_background">${backgroundColor}</color>\n</resources>`
       );
-      
-      fs.writeFileSync(colorsPath, colors, 'utf8');
-      console.log(`   ✓ Added splash_background color to colors.xml`);
+      console.log(`   ✓ Added splash_background`);
+      updated = true;
     } else {
-      // Update existing
       colors = colors.replace(
         /<color name="splash_background">[^<]*<\/color>/,
         `<color name="splash_background">${backgroundColor}</color>`
       );
-      
+      console.log(`   ✓ Updated splash_background`);
+      updated = true;
+    }
+    
+    if (updated) {
       fs.writeFileSync(colorsPath, colors, 'utf8');
-      console.log(`   ✓ Updated splash_background color`);
     }
   }
   
-  // 2. Update splash screen theme
+  // 2. Update styles.xml - Force window background
   const stylesPath = path.join(
     root,
     'platforms/android/app/src/main/res/values/styles.xml'
@@ -51,23 +72,79 @@ function customizeAndroidSplash(context, backgroundColor) {
   
   if (fs.existsSync(stylesPath)) {
     let styles = fs.readFileSync(stylesPath, 'utf8');
+    let updated = false;
     
-    // Check if AppTheme.Launcher exists
-    if (styles.includes('AppTheme.Launcher')) {
-      // Update window background in launcher theme
-      if (!styles.includes('<item name="android:windowBackground">@color/splash_background</item>')) {
-        styles = styles.replace(
-          /(<style name="AppTheme\.Launcher"[^>]*>)/,
-          `$1\n        <item name="android:windowBackground">@color/splash_background</item>`
-        );
+    // Update AppTheme
+    if (styles.includes('<style name="AppTheme"')) {
+      const appThemeRegex = /(<style name="AppTheme"[^>]*>)(.*?)(<\/style>)/s;
+      const match = styles.match(appThemeRegex);
+      
+      if (match) {
+        let themeContent = match[2];
         
-        fs.writeFileSync(stylesPath, styles, 'utf8');
-        console.log(`   ✓ Added windowBackground to AppTheme.Launcher`);
+        if (themeContent.includes('android:windowBackground')) {
+          themeContent = themeContent.replace(
+            /<item name="android:windowBackground">[^<]*<\/item>/,
+            `<item name="android:windowBackground">${backgroundColor}</item>`
+          );
+        } else {
+          themeContent = `\n        <item name="android:windowBackground">${backgroundColor}</item>${themeContent}`;
+        }
+        
+        styles = styles.replace(appThemeRegex, `$1${themeContent}$3`);
+        console.log(`   ✓ Updated AppTheme windowBackground`);
+        updated = true;
       }
+    }
+    
+    // Update AppTheme.Launcher if exists
+    if (styles.includes('AppTheme.Launcher')) {
+      const launcherRegex = /(<style name="AppTheme\.Launcher"[^>]*>)(.*?)(<\/style>)/s;
+      const match = styles.match(launcherRegex);
+      
+      if (match) {
+        let themeContent = match[2];
+        
+        if (themeContent.includes('android:windowBackground')) {
+          themeContent = themeContent.replace(
+            /<item name="android:windowBackground">[^<]*<\/item>/,
+            `<item name="android:windowBackground">${backgroundColor}</item>`
+          );
+        } else {
+          themeContent = `\n        <item name="android:windowBackground">${backgroundColor}</item>${themeContent}`;
+        }
+        
+        styles = styles.replace(launcherRegex, `$1${themeContent}$3`);
+        console.log(`   ✓ Updated AppTheme.Launcher windowBackground`);
+        updated = true;
+      }
+    }
+    
+    if (updated) {
+      fs.writeFileSync(stylesPath, styles, 'utf8');
     }
   }
   
-  console.log(`   ✓ Android splash background set to ${backgroundColor}`);
+  // 3. Check for splash.xml drawable
+  const splashXmlPath = path.join(
+    root,
+    'platforms/android/app/src/main/res/drawable/splash.xml'
+  );
+  
+  if (fs.existsSync(splashXmlPath)) {
+    let splash = fs.readFileSync(splashXmlPath, 'utf8');
+    
+    if (splash.includes('<solid')) {
+      splash = splash.replace(
+        /<solid android:color="[^"]*"/g,
+        `<solid android:color="${backgroundColor}"`
+      );
+      fs.writeFileSync(splashXmlPath, splash, 'utf8');
+      console.log(`   ✓ Updated splash.xml drawable`);
+    }
+  }
+  
+  console.log(`   ✅ Android splash configured: ${backgroundColor}`);
 }
 
 function customizeIOSSplash(context, backgroundColor) {
@@ -75,7 +152,7 @@ function customizeIOSSplash(context, backgroundColor) {
   const config = getConfigParser(context, path.join(root, 'config.xml'));
   const projectName = config.name();
   
-  // iOS splash screen được control bởi LaunchScreen.storyboard
+  // iOS LaunchScreen.storyboard
   const storyboardPath = path.join(
     root,
     `platforms/ios/${projectName}/Resources/LaunchScreen.storyboard`
@@ -83,13 +160,10 @@ function customizeIOSSplash(context, backgroundColor) {
   
   if (fs.existsSync(storyboardPath)) {
     let storyboard = fs.readFileSync(storyboardPath, 'utf8');
-    
-    // Convert hex to RGB
     const rgb = hexToRGB(backgroundColor);
     
-    // Update background color in storyboard
-    // Find view with backgroundColor and update it
-    const colorPattern = /<color key="backgroundColor"[^>]*\/>/g;
+    // Update ALL backgroundColor in storyboard
+    const colorPattern = /<color key="backgroundColor"[^/]*\/>/g;
     
     if (storyboard.match(colorPattern)) {
       storyboard = storyboard.replace(
@@ -98,11 +172,11 @@ function customizeIOSSplash(context, backgroundColor) {
       );
       
       fs.writeFileSync(storyboardPath, storyboard, 'utf8');
-      console.log(`   ✓ Updated LaunchScreen.storyboard background`);
+      console.log(`   ✓ Updated LaunchScreen.storyboard`);
     }
   }
   
-  console.log(`   ✓ iOS splash background set to ${backgroundColor}`);
+  console.log(`   ✅ iOS splash configured: ${backgroundColor}`);
 }
 
 function hexToRGB(hex) {
@@ -129,17 +203,18 @@ module.exports = function(context) {
   const root = context.opts.projectRoot;
   const config = getConfigParser(context, path.join(root, 'config.xml'));
   
-  // Đọc splash background color từ config
-  let backgroundColor = config.getPreference('SPLASH_BACKGROUND_COLOR');
+  // Try both preference names (backwards compatible)
+  let backgroundColor = config.getPreference('SplashScreenBackgroundColor') || 
+                        config.getPreference('SPLASH_BACKGROUND_COLOR');
   
   if (!backgroundColor) {
-    console.log('\n🖼️  SPLASH_BACKGROUND_COLOR not configured, skipping splash customization');
+    console.log('\n🎨 Splash color not configured, skipping');
     return;
   }
   
   // Validate color format
   if (!validateHexColor(backgroundColor)) {
-    console.error('\n❌ Invalid SPLASH_BACKGROUND_COLOR format. Use hex color (e.g., #FFFFFF)');
+    console.error('\n❌ Invalid splash color format. Use hex color (e.g., #FFFFFF)');
     return;
   }
   
@@ -149,12 +224,12 @@ module.exports = function(context) {
   }
   
   console.log('\n══════════════════════════════════════════════');
-  console.log('  CUSTOMIZE SPLASH SCREEN BACKGROUND COLOR    ');
+  console.log('  🎨 SPLASH SCREEN COLOR (Auto-Override)');
   console.log('══════════════════════════════════════════════');
   console.log(`Color: ${backgroundColor}`);
   
   for (const platform of platforms) {
-    console.log(`\n🖼️  Processing ${platform}...`);
+    console.log(`\n📱 Processing ${platform}...`);
     
     try {
       if (platform === 'android') {
@@ -163,11 +238,11 @@ module.exports = function(context) {
         customizeIOSSplash(context, backgroundColor);
       }
     } catch (error) {
-      console.error(`\n❌ Error customizing ${platform} splash:`, error.message);
+      console.error(`\n❌ Error:`, error.message);
     }
   }
   
   console.log('\n══════════════════════════════════════════════');
-  console.log('✅ Splash screen customization completed!');
+  console.log('✅ Splash customization completed!');
   console.log('══════════════════════════════════════════════\n');
 };
