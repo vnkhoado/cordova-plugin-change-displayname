@@ -242,7 +242,7 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
     updatedCount++;
   }
   
-  // 3. Override LaunchScreen.storyboard - AGGRESSIVE REPLACEMENT
+  // 3. Override LaunchScreen.storyboard - ULTRA AGGRESSIVE: STRIP ALL ATTRIBUTES
   console.log('\n   🔍 Searching for LaunchScreen.storyboard...');
   const storyboardPath = findFile(appPath, ['LaunchScreen.storyboard', 'CDVLaunchScreen.storyboard']);
   
@@ -253,9 +253,10 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
       const originalContent = content;
       let totalReplaced = 0;
       
-      console.log('   🔬 AGGRESSIVE COLOR REPLACEMENT: Analyzing storyboard...');
+      console.log('   🔬 ULTRA AGGRESSIVE REPLACEMENT: Strip ALL color attributes...');
       
-      // Strategy 1: Replace ALL existing color tags regardless of key attribute
+      // NEW STRATEGY: Replace ALL color tags, STRIP ALL ATTRIBUTES except RGB
+      // This prevents named color references like name="SplashScreenBackgroundColor"
       const allColorRegex = /<color\s+[^>]*\/>/g;
       const allColorMatches = content.match(allColorRegex);
       
@@ -269,27 +270,27 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
           console.log(`      ... and ${allColorMatches.length - 5} more`);
         }
         
-        // Create the new color tag
+        // Create the new color tag - ONLY backgroundColor + RGB, NO OTHER ATTRIBUTES
+        // This prevents iOS from using named color lookups
         const newColorTag = `<color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
         
-        // Replace ALL color tags with our new backgroundColor
+        // Replace ALL color tags with our clean RGB-only tag
         content = content.replace(allColorRegex, newColorTag);
         totalReplaced = allColorMatches.length;
-        console.log(`   ✅ Replaced ${totalReplaced} color tag(s) with new backgroundColor`);
+        console.log(`   ✅ Replaced ${totalReplaced} color tag(s) with RGB-only backgroundColor`);
+        console.log(`   🚫 Removed ALL 'name' attributes to prevent named color lookups`);
       }
       
       // Strategy 2: If NO color tags found, inject into ALL view elements
       if (totalReplaced === 0) {
         console.log('   ⚠️  No color tags found, injecting backgroundColor into views...');
         
-        // Find opening view tags that don't have a self-closing color child
         const viewOpenTagRegex = /<view([^>]*)>/g;
         let viewMatches = content.match(viewOpenTagRegex);
         
         if (viewMatches && viewMatches.length > 0) {
           console.log(`   ℹ️  Found ${viewMatches.length} view opening tag(s)`);
           
-          // Inject color after each view opening tag
           const colorInjection = `\n                <color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
           
           content = content.replace(
@@ -298,18 +299,10 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
           );
           
           totalReplaced = viewMatches.length;
-          console.log(`   ✅ Injected backgroundColor into ${totalReplaced} view(s)`);
+          console.log(`   ✅ Injected RGB-only backgroundColor into ${totalReplaced} view(s)`);
         } else {
           console.log('   ⚠️  No view tags found in storyboard');
         }
-      }
-      
-      // Strategy 3: Also handle scene backgroundColor if exists
-      const sceneRegex = /<scene([^>]*)>/g;
-      const sceneMatches = content.match(sceneRegex);
-      if (sceneMatches && sceneMatches.length > 0) {
-        console.log(`   ℹ️  Found ${sceneMatches.length} scene tag(s), ensuring they have backgroundColor...`);
-        // This is just for logging, main replacement is done above
       }
       
       // Write back if any changes made
@@ -320,7 +313,6 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
         updatedCount++;
       } else {
         console.log('   ⚠️  Storyboard unchanged - this may indicate an edge case');
-        console.log('   💡 TIP: Manually verify storyboard structure or check console logs');
       }
       
     } catch (error) {
