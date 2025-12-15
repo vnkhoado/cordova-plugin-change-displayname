@@ -1,17 +1,20 @@
 {
   "name": "cordova-plugin-change-app-info",
-  "version": "2.6.0",
-  "description": "Cordova plugin to change app display name and icon from CDN at build time with direct SQLite database creation",
+  "version": "2.8.0",
+  "description": "Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info. Supports splash screen and webview background color customization with auto-override for OutSystems. Optimized for OutSystems MABS.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"No tests yet\"",
     "postinstall": "node scripts/postinstall.js"
   },
   "dependencies": {
+    "better-sqlite3": "^9.0.0",
     "sharp": "^0.33.0",
     "node-fetch": "^2.7.0",
-    "xcode": "^3.0.1",
-    "better-sqlite3": "^9.0.0"
+    "xcode": "^3.0.1"
+  },
+  "optionalDependencies": {
+    "jimp": "^0.22.0"
   },
   "cordova": {
     "id": "cordova-plugin-change-app-info",
@@ -22,22 +25,30 @@
   },
   "keywords": [
     "cordova",
+    "cordova-plugin",
     "app",
     "info",
+    "package-name",
     "displayname",
+    "version",
     "icon",
     "ios",
     "android",
     "cdn",
     "build",
     "dynamic",
-    "ecosystem:cordova",
-    "cordova-ios",
-    "cordova-android",
     "outsystems",
     "mabs",
     "sqlite",
-    "database"
+    "readonly",
+    "database",
+    "webview",
+    "background",
+    "splash",
+    "splashscreen",
+    "ecosystem:cordova",
+    "cordova-ios",
+    "cordova-android"
   ],
   "author": "vnkhoado",
   "license": "MIT",
@@ -48,5 +59,12 @@
   "bugs": {
     "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info/issues"
   },
-  "homepage": "https://github.com/vnkhoado/cordova-plugin-change-app-info#readme"
+  "homepage": "https://github.com/vnkhoado/cordova-plugin-change-app-info#readme",
+  "engines": {
+    "node": ">=12.0.0",
+    "cordova": ">=9.0.0"
+  },
+  "peerDependencies": {
+    "cordova-sqlite-storage": "^6.1.0"
+  }
 }
