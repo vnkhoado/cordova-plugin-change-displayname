@@ -109,53 +109,59 @@ function createOrUpdateColorSet(xcassetsPath, colorSetName, newColor, newRgb) {
   const colorSetDir = path.join(xcassetsPath, `${colorSetName}.colorset`);
   const contentsJsonPath = path.join(colorSetDir, 'Contents.json');
   
-  // Create colorset directory if not exists
-  if (!fs.existsSync(colorSetDir)) {
-    console.log(`   📁 Creating new color set: ${colorSetName}`);
-    fs.mkdirSync(colorSetDir, { recursive: true });
-  }
-  
-  // Create Contents.json with color values
-  const colorData = {
-    "colors": [
-      {
-        "idiom": "universal",
-        "color": {
-          "color-space": "srgb",
-          "components": {
-            "red": newRgb.r.toFixed(3),
-            "green": newRgb.g.toFixed(3),
-            "blue": newRgb.b.toFixed(3),
-            "alpha": "1.000"
+  try {
+    // Create colorset directory if not exists
+    if (!fs.existsSync(colorSetDir)) {
+      console.log(`   📁 Creating new color set: ${colorSetName}`);
+      fs.mkdirSync(colorSetDir, { recursive: true });
+    } else {
+      console.log(`   🔄 Updating existing color set: ${colorSetName}`);
+    }
+    
+    // Create Contents.json with color values
+    const colorData = {
+      "colors": [
+        {
+          "idiom": "universal",
+          "color": {
+            "color-space": "srgb",
+            "components": {
+              "red": newRgb.r.toFixed(3),
+              "green": newRgb.g.toFixed(3),
+              "blue": newRgb.b.toFixed(3),
+              "alpha": "1.000"
+            }
           }
         }
+      ],
+      "info": {
+        "author": "xcode",
+        "version": 1
       }
-    ],
-    "info": {
-      "author": "xcode",
-      "version": 1
-    }
-  };
-  
-  fs.writeFileSync(contentsJsonPath, JSON.stringify(colorData, null, 2), 'utf8');
-  console.log(`   ✅ ${fs.existsSync(contentsJsonPath) ? 'Updated' : 'Created'} ${colorSetName} → ${newColor}`);
-  
-  return true;
+    };
+    
+    fs.writeFileSync(contentsJsonPath, JSON.stringify(colorData, null, 2), 'utf8');
+    console.log(`   ✅ ${colorSetName} → ${newColor}`);
+    
+    return true;
+  } catch (error) {
+    console.log(`   ❌ Error creating/updating ${colorSetName}: ${error.message}`);
+    return false;
+  }
 }
 
 function overrideIOSColorAssets(appPath, newColor, newRgb) {
   console.log('\n   🎨 Managing Color Assets in Assets.xcassets...');
   
-  // Find Assets.xcassets folder
-  const xcassetsPaths = findAllFiles(appPath, ['Assets.xcassets']);
+  // Assets.xcassets is directly under appPath
+  const xcassetsPath = path.join(appPath, 'Assets.xcassets');
   
-  if (xcassetsPaths.length === 0) {
-    console.log('   ⚠️  Assets.xcassets not found');
+  if (!fs.existsSync(xcassetsPath)) {
+    console.log(`   ⚠️  Assets.xcassets not found at: ${xcassetsPath}`);
     return 0;
   }
   
-  const xcassetsPath = xcassetsPaths[0].replace('/Contents.json', '');
-  console.log(`   📂 Found Assets.xcassets at: ${path.basename(path.dirname(xcassetsPath))}`);
+  console.log(`   📂 Found Assets.xcassets`);
   
   let updatedAssets = 0;
   
@@ -165,52 +171,62 @@ function overrideIOSColorAssets(appPath, newColor, newRgb) {
     updatedAssets++;
   }
   
-  // 2. Update any other existing color sets
-  const colorAssetPaths = findAllFiles(appPath, ['Contents.json']);
-  const colorSetFiles = colorAssetPaths.filter(p => 
-    p.includes('.colorset') && 
-    p.endsWith('Contents.json') &&
-    !p.includes('SplashScreenBackgroundColor') // Skip the one we just created
-  );
+  // 2. Also update BackgroundColor if it exists
+  console.log('\n   🎯 Ensuring BackgroundColor exists...');
+  if (createOrUpdateColorSet(xcassetsPath, 'BackgroundColor', newColor, newRgb)) {
+    updatedAssets++;
+  }
   
-  if (colorSetFiles.length > 0) {
-    console.log(`\n   🔍 Found ${colorSetFiles.length} additional color set(s)`);
+  // 3. Update any other existing color sets
+  try {
+    const items = fs.readdirSync(xcassetsPath);
+    const otherColorSets = items.filter(item => 
+      item.endsWith('.colorset') && 
+      item !== 'SplashScreenBackgroundColor.colorset' &&
+      item !== 'BackgroundColor.colorset'
+    );
     
-    for (const colorFile of colorSetFiles) {
-      try {
-        const colorName = path.basename(path.dirname(colorFile));
-        console.log(`   📝 Processing: ${colorName}`);
+    if (otherColorSets.length > 0) {
+      console.log(`\n   🔍 Found ${otherColorSets.length} additional color set(s)`);
+      
+      for (const colorSet of otherColorSets) {
+        const colorName = colorSet.replace('.colorset', '');
+        const contentsJsonPath = path.join(xcassetsPath, colorSet, 'Contents.json');
         
-        let content = fs.readFileSync(colorFile, 'utf8');
-        const original = content;
-        
-        // Parse JSON
-        const colorData = JSON.parse(content);
-        
-        // Update color components for all appearances
-        if (colorData.colors && Array.isArray(colorData.colors)) {
-          colorData.colors.forEach(colorEntry => {
-            if (colorEntry.color && colorEntry.color.components) {
-              colorEntry.color.components.red = newRgb.r.toFixed(3);
-              colorEntry.color.components.green = newRgb.g.toFixed(3);
-              colorEntry.color.components.blue = newRgb.b.toFixed(3);
-              if (!colorEntry.color.components.alpha) {
-                colorEntry.color.components.alpha = "1.000";
+        if (fs.existsSync(contentsJsonPath)) {
+          try {
+            let content = fs.readFileSync(contentsJsonPath, 'utf8');
+            const original = content;
+            
+            const colorData = JSON.parse(content);
+            
+            if (colorData.colors && Array.isArray(colorData.colors)) {
+              colorData.colors.forEach(colorEntry => {
+                if (colorEntry.color && colorEntry.color.components) {
+                  colorEntry.color.components.red = newRgb.r.toFixed(3);
+                  colorEntry.color.components.green = newRgb.g.toFixed(3);
+                  colorEntry.color.components.blue = newRgb.b.toFixed(3);
+                  if (!colorEntry.color.components.alpha) {
+                    colorEntry.color.components.alpha = "1.000";
+                  }
+                }
+              });
+              
+              const newContent = JSON.stringify(colorData, null, 2);
+              if (newContent !== original) {
+                fs.writeFileSync(contentsJsonPath, newContent, 'utf8');
+                console.log(`   ✅ Updated ${colorName} to ${newColor}`);
+                updatedAssets++;
               }
             }
-          });
-          
-          const newContent = JSON.stringify(colorData, null, 2);
-          if (newContent !== original) {
-            fs.writeFileSync(colorFile, newContent, 'utf8');
-            console.log(`   ✅ Updated ${colorName} to ${newColor}`);
-            updatedAssets++;
+          } catch (error) {
+            console.log(`   ⚠️  Error updating ${colorName}: ${error.message}`);
           }
         }
-      } catch (error) {
-        console.log(`   ⚠️  Error updating ${path.basename(path.dirname(colorFile))}: ${error.message}`);
       }
     }
+  } catch (error) {
+    console.log(`   ⚠️  Error scanning color sets: ${error.message}`);
   }
   
   return updatedAssets;
@@ -322,10 +338,11 @@ function overrideIOSNativeColors(iosPath, newColor, oldColor) {
         
         // Replace each color tag
         content = content.replace(allColorRegex, (match) => {
-          // If it references SplashScreenBackgroundColor, keep the reference 
-          // (we just updated that color set)
-          if (match.includes('name="SplashScreenBackgroundColor"')) {
-            console.log('   ✓ Keeping SplashScreenBackgroundColor reference (color set updated)');
+          // If it references SplashScreenBackgroundColor or BackgroundColor, keep the reference 
+          // (we just updated those color sets)
+          if (match.includes('name="SplashScreenBackgroundColor"') || 
+              match.includes('name="BackgroundColor"')) {
+            console.log('   ✓ Keeping named color reference (color set updated)');
             return match; // Keep as is
           }
           
