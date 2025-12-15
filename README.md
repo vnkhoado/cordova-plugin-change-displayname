@@ -1,6 +1,6 @@
 # cordova-plugin-change-app-info
 
-Cordova plugin to change app info (package name, display name, version, icon) from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info. Supports webview background color customization. **Optimized for OutSystems MABS**.
+Cordova plugin to change app info (package name, display name, version, icon) from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info. Supports webview background color customization. **Optimized for OutSystems MABS with forced splash color override**.
 
 ## Features
 
@@ -18,7 +18,8 @@ Cordova plugin to change app info (package name, display name, version, icon) fr
 
 ✅ **UI Customization**
 - **Webview background color**: Eliminate white flash on app launch
-- **Native splash screen**: Use Cordova native preferences (recommended)
+- **Native splash screen**: Auto-override OutSystems theme colors
+- **Force override**: Prevents OutSystems from overriding splash colors
 
 ✅ **Build Success Notification**
 - Send HTTP POST notification to API when build completes
@@ -59,7 +60,15 @@ Add to **Extensibility Configurations**:
         "value": "production"
       },
       {
+        "name": "BackgroundColor",
+        "value": "#001833"
+      },
+      {
         "name": "SplashScreenBackgroundColor",
+        "value": "#001833"
+      },
+      {
+        "name": "AndroidWindowSplashScreenBackground",
         "value": "#001833"
       },
       {
@@ -99,13 +108,26 @@ cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.gi
 
 ### UI Customization
 
-#### Native Splash Screen (RECOMMENDED)
+#### Splash Screen Color Override (OutSystems Compatible)
 
-Use **Cordova native preferences** for splash screen customization:
+**Important for OutSystems**: Set ALL three preferences to ensure override works:
 
 | Preference | Description | Example |
 |------------|-------------|----------|
-| `SplashScreenBackgroundColor` | Splash background color | `"#001833"` |
+| `BackgroundColor` | Legacy Cordova splash color | `"#001833"` |
+| `SplashScreenBackgroundColor` | Standard splash color | `"#001833"` |
+| `AndroidWindowSplashScreenBackground` | Android 12+ splash | `"#001833"` |
+
+**How it works**:
+1. `after_prepare` hook: Initial splash color setup
+2. OutSystems: May inject theme colors during build
+3. `before_compile` hook: **Force override** right before compilation
+4. Result: Your color preference wins! 🎉
+
+#### Additional Splash Preferences (Optional)
+
+| Preference | Description | Example |
+|------------|-------------|----------|
 | `SplashScreenDelay` | Splash duration (ms) | `"3000"` |
 | `FadeSplashScreen` | Enable fade effect | `"true"` |
 | `FadeSplashScreenDuration` | Fade duration (ms) | `"300"` |
@@ -117,10 +139,18 @@ Use **Cordova native preferences** for splash screen customization:
 |------------|-------------|----------|
 | `WEBVIEW_BACKGROUND_COLOR` | Pre-render webview background | `"#001833"` |
 
-**Best Practice**: Match splash and webview colors for smooth transition:
+**Best Practice**: Match all colors for smooth transition:
 ```json
 {
+  "name": "BackgroundColor",
+  "value": "#001833"
+},
+{
   "name": "SplashScreenBackgroundColor",
+  "value": "#001833"
+},
+{
+  "name": "AndroidWindowSplashScreenBackground",
   "value": "#001833"
 },
 {
@@ -275,7 +305,15 @@ OnApplicationReady
         "value": "production"
       },
       {
+        "name": "BackgroundColor",
+        "value": "#001833"
+      },
+      {
         "name": "SplashScreenBackgroundColor",
+        "value": "#001833"
+      },
+      {
+        "name": "AndroidWindowSplashScreenBackground",
         "value": "#001833"
       },
       {
@@ -325,6 +363,19 @@ OnApplicationReady
 - [Complete Config Examples](examples/)
 
 ## Changelog
+
+### v2.8.1 (2024-12-15) 🎉
+- **NEW**: Added `forceOverrideSplashColor` hook at `before_compile` stage
+- **FIX**: Prevents OutSystems from overriding splash colors with theme values
+- **IMPROVED**: Dual-stage color override strategy:
+  - Stage 1 (`after_prepare`): Initial setup via `customizeSplashScreen.js`
+  - Stage 2 (`before_compile`): Force override via `forceOverrideSplashColor.js`
+- Now works reliably with OutSystems theme system!
+
+### v2.8.0 (2024-12-15)
+- Added integrated splash screen color override hook
+- Auto-handles OutSystems theme conflicts
+- Updated customizeSplashScreen.js with better OutSystems detection
 
 ### v2.7.3 (2024-12-13)
 - **BREAKING**: Removed custom splash screen hook
