@@ -9,6 +9,7 @@
  * iOS:
  * - MainViewController.m background color
  * - LaunchScreen.storyboard background
+ * - Info.plist UILaunchStoryboardBackgroundColor
  * 
  * Android:
  * - colors.xml color resources (colorPrimary, colorPrimaryDark, etc.)
@@ -25,6 +26,43 @@ function hexToRgb(hex) {
   const g = parseInt(hex.substring(2, 4), 16) / 255.0;
   const b = parseInt(hex.substring(4, 6), 16) / 255.0;
   return { r, g, b };
+}
+
+function findFile(baseDir, patterns) {
+  // Recursively search for file matching patterns
+  function searchDir(dir, depth = 0) {
+    if (depth > 3) return null; // Max depth
+    
+    try {
+      const items = fs.readdirSync(dir);
+      
+      for (const item of items) {
+        const fullPath = path.join(dir, item);
+        const stat = fs.statSync(fullPath);
+        
+        if (stat.isFile()) {
+          for (const pattern of patterns) {
+            if (item === pattern || item.endsWith(pattern)) {
+              return fullPath;
+            }
+          }
+        } else if (stat.isDirectory()) {
+          // Skip common excluded directories
+          if (['node_modules', 'build', 'Pods', '.git'].includes(item)) {
+            continue;
+          }
+          const found = searchDir(fullPath, depth + 1);
+          if (found) return found;
+        }
+      }
+    } catch (error) {
+      // Skip permission errors
+    }
+    
+    return null;
+  }
+  
+  return searchDir(baseDir);
 }
 
 function overrideIOSNativeColors(iosPath, newColor) {
@@ -51,72 +89,131 @@ function overrideIOSNativeColors(iosPath, newColor) {
   
   console.log(`   📁 App folder: ${appFolder}`);
   
-  // 1. Override MainViewController.m
-  const mainViewControllerPaths = [
-    path.join(appPath, 'Classes/MainViewController.m'),
-    path.join(appPath, 'Plugins/MainViewController.m'),
-  ];
+  const rgb = hexToRgb(newColor);
+  let updatedCount = 0;
   
-  for (const vcPath of mainViewControllerPaths) {
-    if (fs.existsSync(vcPath)) {
-      try {
-        let content = fs.readFileSync(vcPath, 'utf8');
-        const rgb = hexToRgb(newColor);
-        
-        // Find viewDidLoad method and add background color
-        const viewDidLoadRegex = /(-\s*\(void\)\s*viewDidLoad\s*\{[^}]*)/;
-        
-        if (viewDidLoadRegex.test(content)) {
-          const bgColorCode = `\n    // Force background color from plugin\n    self.view.backgroundColor = [UIColor colorWithRed:${rgb.r.toFixed(3)} green:${rgb.g.toFixed(3)} blue:${rgb.b.toFixed(3)} alpha:1.0];\n`;
-          
-          // Remove existing backgroundColor lines
-          content = content.replace(/\s*self\.view\.backgroundColor = \[UIColor[^;]+;/g, '');
-          
-          // Add new backgroundColor after viewDidLoad opening brace
-          content = content.replace(
-            /(-\s*\(void\)\s*viewDidLoad\s*\{)/,
-            `$1${bgColorCode}`
-          );
-          
-          fs.writeFileSync(vcPath, content, 'utf8');
-          console.log(`   ✅ Updated MainViewController.m background to ${newColor}`);
-        }
-      } catch (error) {
-        console.log(`   ⚠️  Error updating MainViewController.m: ${error.message}`);
+  // 1. Override MainViewController.m
+  console.log('\n   🔍 Searching for MainViewController.m...');
+  const vcPath = findFile(appPath, ['MainViewController.m']);
+  
+  if (vcPath) {
+    console.log(`   ✓ Found at: ${path.relative(iosPath, vcPath)}`);
+    try {
+      let content = fs.readFileSync(vcPath, 'utf8');
+      
+      // Remove existing backgroundColor lines
+      const beforeLines = content.split('\n').length;
+      content = content.replace(/\s*self\.view\.backgroundColor = \[UIColor[^;]+;/g, '');
+      const removedLines = beforeLines - content.split('\n').length;
+      if (removedLines > 0) {
+        console.log(`   ℹ️  Removed ${removedLines} existing backgroundColor line(s)`);
       }
-      break;
+      
+      // Find viewDidLoad method
+      const viewDidLoadRegex = /(-\s*\(void\)\s*viewDidLoad\s*\{)/;
+      
+      if (viewDidLoadRegex.test(content)) {
+        const bgColorCode = `\n    // Plugin: Force background color\n    self.view.backgroundColor = [UIColor colorWithRed:${rgb.r.toFixed(3)} green:${rgb.g.toFixed(3)} blue:${rgb.b.toFixed(3)} alpha:1.0];`;
+        
+        content = content.replace(
+          viewDidLoadRegex,
+          `$1${bgColorCode}`
+        );
+        
+        fs.writeFileSync(vcPath, content, 'utf8');
+        console.log(`   ✅ Updated MainViewController.m background to ${newColor}`);
+        updatedCount++;
+      } else {
+        console.log('   ⚠️  viewDidLoad method not found in MainViewController.m');
+      }
+    } catch (error) {
+      console.log(`   ❌ Error updating MainViewController.m: ${error.message}`);
     }
+  } else {
+    console.log('   ⚠️  MainViewController.m not found');
   }
   
   // 2. Override LaunchScreen.storyboard
-  const launchScreenPaths = [
-    path.join(appPath, 'Resources/LaunchScreen.storyboard'),
-    path.join(appPath, 'LaunchScreen.storyboard'),
-  ];
+  console.log('\n   🔍 Searching for LaunchScreen.storyboard...');
+  const storyboardPath = findFile(appPath, ['LaunchScreen.storyboard']);
   
-  for (const storyboardPath of launchScreenPaths) {
-    if (fs.existsSync(storyboardPath)) {
-      try {
-        let content = fs.readFileSync(storyboardPath, 'utf8');
-        const rgb = hexToRgb(newColor);
-        
-        // Replace backgroundColor in view definitions
-        const colorRegex = /<color[^>]*key="backgroundColor"[^>]*\/>/g;
+  if (storyboardPath) {
+    console.log(`   ✓ Found at: ${path.relative(iosPath, storyboardPath)}`);
+    try {
+      let content = fs.readFileSync(storyboardPath, 'utf8');
+      
+      // Replace backgroundColor in view definitions
+      const colorRegex = /<color[^>]*key="backgroundColor"[^>]*\/>/g;
+      const matches = content.match(colorRegex);
+      
+      if (matches && matches.length > 0) {
+        console.log(`   ℹ️  Found ${matches.length} backgroundColor tag(s)`);
         const newColorTag = `<color key="backgroundColor" red="${rgb.r.toFixed(3)}" green="${rgb.g.toFixed(3)}" blue="${rgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
+        content = content.replace(colorRegex, newColorTag);
         
-        if (colorRegex.test(content)) {
-          content = content.replace(colorRegex, newColorTag);
+        fs.writeFileSync(storyboardPath, content, 'utf8');
+        console.log(`   ✅ Updated LaunchScreen.storyboard background to ${newColor}`);
+        updatedCount++;
+      } else {
+        console.log('   ℹ️  No backgroundColor found in LaunchScreen.storyboard');
+        console.log('   ℹ️  Adding backgroundColor to main view...');
+        
+        // Try to add backgroundColor to the first view
+        const viewRegex = /(<view [^>]*>)/;
+        if (viewRegex.test(content)) {
+          content = content.replace(
+            viewRegex,
+            `$1\n            <color key="backgroundColor" red="${rgb.r.toFixed(3)}" green="${rgb.g.toFixed(3)}" blue="${rgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`
+          );
           fs.writeFileSync(storyboardPath, content, 'utf8');
-          console.log(`   ✅ Updated LaunchScreen.storyboard background to ${newColor}`);
+          console.log(`   ✅ Added backgroundColor to LaunchScreen.storyboard`);
+          updatedCount++;
         } else {
-          console.log('   ℹ️  No backgroundColor found in LaunchScreen.storyboard');
+          console.log('   ⚠️  Could not find view tag to add backgroundColor');
         }
-      } catch (error) {
-        console.log(`   ⚠️  Error updating LaunchScreen.storyboard: ${error.message}`);
       }
-      break;
+    } catch (error) {
+      console.log(`   ❌ Error updating LaunchScreen.storyboard: ${error.message}`);
     }
+  } else {
+    console.log('   ⚠️  LaunchScreen.storyboard not found');
   }
+  
+  // 3. Override Info.plist
+  console.log('\n   🔍 Searching for Info.plist...');
+  const plistPath = findFile(appPath, ['-Info.plist', 'Info.plist']);
+  
+  if (plistPath) {
+    console.log(`   ✓ Found at: ${path.relative(iosPath, plistPath)}`);
+    try {
+      let content = fs.readFileSync(plistPath, 'utf8');
+      
+      // Add or update UILaunchStoryboardBackgroundColor
+      const bgColorKey = 'UILaunchStoryboardBackgroundColor';
+      const bgColorValue = `\n\t<key>${bgColorKey}</key>\n\t<string>${newColor}</string>`;
+      
+      if (content.includes(bgColorKey)) {
+        // Update existing
+        const regex = new RegExp(`<key>${bgColorKey}</key>\n\t<string>[^<]+</string>`);
+        content = content.replace(regex, `<key>${bgColorKey}</key>\n\t<string>${newColor}</string>`);
+        console.log(`   ✅ Updated ${bgColorKey} in Info.plist`);
+        updatedCount++;
+      } else {
+        // Add new - insert before </dict>
+        content = content.replace(/<\/dict>\s*<\/plist>/, `${bgColorValue}\n</dict>\n</plist>`);
+        console.log(`   ✅ Added ${bgColorKey} to Info.plist`);
+        updatedCount++;
+      }
+      
+      fs.writeFileSync(plistPath, content, 'utf8');
+    } catch (error) {
+      console.log(`   ❌ Error updating Info.plist: ${error.message}`);
+    }
+  } else {
+    console.log('   ⚠️  Info.plist not found');
+  }
+  
+  console.log(`\n   📊 Total iOS files updated: ${updatedCount}`);
 }
 
 function overrideAndroidNativeColors(androidPath, newColor, oldColor) {
@@ -142,6 +239,7 @@ function overrideAndroidNativeColors(androidPath, newColor, oldColor) {
   }
   
   console.log(`   📁 Res folder: ${resPath}`);
+  let updatedCount = 0;
   
   // 1. Override colors.xml
   const colorsXmlPath = path.join(resPath, 'values/colors.xml');
@@ -172,14 +270,20 @@ function overrideAndroidNativeColors(androidPath, newColor, oldColor) {
       if (oldColor) {
         const oldColorUpper = oldColor.toUpperCase();
         const oldColorLower = oldColor.toLowerCase();
+        const beforeCount = (content.match(new RegExp(oldColorUpper, 'g')) || []).length;
         content = content.replace(new RegExp(oldColorUpper, 'g'), newColor);
         content = content.replace(new RegExp(oldColorLower, 'g'), newColor);
+        const afterCount = (content.match(new RegExp(oldColorUpper, 'g')) || []).length;
+        changeCount += (beforeCount - afterCount);
       }
       
-      fs.writeFileSync(colorsXmlPath, content, 'utf8');
-      console.log(`   ✅ Updated colors.xml (${changeCount} color names + hex values)`);
+      if (changeCount > 0) {
+        fs.writeFileSync(colorsXmlPath, content, 'utf8');
+        console.log(`   ✅ Updated colors.xml (${changeCount} changes)`);
+        updatedCount++;
+      }
     } catch (error) {
-      console.log(`   ⚠️  Error updating colors.xml: ${error.message}`);
+      console.log(`   ❌ Error updating colors.xml: ${error.message}`);
     }
   }
   
@@ -203,11 +307,12 @@ function overrideAndroidNativeColors(androidPath, newColor, oldColor) {
         
         if (beforeCount > afterCount) {
           fs.writeFileSync(stylesXmlPath, content, 'utf8');
-          console.log(`   ✅ Updated styles.xml (${beforeCount} occurrences)`);
+          console.log(`   ✅ Updated styles.xml (${beforeCount - afterCount} changes)`);
+          updatedCount++;
         }
       }
     } catch (error) {
-      console.log(`   ⚠️  Error updating styles.xml: ${error.message}`);
+      console.log(`   ❌ Error updating styles.xml: ${error.message}`);
     }
   }
   
@@ -231,12 +336,15 @@ function overrideAndroidNativeColors(androidPath, newColor, oldColor) {
           content = content.replace(solidColorRegex, newSolidColor);
           fs.writeFileSync(splashXmlPath, content, 'utf8');
           console.log(`   ✅ Updated ${path.basename(drawableFolder)}/splash.xml`);
+          updatedCount++;
         }
       } catch (error) {
         // Skip
       }
     }
   }
+  
+  console.log(`\n   📊 Total Android files updated: ${updatedCount}`);
 }
 
 module.exports = function(context) {
