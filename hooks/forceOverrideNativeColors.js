@@ -8,7 +8,7 @@
  * 
  * iOS:
  * - MainViewController.m background color
- * - LaunchScreen.storyboard background
+ * - LaunchScreen.storyboard background (hex + RGB decimal format)
  * - Info.plist UILaunchStoryboardBackgroundColor
  * 
  * Android:
@@ -26,6 +26,10 @@ function hexToRgb(hex) {
   const g = parseInt(hex.substring(2, 4), 16) / 255.0;
   const b = parseInt(hex.substring(4, 6), 16) / 255.0;
   return { r, g, b };
+}
+
+function rgbToString(rgb, precision = 3) {
+  return `red="${rgb.r.toFixed(precision)}" green="${rgb.g.toFixed(precision)}" blue="${rgb.b.toFixed(precision)}"`;
 }
 
 function findFile(baseDir, patterns) {
@@ -65,7 +69,7 @@ function findFile(baseDir, patterns) {
   return searchDir(baseDir);
 }
 
-function overrideIOSNativeColors(iosPath, newColor) {
+function overrideIOSNativeColors(iosPath, newColor, oldColor) {
   console.log('\n📱 iOS Native Color Override...');
   
   // Find app folder
@@ -89,7 +93,8 @@ function overrideIOSNativeColors(iosPath, newColor) {
   
   console.log(`   📁 App folder: ${appFolder}`);
   
-  const rgb = hexToRgb(newColor);
+  const newRgb = hexToRgb(newColor);
+  const oldRgb = oldColor ? hexToRgb(oldColor) : null;
   let updatedCount = 0;
   
   // 1. Override MainViewController.m
@@ -113,7 +118,7 @@ function overrideIOSNativeColors(iosPath, newColor) {
       const viewDidLoadRegex = /(-\s*\(void\)\s*viewDidLoad\s*\{)/;
       
       if (viewDidLoadRegex.test(content)) {
-        const bgColorCode = `\n    // Plugin: Force background color\n    self.view.backgroundColor = [UIColor colorWithRed:${rgb.r.toFixed(3)} green:${rgb.g.toFixed(3)} blue:${rgb.b.toFixed(3)} alpha:1.0];`;
+        const bgColorCode = `\n    // Plugin: Force background color\n    self.view.backgroundColor = [UIColor colorWithRed:${newRgb.r.toFixed(3)} green:${newRgb.g.toFixed(3)} blue:${newRgb.b.toFixed(3)} alpha:1.0];`;
         
         content = content.replace(
           viewDidLoadRegex,
@@ -135,35 +140,60 @@ function overrideIOSNativeColors(iosPath, newColor) {
   
   // 2. Override LaunchScreen.storyboard
   console.log('\n   🔍 Searching for LaunchScreen.storyboard...');
-  const storyboardPath = findFile(appPath, ['LaunchScreen.storyboard']);
+  const storyboardPath = findFile(appPath, ['LaunchScreen.storyboard', 'CDVLaunchScreen.storyboard']);
   
   if (storyboardPath) {
     console.log(`   ✓ Found at: ${path.relative(iosPath, storyboardPath)}`);
     try {
       let content = fs.readFileSync(storyboardPath, 'utf8');
+      let replaceCount = 0;
       
-      // Replace backgroundColor in view definitions
-      const colorRegex = /<color[^>]*key="backgroundColor"[^>]*\/>/g;
+      // Strategy 1: Replace backgroundColor tags with exact RGB match (if old color provided)
+      if (oldRgb) {
+        const oldRgbPattern = `red="${oldRgb.r.toFixed(3)}" green="${oldRgb.g.toFixed(3)}" blue="${oldRgb.b.toFixed(3)}"`;
+        const newRgbPattern = `red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}"`;
+        
+        const beforeCount = (content.match(new RegExp(oldRgbPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+        if (beforeCount > 0) {
+          content = content.replace(new RegExp(oldRgbPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), newRgbPattern);
+          console.log(`   ✅ Replaced ${beforeCount} old RGB color(s) with new RGB`);
+          replaceCount += beforeCount;
+        }
+      }
+      
+      // Strategy 2: Replace ALL backgroundColor tags
+      const colorRegex = /<color[^>]*key="backgroundColor"[^>]*red="[^"]+"[^>]*green="[^"]+"[^>]*blue="[^"]+"[^>]*\/>/g;
       const matches = content.match(colorRegex);
       
       if (matches && matches.length > 0) {
         console.log(`   ℹ️  Found ${matches.length} backgroundColor tag(s)`);
-        const newColorTag = `<color key="backgroundColor" red="${rgb.r.toFixed(3)}" green="${rgb.g.toFixed(3)}" blue="${rgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
+        const newColorTag = `<color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
         content = content.replace(colorRegex, newColorTag);
-        
+        replaceCount += matches.length;
+      }
+      
+      // Strategy 3: Replace systemColor references
+      const systemColorRegex = /<color[^>]*key="backgroundColor"[^>]*systemColor="[^"]+"[^>]*\/>/g;
+      const systemMatches = content.match(systemColorRegex);
+      if (systemMatches && systemMatches.length > 0) {
+        console.log(`   ℹ️  Found ${systemMatches.length} systemColor backgroundColor(s)`);
+        const newColorTag = `<color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
+        content = content.replace(systemColorRegex, newColorTag);
+        replaceCount += systemMatches.length;
+      }
+      
+      if (replaceCount > 0) {
         fs.writeFileSync(storyboardPath, content, 'utf8');
-        console.log(`   ✅ Updated LaunchScreen.storyboard background to ${newColor}`);
+        console.log(`   ✅ Updated LaunchScreen.storyboard (${replaceCount} color(s) changed)`);
         updatedCount++;
       } else {
-        console.log('   ℹ️  No backgroundColor found in LaunchScreen.storyboard');
-        console.log('   ℹ️  Adding backgroundColor to main view...');
-        
-        // Try to add backgroundColor to the first view
+        // Strategy 4: Add backgroundColor if none found
+        console.log('   ℹ️  No backgroundColor found, adding to main view...');
         const viewRegex = /(<view [^>]*>)/;
         if (viewRegex.test(content)) {
           content = content.replace(
             viewRegex,
-            `$1\n            <color key="backgroundColor" red="${rgb.r.toFixed(3)}" green="${rgb.g.toFixed(3)}" blue="${rgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`
+            `$1\n            <color key="backgroundColor" red="${newRgb.r.toFixed(3)}" green="${newRgb.g.toFixed(3)}" blue="${newRgb.b.toFixed(3)}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`
           );
           fs.writeFileSync(storyboardPath, content, 'utf8');
           console.log(`   ✅ Added backgroundColor to LaunchScreen.storyboard`);
@@ -214,6 +244,11 @@ function overrideIOSNativeColors(iosPath, newColor) {
   }
   
   console.log(`\n   📊 Total iOS files updated: ${updatedCount}`);
+  
+  if (oldColor) {
+    console.log(`   🎯 Old color RGB: red=${oldRgb.r.toFixed(3)} green=${oldRgb.g.toFixed(3)} blue=${oldRgb.b.toFixed(3)}`);
+  }
+  console.log(`   🎯 New color RGB: red=${newRgb.r.toFixed(3)} green=${newRgb.g.toFixed(3)} blue=${newRgb.b.toFixed(3)}`);
 }
 
 function overrideAndroidNativeColors(androidPath, newColor, oldColor) {
@@ -375,7 +410,7 @@ module.exports = function(context) {
     if (platform === 'ios') {
       const iosPath = path.join(root, 'platforms/ios');
       if (fs.existsSync(iosPath)) {
-        overrideIOSNativeColors(iosPath, newColor);
+        overrideIOSNativeColors(iosPath, newColor, oldColor);
       }
     } else if (platform === 'android') {
       const androidPath = path.join(root, 'platforms/android');
