@@ -19,6 +19,7 @@ Cordova plugin to change app info (package name, display name, version, icon) fr
 ✅ **UI Customization**
 - **Webview background color**: Eliminate white flash on app launch
 - **Native splash screen**: Auto-override OutSystems theme colors
+- **Deep color override**: Replaces ALL color tags in LaunchScreen (not just first)
 - **Force override**: Prevents OutSystems from overriding splash colors
 
 ✅ **Build Success Notification**
@@ -98,7 +99,7 @@ cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.gi
 ### App Configuration
 
 | Preference | Description | Example |
-|------------|-------------|----------|
+|------------|-------------|---------|
 | `APP_NAME` | App display name | `"MyApp"` |
 | `VERSION_NUMBER` | Version string | `"1.0.0"` |
 | `VERSION_CODE` | Build number | `"1"` |
@@ -113,7 +114,7 @@ cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.gi
 **Important for OutSystems**: Set ALL three preferences to ensure override works:
 
 | Preference | Description | Example |
-|------------|-------------|----------|
+|------------|-------------|---------|
 | `BackgroundColor` | Legacy Cordova splash color | `"#001833"` |
 | `SplashScreenBackgroundColor` | Standard splash color | `"#001833"` |
 | `AndroidWindowSplashScreenBackground` | Android 12+ splash | `"#001833"` |
@@ -121,13 +122,13 @@ cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.gi
 **How it works**:
 1. `after_prepare` hook: Initial splash color setup
 2. OutSystems: May inject theme colors during build
-3. `before_compile` hook: **Force override** right before compilation
-4. Result: Your color preference wins! 🎉
+3. `before_compile` hook: **Deep scan** - replaces ALL color tags in storyboard (not just first)
+4. Result: Your color preference wins everywhere! 🎉
 
 #### Additional Splash Preferences (Optional)
 
 | Preference | Description | Example |
-|------------|-------------|----------|
+|------------|-------------|---------|
 | `SplashScreenDelay` | Splash duration (ms) | `"3000"` |
 | `FadeSplashScreen` | Enable fade effect | `"true"` |
 | `FadeSplashScreenDuration` | Fade duration (ms) | `"300"` |
@@ -136,7 +137,7 @@ cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.gi
 #### Webview Background
 
 | Preference | Description | Example |
-|------------|-------------|----------|
+|------------|-------------|---------|
 | `WEBVIEW_BACKGROUND_COLOR` | Pre-render webview background | `"#001833"` |
 
 **Best Practice**: Match all colors for smooth transition:
@@ -162,7 +163,7 @@ cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.gi
 ### Build Notification (Optional)
 
 | Preference | Description | Example |
-|------------|-------------|----------|
+|------------|-------------|---------|
 | `ENABLE_BUILD_NOTIFICATION` | Enable notification | `"true"` |
 | `BUILD_SUCCESS_API_URL` | API endpoint | `"https://api.com/build"` |
 | `BUILD_API_BEARER_TOKEN` | Bearer token | `"your-token"` |
@@ -363,6 +364,13 @@ OnApplicationReady
 - [Complete Config Examples](examples/)
 
 ## Changelog
+
+### v2.8.2 (2024-12-15) 🔥 CRITICAL FIX
+- **FIXED**: iOS splash screen showing old color even on fresh devices
+- **NEW**: Deep scan ALL color tags in LaunchScreen.storyboard (not just first)
+- **IMPROVED**: Replace systemColor, named colors, and ALL nested subview colors
+- **IMPROVED**: Comprehensive logging shows exactly what colors were found and replaced
+- This fixes the issue where OutSystems injects colors into nested subviews
 
 ### v2.8.1 (2024-12-15) 🎉
 - **NEW**: Added `forceOverrideSplashColor` hook at `before_compile` stage
