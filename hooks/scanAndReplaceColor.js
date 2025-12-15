@@ -9,23 +9,15 @@
  * USE CASE: OutSystems caching old primary color in various files
  * 
  * Configuration:
- * - SplashScreenBackgroundColor: New color to use (e.g., "#001833")
- * - OLD_COLOR: Old color to search for (e.g., "#59ABE3") - OPTIONAL
- *   If not specified, defaults to common OutSystems blue (#59ABE3)
+ * - OLD_COLOR: Old color to search for (e.g., "#59ABE3") - REQUIRED
+ * - SplashScreenBackgroundColor: New color to use (e.g., "#001833") - REQUIRED
+ * 
+ * If OLD_COLOR is not specified, this hook is skipped.
  */
 
 const fs = require('fs');
 const path = require('path');
 const { getConfigParser } = require('./utils');
-
-// Directories to scan
-const SCAN_DIRS = [
-  'platforms/android/app/src/main/res',
-  'platforms/android/app/src/main/java',
-  'platforms/ios',
-  'platforms/android/CordovaLib/res',
-  'www'
-];
 
 function scanDirectory(dir, oldColors, newColor, stats) {
   if (!fs.existsSync(dir)) {
@@ -145,17 +137,23 @@ module.exports = function(context) {
   const root = context.opts.projectRoot;
   const config = getConfigParser(context, path.join(root, 'config.xml'));
   
+  // Get old color from config
+  const oldColorBase = config.getPreference("OLD_COLOR");
+  
+  // Skip if no old color specified
+  if (!oldColorBase) {
+    console.log('\n⏭️  OLD_COLOR not configured, skipping color scanner');
+    return;
+  }
+  
   // Get new color from config
   const newColor = config.getPreference("SplashScreenBackgroundColor") ||
                    config.getPreference("BackgroundColor");
   
   if (!newColor) {
-    console.log('\n⏭️  No new color configured for scanner, skipping');
+    console.log('\n⚠️  OLD_COLOR specified but no new color found, skipping scanner');
     return;
   }
-  
-  // Get old color from config (or use default)
-  let oldColorBase = config.getPreference("OLD_COLOR") || "#59ABE3";
   
   // Generate all variants of the old color
   const oldColors = generateColorVariants(oldColorBase);
