@@ -27,8 +27,8 @@ module.exports = async function(context) {
     const root = context.opts.projectRoot;
     const iosPath = path.join(root, 'platforms/ios');
     
-    // CRITICAL: Validate and regenerate color asset
-    await validateAndFixColorAsset(context, iosPath);
+    // CRITICAL: Ensure color asset exists and is valid
+    await ensureColorAsset(context, iosPath);
     
     // CRITICAL: Force regenerate icons AFTER OutSystems modifications
     await forceRegenerateIcons(context, iosPath);
@@ -38,6 +38,7 @@ module.exports = async function(context) {
     
     // Validate final state
     await validateIcons(iosPath);
+    await validateColorAsset(iosPath);
     
     console.log('✅ iOS Compile Phase Complete!');
     console.log('═══════════════════════════════════════\n');
@@ -48,8 +49,8 @@ module.exports = async function(context) {
   }
 };
 
-async function validateAndFixColorAsset(context, iosPath) {
-  console.log('🔍 Validating Color Asset (Native Splash)');
+async function ensureColorAsset(context, iosPath) {
+  console.log('🎨 Ensuring Color Asset Exists');
   
   try {
     const ConfigParser = context.requireCordovaModule('cordova-common').ConfigParser;
@@ -57,11 +58,11 @@ async function validateAndFixColorAsset(context, iosPath) {
     const splashBg = config.getPreference('SplashScreenBackgroundColor');
     
     if (!splashBg) {
-      console.log('   ℹ️  No SplashScreenBackgroundColor preference');
+      console.log('   ℹ️  No splash color configured');
       return;
     }
     
-    console.log(`   🎨 Expected color: ${splashBg}`);
+    console.log(`   🎨 Target color: ${splashBg}`);
     
     const xcodeProjects = fs.readdirSync(iosPath).filter(f => f.endsWith('.xcodeproj'));
     if (xcodeProjects.length === 0) {
@@ -75,16 +76,11 @@ async function validateAndFixColorAsset(context, iosPath) {
     // Find .xcassets folder
     const xcassetsFolders = fs.readdirSync(appPath).filter(f => {
       const xcassetsPath = path.join(appPath, f);
-      try {
-        return f.endsWith('.xcassets') && fs.statSync(xcassetsPath).isDirectory();
-      } catch (e) {
-        return false;
-      }
+      return f.endsWith('.xcassets') && fs.statSync(xcassetsPath).isDirectory();
     });
     
     if (xcassetsFolders.length === 0) {
-      console.log('   ❌ No .xcassets folder found!');
-      console.log('   💡 Color asset cannot be created');
+      console.log('   ⚠️  No .xcassets folder found');
       return;
     }
     
@@ -92,21 +88,46 @@ async function validateAndFixColorAsset(context, iosPath) {
     const colorSetPath = path.join(xcassetsPath, 'SplashBackgroundColor.colorset');
     const contentsPath = path.join(colorSetPath, 'Contents.json');
     
-    console.log(`   📁 Assets folder: ${xcassetsFolders[0]}`);
-    
     // Check if color asset exists
+    let needsCreation = false;
+    
     if (!fs.existsSync(colorSetPath)) {
-      console.log('   ❌ SplashBackgroundColor.colorset NOT FOUND!');
-      console.log('   🔧 Creating color asset now...');
+      console.log('   ⚠️  SplashBackgroundColor.colorset NOT FOUND!');
+      needsCreation = true;
+    } else if (!fs.existsSync(contentsPath)) {
+      console.log('   ⚠️  Contents.json missing in colorset!');
+      needsCreation = true;
+    } else {
+      // Validate Contents.json
+      try {
+        const contents = JSON.parse(fs.readFileSync(contentsPath, 'utf8'));
+        if (!contents.colors || contents.colors.length === 0) {
+          console.log('   ⚠️  Contents.json invalid (no colors)');
+          needsCreation = true;
+        } else {
+          console.log('   ✅ Color asset exists and is valid');
+        }
+      } catch (e) {
+        console.log('   ⚠️  Contents.json corrupted:', e.message);
+        needsCreation = true;
+      }
+    }
+    
+    if (needsCreation) {
+      console.log('   🔧 FORCE recreating color asset...');
       
-      // Create it now
-      fs.mkdirSync(colorSetPath, { recursive: true });
+      // Create directory
+      if (!fs.existsSync(colorSetPath)) {
+        fs.mkdirSync(colorSetPath, { recursive: true });
+      }
       
+      // Parse color
       const colorHex = splashBg.replace('#', '');
       const r = (parseInt(colorHex.substr(0, 2), 16) / 255).toFixed(3);
       const g = (parseInt(colorHex.substr(2, 2), 16) / 255).toFixed(3);
       const b = (parseInt(colorHex.substr(4, 2), 16) / 255).toFixed(3);
       
+      // Create Contents.json
       const colorContents = {
         "colors": [
           {
@@ -123,74 +144,42 @@ async function validateAndFixColorAsset(context, iosPath) {
           }
         ],
         "info": {
-          "author": "cordova-plugin-change-app-info (FORCE)",
+          "author": "cordova-plugin-change-app-info",
           "version": 1
         }
       };
       
       fs.writeFileSync(contentsPath, JSON.stringify(colorContents, null, 2), 'utf8');
-      console.log(`   ✅ Created color asset with RGB(${r}, ${g}, ${b})`);
-    } else {
-      console.log('   ✅ Color asset exists');
-      
-      // Validate contents
-      if (fs.existsSync(contentsPath)) {
-        try {
-          const contents = JSON.parse(fs.readFileSync(contentsPath, 'utf8'));
-          if (contents.colors && contents.colors[0]) {
-            const color = contents.colors[0].color.components;
-            console.log(`   ✅ RGB values: (${color.red}, ${color.green}, ${color.blue})`);
-          }
-        } catch (e) {
-          console.log('   ⚠️  Contents.json parse error:', e.message);
-        }
-      } else {
-        console.log('   ❌ Contents.json missing!');
-      }
+      console.log('   ✅ Created SplashBackgroundColor.colorset');
+      console.log(`   ✅ RGB: (${r}, ${g}, ${b})`);
     }
     
-    // Check Info.plist
-    const plistPath = path.join(appPath, `${projectName}-Info.plist`);
+    // CRITICAL: Ensure Info.plist references the color asset
+    const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
     if (fs.existsSync(plistPath)) {
-      const plistContent = fs.readFileSync(plistPath, 'utf8');
+      let plistContent = fs.readFileSync(plistPath, 'utf8');
       
-      if (plistContent.includes('<key>UILaunchScreen</key>')) {
-        console.log('   ✅ Info.plist has UILaunchScreen');
+      // Check if UILaunchScreen exists
+      if (!plistContent.includes('<key>UILaunchScreen</key>')) {
+        console.log('   ⚠️  UILaunchScreen missing in Info.plist!');
+        console.log('   🔧 Adding UILaunchScreen...');
         
-        if (plistContent.includes('<string>SplashBackgroundColor</string>')) {
-          console.log('   ✅ UIColorName references SplashBackgroundColor');
-        } else {
-          console.log('   ⚠️  UIColorName does NOT reference SplashBackgroundColor');
-        }
-      } else {
-        console.log('   ❌ Info.plist missing UILaunchScreen!');
-        console.log('   🔧 Adding UILaunchScreen now...');
-        
-        let updatedPlist = plistContent;
-        
-        // Remove old if exists
-        updatedPlist = updatedPlist.replace(
-          /<key>UILaunchScreen<\/key>\s*<dict>[\s\S]*?<\/dict>/,
-          ''
-        );
-        
-        // Add new
         const uiLaunchScreen = `  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageRespectsSafeAreaInsets</key>\n    <false/>\n  </dict>`;
         
-        updatedPlist = updatedPlist.replace(
+        plistContent = plistContent.replace(
           '</dict>\n</plist>',
           `${uiLaunchScreen}\n</dict>\n</plist>`
         );
         
-        fs.writeFileSync(plistPath, updatedPlist, 'utf8');
+        fs.writeFileSync(plistPath, plistContent, 'utf8');
         console.log('   ✅ Added UILaunchScreen to Info.plist');
+      } else {
+        console.log('   ✅ UILaunchScreen exists in Info.plist');
       }
     }
     
-    console.log('   ✅ Color asset validation complete');
-    
   } catch (error) {
-    console.log('   ❌ Validation failed:', error.message);
+    console.log('   ⚠️  Color asset check failed:', error.message);
     console.error(error.stack);
   }
 }
@@ -460,6 +449,71 @@ async function validateIcons(iosPath) {
       console.log('   💡 Icons may not display in app');
     } else {
       console.log('   ✅ Icons ready for compilation');
+    }
+    
+  } catch (error) {
+    console.log('   ⚠️  Validation skipped:', error.message);
+  }
+}
+
+async function validateColorAsset(iosPath) {
+  console.log('🔍 Validating Color Asset');
+  
+  try {
+    const xcodeProjects = fs.readdirSync(iosPath).filter(f => f.endsWith('.xcodeproj'));
+    if (xcodeProjects.length === 0) {
+      console.log('   ⚠️  No Xcode project found');
+      return;
+    }
+    
+    const projectName = xcodeProjects[0].replace('.xcodeproj', '');
+    const appPath = path.join(iosPath, projectName);
+    
+    // Find .xcassets
+    const xcassetsFolders = fs.readdirSync(appPath).filter(f => {
+      const xcassetsPath = path.join(appPath, f);
+      return f.endsWith('.xcassets') && fs.statSync(xcassetsPath).isDirectory();
+    });
+    
+    if (xcassetsFolders.length === 0) {
+      console.log('   ⚠️  No .xcassets folder found');
+      return;
+    }
+    
+    const xcassetsPath = path.join(appPath, xcassetsFolders[0]);
+    const colorSetPath = path.join(xcassetsPath, 'SplashBackgroundColor.colorset');
+    const contentsPath = path.join(colorSetPath, 'Contents.json');
+    
+    if (!fs.existsSync(colorSetPath)) {
+      console.log('   ❌ SplashBackgroundColor.colorset NOT FOUND!');
+      console.log('   💡 Native splash color will not work');
+      return;
+    }
+    
+    if (!fs.existsSync(contentsPath)) {
+      console.log('   ❌ Contents.json missing!');
+      return;
+    }
+    
+    const contents = JSON.parse(fs.readFileSync(contentsPath, 'utf8'));
+    if (contents.colors && contents.colors.length > 0) {
+      const color = contents.colors[0].color.components;
+      console.log(`   ✅ SplashBackgroundColor.colorset exists`);
+      console.log(`   ✅ RGB: (${color.red}, ${color.green}, ${color.blue})`);
+      console.log('   ✅ Native splash color ready for compilation');
+    } else {
+      console.log('   ❌ Invalid color data!');
+    }
+    
+    // Check Info.plist
+    const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
+    if (fs.existsSync(plistPath)) {
+      const plistContent = fs.readFileSync(plistPath, 'utf8');
+      if (plistContent.includes('<key>UILaunchScreen</key>')) {
+        console.log('   ✅ Info.plist has UILaunchScreen reference');
+      } else {
+        console.log('   ❌ Info.plist missing UILaunchScreen!');
+      }
     }
     
   } catch (error) {
