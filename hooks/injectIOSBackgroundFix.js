@@ -106,57 +106,71 @@ function injectObjCBackgroundFix(mainViewControllerPath, backgroundColor) {
   try {
     let content = fs.readFileSync(mainViewControllerPath, 'utf8');
     const original = content;
-    
+
     const colorCode = hexToObjCUIColor(backgroundColor);
-    
-    // Check if already has the fix
-    if (content.includes('// PLUGIN: Background color fix')) {
-      console.log('   ℹ️  Background fix already exists, updating...');
-      
-      // Update existing
-      const regex = /\/\/ PLUGIN: Background color fix[\s\S]*?self\.view\.backgroundColor = \[UIColor[^;]+;/g;
-      content = content.replace(regex, `// PLUGIN: Background color fix\n    self.view.backgroundColor = ${colorCode};`);
-      
-    } else {
-      console.log('   ✨ Adding background fix...');
-      
-      // Inject into viewDidLoad
-      const viewDidLoadRegex = /(-\s*\(void\)\s*viewDidLoad\s*\{)/;
-      
-      if (viewDidLoadRegex.test(content)) {
-        const injection = `$1\n    // PLUGIN: Background color fix\n    self.view.backgroundColor = ${colorCode};`;
-        
-        content = content.replace(viewDidLoadRegex, injection);
-        console.log('   ✅ Injected into viewDidLoad');
-      }
-      
-      // Also add to viewWillAppear if exists
-      const viewWillAppearRegex = /(-\s*\(void\)\s*viewWillAppear:\s*\(BOOL\)\s*animated\s*\{)/;
-      
-      if (viewWillAppearRegex.test(content)) {
-        const injection = `$1\n    [super viewWillAppear:animated];\n    // PLUGIN: Force background color\n    self.view.backgroundColor = ${colorCode};`;
-        
-        content = content.replace(viewWillAppearRegex, injection);
-        console.log('   ✅ Injected into viewWillAppear');
-      } else {
-        // Create viewWillAppear if not exists
-        const implementationRegex = /(@implementation\s+MainViewController[\s\S]*?)(- \(void\)viewDidLoad)/;
-        
-        if (implementationRegex.test(content)) {
-          const newMethod = `$1\n- (void)viewWillAppear:(BOOL)animated {\n    [super viewWillAppear:animated];\n    // PLUGIN: Force background color\n    self.view.backgroundColor = ${colorCode};\n}\n\n$2`;
-          
-          content = content.replace(implementationRegex, newMethod);
-          console.log('   ✅ Created viewWillAppear method');
+
+    // 1) Dọn sạch mọi block plugin cũ (comment + dòng backgroundColor)
+    const cleanupRegex =
+      /\/\/ PLUGIN: Background color fix[\s\S]*?self\.view\.backgroundColor\s*=\s*\[UIColor[^;]+;\s*/g;
+    content = content.replace(cleanupRegex, '');
+
+    // 2) Đảm bảo có viewDidLoad, rồi inject lại block mới
+    const viewDidLoadRegex = /- *\((void)\) *viewDidLoad *\{([\s\S]*?)\n\}/;
+
+    if (viewDidLoadRegex.test(content)) {
+      content = content.replace(viewDidLoadRegex, (match, retType, body) => {
+        // Đảm bảo có [super viewDidLoad]
+        if (!/super\s+viewDidLoad/.test(body)) {
+          body = `\n    [super viewDidLoad];${body}`;
         }
+
+        const inject = `
+    // PLUGIN: Background color fix
+    self.view.backgroundColor = ${colorCode};`;
+
+        return `- (${retType})viewDidLoad {${body}${inject}\n}`;
+      });
+      console.log('   ✅ Injected background fix into existing viewDidLoad');
+    } else {
+      // Không có viewDidLoad → tạo mới dưới @implementation
+      const implRegex = /@implementation\s+MainViewController/;
+      if (implRegex.test(content)) {
+        const newMethod = `@implementation MainViewController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    // PLUGIN: Background color fix
+    self.view.backgroundColor = ${colorCode};
+}
+`;
+        content = content.replace(implRegex, newMethod);
+        console.log('   ✅ Created viewDidLoad with background fix');
+      } else {
+        console.log('   ⚠️  @implementation MainViewController not found, skipping Obj-C injection');
       }
     }
-    
+
+    // 3) (Optional) Force trong viewWillAppear nếu có sẵn
+    const viewWillAppearRegex = /- *\((void)\) *viewWillAppear: *\((BOOL)\) *animated *\{([\s\S]*?)\n\}/;
+    if (viewWillAppearRegex.test(content)) {
+      content = content.replace(viewWillAppearRegex, (match, retType, boolType, body) => {
+        if (!/super\s+viewWillAppear:/.test(body)) {
+          body = `\n    [super viewWillAppear:animated];${body}`;
+        }
+        const inject = `
+    // PLUGIN: Force background color
+    self.view.backgroundColor = ${colorCode};`;
+        return `- (${retType})viewWillAppear:(${boolType})animated {${body}${inject}\n}`;
+      });
+      console.log('   ✅ Updated viewWillAppear with background fix');
+    }
+
     if (content !== original) {
       fs.writeFileSync(mainViewControllerPath, content, 'utf8');
-      console.log(`   ✅ Successfully injected background fix with color: ${backgroundColor}`);
+      console.log(`   ✅ Successfully forced background fix with color: ${backgroundColor}`);
       return true;
     } else {
-      console.log('   ⚠️  No changes needed');
+      console.log('   ⚠️  No changes applied in MainViewController.m');
       return false;
     }
     
