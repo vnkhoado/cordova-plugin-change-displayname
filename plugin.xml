@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.9.6">
+    version="2.9.7">
     
-    <name>Change App Info</name>
-    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info during build. Supports splash screen and webview background color customization with auto-override for OutSystems. Optimized for OutSystems MABS.</description>
+    <name>Change App Info (iOS Optimized)</name>
+    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info during build. Supports splash screen and webview background color customization with auto-override for OutSystems. iOS build optimized to prevent conflicts with other plugins.</description>
     <license>MIT</license>
-    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs,sqlite,readonly,webview,background,splash,splashscreen</keywords>
+    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,outsystems,mabs,sqlite,readonly,webview,background,splash,splashscreen,optimized</keywords>
     
     <author>vnkhoado</author>
     <repo>https://github.com/vnkhoado/cordova-plugin-change-app-info.git</repo>
@@ -15,7 +15,7 @@
         <engine name="cordova" version=">=9.0.0" />
     </engines>
     
-    <!-- Dependency: SQLite Storage Plugin -->
+    <!-- Dependency: SQLite Storage Plugin (optional for build info database) -->
     <dependency id="cordova-sqlite-storage" version="^6.1.0" />
     
     <!-- Configuration Preferences:
@@ -47,7 +47,7 @@
          - BUILD_API_BEARER_TOKEN: Bearer token for API authentication
     -->
     
-    <!-- Android Platform -->
+    <!-- Android Platform - Keep original hooks (working well) -->
     <platform name="android">
         <!-- Backup app info before changes -->
         <hook type="before_prepare" src="hooks/backupAppInfo.js" />
@@ -80,64 +80,26 @@
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
     </platform>
     
-    <!-- iOS Platform -->
+    <!-- iOS Platform - OPTIMIZED: 3 unified hooks instead of 14 -->
     <platform name="ios">
-        <!-- Clean build before compile -->
-        <hook type="before_prepare" src="hooks/cleanBuild.js" />
+        <!-- PHASE 1: Unified Prepare Hook -->
+        <!-- Combines: backupAppInfo + changeAppInfo + generateIcons + injectBuildInfo + 
+                       customizeSplashScreen + customizeWebview + injectIOSBackgroundFix -->
+        <hook type="after_prepare" src="hooks/ios/unified-prepare.js" />
         
-        <!-- Backup app info before changes -->
-        <hook type="before_prepare" src="hooks/backupAppInfo.js" />
+        <!-- PHASE 2: Unified Compile Hook -->
+        <!-- Combines: cleanBuild + forceOverrideSplashColor + forceOverrideNativeColors + 
+                       scanAndReplaceColor + forceReplaceIosIcons -->
+        <hook type="before_compile" src="hooks/ios/unified-compile.js" />
         
-        <!-- Change app info (bundle id, name, version) -->
-        <hook type="after_prepare" src="hooks/changeAppInfo.js" />
+        <!-- PHASE 3: Unified Build Hook -->
+        <!-- Combines: finalColorOverride + final validation -->
+        <hook type="before_build" src="hooks/ios/unified-build.js" />
         
-        <!-- Generate icons from CDN -->
-        <hook type="after_prepare" src="hooks/generateIcons.js" />
-        
-        <!-- Create READ-ONLY SQLite database with build info -->
-        <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
-        
-        <!-- Customize splash screen (auto-override OutSystems theme) -->
-        <hook type="after_prepare" src="hooks/customizeSplashScreen.js" />
-        
-        <!-- Customize webview background color -->
-        <hook type="after_prepare" src="hooks/customizeWebview.js" />
-        
-        <!-- INJECT iOS BACKGROUND FIX: Inject code into AppDelegate to fix color flash -->
-        <hook type="after_prepare" src="hooks/injectIOSBackgroundFix.js" />
-        
-        <!-- FORCE OVERRIDE: Prevent OutSystems from overriding splash colors -->
-        <hook type="before_compile" src="hooks/forceOverrideSplashColor.js" />
-        
-        <!-- NATIVE OVERRIDE: Override pre-splash native colors (iOS MainViewController) -->
-        <hook type="before_compile" src="hooks/forceOverrideNativeColors.js" />
-        
-        <!-- SCAN & REPLACE: Find and replace cached old colors -->
-        <hook type="before_compile" src="hooks/scanAndReplaceColor.js" />
-        
-        <!-- FINAL OVERRIDE: Last resort color override RIGHT BEFORE Xcode build -->
-        <hook type="before_build" src="hooks/finalColorOverride.js" />
-        
-        <!-- Replace iOS Icon after compile -->
-        <hook type="after_prepare" src="hooks/forceReplaceIosIcons.js" />
-        
-        <!-- Send build success notification to API (if enabled) -->
+        <!-- PHASE 4: Success Notification -->
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
         
-        <!-- Force Xcode to use AppIcon from xcassets -->
-        <config-file target="*-Info.plist" parent="CFBundleIcons">
-            <dict>
-                <key>CFBundlePrimaryIcon</key>
-                <dict>
-                    <key>CFBundleIconFiles</key>
-                    <array/>
-                    <key>UIPrerenderedIcon</key>
-                    <false/>
-                </dict>
-            </dict>
-        </config-file>
-        
-        <!-- Set AppIcon name -->
+        <!-- iOS Configuration - Safe approach, only set AppIcon name -->
         <config-file target="*-Info.plist" parent="CFBundleIconName">
             <string>AppIcon</string>
         </config-file>
