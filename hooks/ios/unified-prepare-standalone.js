@@ -2,7 +2,7 @@
 
 /**
  * iOS Unified Prepare Hook - STANDALONE VERSION
- * Fixed: App name, splash screen color, and CDN icon generation
+ * Fixed: App name, splash screen color (including native pre-splash), and CDN icon generation
  */
 
 const fs = require('fs');
@@ -318,11 +318,9 @@ async function generateIcons(context, iosPath) {
     
     console.log(`   ✅ Generated ${successCount}/${sizes.length} icon sizes`);
     console.log(`   ✅ Updated Contents.json`);
-    console.log(`   📂 Assets path: ${assetsPath}`);
     
   } catch (error) {
     console.log('   ❌ Icon generation failed:', error.message);
-    console.error('   Stack trace:', error.stack);
   }
 }
 
@@ -399,17 +397,19 @@ async function customizeUI(context, iosPath) {
     if (splashBg) {
       console.log(`   🎨 Splash color: ${splashBg}`);
       
+      // Parse color
+      const colorHex = splashBg.replace('#', '');
+      const r = (parseInt(colorHex.substr(0, 2), 16) / 255).toFixed(3);
+      const g = (parseInt(colorHex.substr(2, 2), 16) / 255).toFixed(3);
+      const b = (parseInt(colorHex.substr(4, 2), 16) / 255).toFixed(3);
+      
+      const colorXML = `<color key="backgroundColor" red="${r}" green="${g}" blue="${b}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
+      
+      // 1. Update LaunchScreen.storyboard
       const storyboardPath = path.join(iosPath, projectName, 'LaunchScreen.storyboard');
       
       if (fs.existsSync(storyboardPath)) {
         let storyboard = fs.readFileSync(storyboardPath, 'utf8');
-        
-        const colorHex = splashBg.replace('#', '');
-        const r = (parseInt(colorHex.substr(0, 2), 16) / 255).toFixed(3);
-        const g = (parseInt(colorHex.substr(2, 2), 16) / 255).toFixed(3);
-        const b = (parseInt(colorHex.substr(4, 2), 16) / 255).toFixed(3);
-        
-        const colorXML = `<color key="backgroundColor" red="${r}" green="${g}" blue="${b}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
         
         storyboard = storyboard.replace(
           /<color key="backgroundColor"[^>]*\/>/g,
@@ -425,16 +425,10 @@ async function customizeUI(context, iosPath) {
         console.log('   ✅ Updated LaunchScreen.storyboard');
       }
       
+      // 2. Update CDVLaunchScreen.storyboard
       const cdvStoryboardPath = path.join(iosPath, projectName, 'CDVLaunchScreen.storyboard');
       if (fs.existsSync(cdvStoryboardPath)) {
         let cdvStoryboard = fs.readFileSync(cdvStoryboardPath, 'utf8');
-        
-        const colorHex = splashBg.replace('#', '');
-        const r = (parseInt(colorHex.substr(0, 2), 16) / 255).toFixed(3);
-        const g = (parseInt(colorHex.substr(2, 2), 16) / 255).toFixed(3);
-        const b = (parseInt(colorHex.substr(4, 2), 16) / 255).toFixed(3);
-        
-        const colorXML = `<color key="backgroundColor" red="${r}" green="${g}" blue="${b}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
         
         cdvStoryboard = cdvStoryboard.replace(
           /<color key="backgroundColor"[^>]*\/>/g,
@@ -445,18 +439,73 @@ async function customizeUI(context, iosPath) {
         console.log('   ✅ Updated CDVLaunchScreen.storyboard');
       }
       
+      // 3. Create Color Asset (NEW - for native splash)
+      const appPath = path.join(iosPath, projectName);
+      const xcassetsFolders = fs.readdirSync(appPath).filter(f => {
+        const xcassetsPath = path.join(appPath, f);
+        return f.endsWith('.xcassets') && fs.statSync(xcassetsPath).isDirectory();
+      });
+      
+      if (xcassetsFolders.length > 0) {
+        const xcassetsPath = path.join(appPath, xcassetsFolders[0]);
+        const colorSetPath = path.join(xcassetsPath, 'SplashBackgroundColor.colorset');
+        
+        if (!fs.existsSync(colorSetPath)) {
+          fs.mkdirSync(colorSetPath, { recursive: true });
+        }
+        
+        // Create Color Contents.json with actual RGB values
+        const colorContents = {
+          "colors": [
+            {
+              "idiom": "universal",
+              "color": {
+                "color-space": "srgb",
+                "components": {
+                  "red": r,
+                  "green": g,
+                  "blue": b,
+                  "alpha": "1.000"
+                }
+              }
+            }
+          ],
+          "info": {
+            "author": "cordova-plugin-change-app-info",
+            "version": 1
+          }
+        };
+        
+        fs.writeFileSync(
+          path.join(colorSetPath, 'Contents.json'),
+          JSON.stringify(colorContents, null, 2),
+          'utf8'
+        );
+        
+        console.log('   ✅ Created SplashBackgroundColor.colorset');
+      }
+      
+      // 4. Update Info.plist with UILaunchScreen
       const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
       if (fs.existsSync(plistPath)) {
         let plistContent = fs.readFileSync(plistPath, 'utf8');
         
-        if (!plistContent.includes('<key>UILaunchScreen</key>')) {
-          plistContent = plistContent.replace(
-            '</dict>\n</plist>',
-            `  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageName</key>\n    <string></string>\n  </dict>\n</dict>\n</plist>`
-          );
-          fs.writeFileSync(plistPath, plistContent, 'utf8');
-          console.log('   ✅ Added UILaunchScreen to Info.plist');
-        }
+        // Remove old UILaunchScreen if exists
+        plistContent = plistContent.replace(
+          /<key>UILaunchScreen<\/key>\s*<dict>[\s\S]*?<\/dict>/,
+          ''
+        );
+        
+        // Add new UILaunchScreen with proper configuration
+        const uiLaunchScreen = `  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageRespectsSafeAreaInsets</key>\n    <false/>\n  </dict>`;
+        
+        plistContent = plistContent.replace(
+          '</dict>\n</plist>',
+          `${uiLaunchScreen}\n</dict>\n</plist>`
+        );
+        
+        fs.writeFileSync(plistPath, plistContent, 'utf8');
+        console.log('   ✅ Updated Info.plist with UILaunchScreen');
       }
     }
     
@@ -466,6 +515,7 @@ async function customizeUI(context, iosPath) {
     
   } catch (error) {
     console.log('   ⚠️  UI customization skipped:', error.message);
+    console.error(error.stack);
   }
 }
 
