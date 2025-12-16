@@ -10,43 +10,18 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getConfigParser } = require('./utils');
-
-function hexToSwiftUIColor(hex) {
-  hex = hex.replace('#', '');
-  const r = parseInt(hex.substring(0, 2), 16) / 255.0;
-  const g = parseInt(hex.substring(2, 4), 16) / 255.0;
-  const b = parseInt(hex.substring(4, 6), 16) / 255.0;
-  return `UIColor(red: ${r.toFixed(3)}, green: ${g.toFixed(3)}, blue: ${b.toFixed(3)}, alpha: 1.0)`;
-}
+const {
+  getConfigParser,
+  getBackgroundColorPreference,
+  hexToSwiftUIColor,
+  hexToObjCUIColor,
+  findFile,
+  logSection,
+  logSectionComplete
+} = require('./utils');
 
 function findAppDelegateSwift(iosPath) {
-  function searchDir(dir, depth = 0) {
-    if (depth > 3) return null;
-    
-    try {
-      const items = fs.readdirSync(dir);
-      
-      for (const item of items) {
-        if (item === 'AppDelegate.swift') {
-          return path.join(dir, item);
-        }
-        
-        const fullPath = path.join(dir, item);
-        if (fs.statSync(fullPath).isDirectory() && 
-            !['node_modules', 'build', 'Pods', '.git'].includes(item)) {
-          const found = searchDir(fullPath, depth + 1);
-          if (found) return found;
-        }
-      }
-    } catch (error) {
-      // Skip permission errors
-    }
-    
-    return null;
-  }
-  
-  return searchDir(iosPath);
+  return findFile(iosPath, ['AppDelegate.swift'], 3);
 }
 
 function injectSwiftBackgroundFix(appDelegatePath, backgroundColor) {
@@ -132,12 +107,7 @@ function injectObjCBackgroundFix(mainViewControllerPath, backgroundColor) {
     let content = fs.readFileSync(mainViewControllerPath, 'utf8');
     const original = content;
     
-    const hex = backgroundColor.replace('#', '');
-    const r = parseInt(hex.substring(0, 2), 16) / 255.0;
-    const g = parseInt(hex.substring(2, 4), 16) / 255.0;
-    const b = parseInt(hex.substring(4, 6), 16) / 255.0;
-    
-    const colorCode = `[UIColor colorWithRed:${r.toFixed(3)} green:${g.toFixed(3)} blue:${b.toFixed(3)} alpha:1.0]`;
+    const colorCode = hexToObjCUIColor(backgroundColor);
     
     // Check if already has the fix
     if (content.includes('// PLUGIN: Background color fix')) {
@@ -196,41 +166,6 @@ function injectObjCBackgroundFix(mainViewControllerPath, backgroundColor) {
   }
 }
 
-function findFile(baseDir, patterns) {
-  function searchDir(dir, depth = 0) {
-    if (depth > 3) return null;
-    
-    try {
-      const items = fs.readdirSync(dir);
-      
-      for (const item of items) {
-        const fullPath = path.join(dir, item);
-        const stat = fs.statSync(fullPath);
-        
-        if (stat.isFile()) {
-          for (const pattern of patterns) {
-            if (item === pattern || item.endsWith(pattern)) {
-              return fullPath;
-            }
-          }
-        } else if (stat.isDirectory()) {
-          if (['node_modules', 'build', 'Pods', '.git'].includes(item)) {
-            continue;
-          }
-          const found = searchDir(fullPath, depth + 1);
-          if (found) return found;
-        }
-      }
-    } catch (error) {
-      // Skip
-    }
-    
-    return null;
-  }
-  
-  return searchDir(baseDir);
-}
-
 module.exports = function(context) {
   const platforms = context.opts.platforms;
   
@@ -241,18 +176,14 @@ module.exports = function(context) {
   const root = context.opts.projectRoot;
   const config = getConfigParser(context, path.join(root, 'config.xml'));
   
-  const backgroundColor = config.getPreference("SplashScreenBackgroundColor") ||
-                         config.getPreference("BackgroundColor") ||
-                         config.getPreference("WEBVIEW_BACKGROUND_COLOR");
+  const backgroundColor = getBackgroundColorPreference(config);
   
   if (!backgroundColor) {
     console.log('\n⏭️  No background color configured, skipping iOS background fix injection');
     return;
   }
   
-  console.log('\n══════════════════════════════════════════════');
-  console.log('  💉 INJECT iOS BACKGROUND COLOR FIX');
-  console.log('══════════════════════════════════════════════');
+  logSection('💉 INJECT iOS BACKGROUND COLOR FIX');
   console.log(`Background Color: ${backgroundColor}`);
   
   const iosPath = path.join(root, 'platforms/ios');
@@ -279,7 +210,7 @@ module.exports = function(context) {
   
   // Also inject into MainViewController.m
   console.log('\n   🔍 Looking for MainViewController.m...');
-  const mainViewControllerPath = findFile(iosPath, ['MainViewController.m']);
+  const mainViewControllerPath = findFile(iosPath, ['MainViewController.m'], 3);
   
   if (mainViewControllerPath) {
     console.log(`   ✓ Found: ${path.relative(iosPath, mainViewControllerPath)}`);
@@ -291,12 +222,8 @@ module.exports = function(context) {
   }
   
   if (injected) {
-    console.log('\n══════════════════════════════════════════════');
-    console.log('✅ iOS background fix injection completed!');
-    console.log('══════════════════════════════════════════════\n');
+    logSectionComplete('✅ iOS background fix injection completed!');
   } else {
-    console.log('\n══════════════════════════════════════════════');
-    console.log('⚠️  No files were modified');
-    console.log('══════════════════════════════════════════════\n');
+    logSectionComplete('⚠️  No files were modified');
   }
 };
