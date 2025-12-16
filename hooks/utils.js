@@ -204,17 +204,224 @@ function logWithTimestamp(message) {
   console.log(`[${timestamp}] ${message}`);
 }
 
+// ============================================================================
+// COLOR UTILITIES
+// ============================================================================
+
+/**
+ * Convert hex color to RGB object (0.0 - 1.0 range)
+ * @param {string} hex - Hex color (e.g., "#001833" or "001833")
+ * @returns {{r: number, g: number, b: number}}
+ */
+function hexToRgb(hex) {
+  hex = hex.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16) / 255.0;
+  const g = parseInt(hex.substring(2, 4), 16) / 255.0;
+  const b = parseInt(hex.substring(4, 6), 16) / 255.0;
+  return { r, g, b };
+}
+
+/**
+ * Convert RGB object to XML attribute string
+ * @param {{r: number, g: number, b: number}} rgb - RGB object (0.0 - 1.0)
+ * @param {number} precision - Decimal precision
+ * @returns {string} - Format: 'red="0.000" green="0.000" blue="0.000"'
+ */
+function rgbToString(rgb, precision = 3) {
+  return `red="${rgb.r.toFixed(precision)}" green="${rgb.g.toFixed(precision)}" blue="${rgb.b.toFixed(precision)}"`;
+}
+
+/**
+ * Convert hex color to Swift UIColor code
+ * @param {string} hex - Hex color (e.g., "#001833")
+ * @returns {string} - Swift UIColor initialization code
+ */
+function hexToSwiftUIColor(hex) {
+  const rgb = hexToRgb(hex);
+  return `UIColor(red: ${rgb.r.toFixed(3)}, green: ${rgb.g.toFixed(3)}, blue: ${rgb.b.toFixed(3)}, alpha: 1.0)`;
+}
+
+/**
+ * Convert hex color to Objective-C UIColor code
+ * @param {string} hex - Hex color (e.g., "#001833")
+ * @returns {string} - Objective-C UIColor code
+ */
+function hexToObjCUIColor(hex) {
+  const rgb = hexToRgb(hex);
+  return `[UIColor colorWithRed:${rgb.r.toFixed(3)} green:${rgb.g.toFixed(3)} blue:${rgb.b.toFixed(3)} alpha:1.0]`;
+}
+
+/**
+ * Get background color preference from config
+ * Tries multiple preference keys in order
+ * @param {Object} config - ConfigParser instance
+ * @returns {string|null} - Hex color or null
+ */
+function getBackgroundColorPreference(config) {
+  return config.getPreference('SplashScreenBackgroundColor') ||
+         config.getPreference('BackgroundColor') ||
+         config.getPreference('WEBVIEW_BACKGROUND_COLOR') ||
+         null;
+}
+
+// ============================================================================
+// FILE SEARCH UTILITIES
+// ============================================================================
+
+/**
+ * Find first file matching patterns in directory tree
+ * @param {string} baseDir - Base directory to search
+ * @param {string[]} patterns - Array of file name patterns to match
+ * @param {number} maxDepth - Maximum recursion depth
+ * @returns {string|null} - Full path to first matching file, or null
+ */
+function findFile(baseDir, patterns, maxDepth = 3) {
+  function searchDir(dir, depth = 0) {
+    if (depth > maxDepth) return null;
+    
+    let items;
+    try {
+      items = fs.readdirSync(dir);
+    } catch (error) {
+      return null; // Skip permission errors
+    }
+    
+    for (const item of items) {
+      const fullPath = path.join(dir, item);
+      let stat;
+      
+      try {
+        stat = fs.statSync(fullPath);
+      } catch (error) {
+        continue; // Skip if can't stat
+      }
+      
+      if (stat.isFile()) {
+        for (const pattern of patterns) {
+          if (item === pattern || item.endsWith(pattern)) {
+            return fullPath;
+          }
+        }
+      } else if (stat.isDirectory()) {
+        // Skip common excluded directories
+        if (['node_modules', 'build', 'Pods', '.git', 'DerivedData'].includes(item)) {
+          continue;
+        }
+        const found = searchDir(fullPath, depth + 1);
+        if (found) return found;
+      }
+    }
+    
+    return null;
+  }
+  
+  return searchDir(baseDir);
+}
+
+/**
+ * Find all files matching patterns in directory tree
+ * @param {string} baseDir - Base directory to search
+ * @param {string[]} patterns - Array of file name patterns to match
+ * @param {number} maxDepth - Maximum recursion depth
+ * @returns {string[]} - Array of full paths to matching files
+ */
+function findAllFiles(baseDir, patterns, maxDepth = 3) {
+  const results = [];
+  
+  function searchDir(dir, depth = 0) {
+    if (depth > maxDepth) return;
+    
+    let items;
+    try {
+      items = fs.readdirSync(dir);
+    } catch (error) {
+      return; // Skip permission errors
+    }
+    
+    for (const item of items) {
+      const fullPath = path.join(dir, item);
+      let stat;
+      
+      try {
+        stat = fs.statSync(fullPath);
+      } catch (error) {
+        continue; // Skip if can't stat
+      }
+      
+      if (stat.isFile()) {
+        for (const pattern of patterns) {
+          if (item === pattern || item.endsWith(pattern)) {
+            results.push(fullPath);
+            break; // Only add once per file
+          }
+        }
+      } else if (stat.isDirectory()) {
+        // Skip common excluded directories
+        if (['node_modules', 'build', 'Pods', '.git', 'DerivedData'].includes(item)) {
+          continue;
+        }
+        searchDir(fullPath, depth + 1);
+      }
+    }
+  }
+  
+  searchDir(baseDir);
+  return results;
+}
+
+// ============================================================================
+// LOGGING UTILITIES
+// ============================================================================
+
+/**
+ * Log a formatted section header
+ * @param {string} title - Section title
+ */
+function logSection(title) {
+  console.log('\n══════════════════════════════════════════════');
+  console.log(`  ${title}`);
+  console.log('══════════════════════════════════════════════');
+}
+
+/**
+ * Log section completion
+ * @param {string} message - Completion message
+ */
+function logSectionComplete(message) {
+  console.log('\n══════════════════════════════════════════════');
+  console.log(message);
+  console.log('══════════════════════════════════════════════\n');
+}
+
 module.exports = {
+  // Config utilities
   getConfigPath,
   getConfigParser,
   isCordovaAbove,
   getCordovaVersion,
+  
+  // Platform utilities
   isIOS,
   isAndroid,
   getIOSAppFolderName,
   getAndroidPackageName,
+  
+  // File utilities
   safeWriteFile,
   isFileReadable,
   ensureDirectoryExists,
-  logWithTimestamp
+  findFile,
+  findAllFiles,
+  
+  // Color utilities
+  hexToRgb,
+  rgbToString,
+  hexToSwiftUIColor,
+  hexToObjCUIColor,
+  getBackgroundColorPreference,
+  
+  // Logging utilities
+  logWithTimestamp,
+  logSection,
+  logSectionComplete
 };
