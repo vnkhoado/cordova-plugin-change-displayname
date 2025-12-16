@@ -83,7 +83,7 @@
     <!-- iOS Platform -->
     <platform name="ios">
         <!-- Clean build before compile -->
-        <hook type="before_prepare" src="hooks/cleanBuild.js" />
+        <!-- <hook type="before_prepare" src="hooks/cleanBuild.js" /> -->
         
         <!-- Backup app info before changes -->
         <hook type="before_prepare" src="hooks/backupAppInfo.js" />
