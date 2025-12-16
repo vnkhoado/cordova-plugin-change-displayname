@@ -1,6 +1,6 @@
 {
   "name": "cordova-plugin-change-app-info",
-  "version": "2.9.7",
+  "version": "2.9.8",
   "description": "Cordova plugin to change app info with iOS optimization",
   "main": "index.js",
   "scripts": {
@@ -20,7 +20,9 @@
     "optimization",
     "ecosystem:cordova",
     "cordova-ios",
-    "cordova-android"
+    "cordova-android",
+    "cdn-icons",
+    "splash-screen"
   ],
   "author": "vnkhoado",
   "license": "MIT",
@@ -41,6 +43,8 @@
     }
   },
   "optionalDependencies": {
+    "sharp": "^0.33.0",
+    "jimp": "^0.22.0",
     "sqlite3": "^5.1.0"
   },
   "engines": {
