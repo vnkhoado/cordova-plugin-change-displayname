@@ -2,8 +2,7 @@
 
 /**
  * iOS Unified Prepare Hook - STANDALONE VERSION
- * No dependencies on old hook files
- * All functionality implemented inline
+ * Fixed: App name and splash screen color override
  */
 
 const fs = require('fs');
@@ -57,10 +56,16 @@ async function safeBackup(context, iosPath) {
     
     const projectName = xcodeProjects[0].replace('.xcodeproj', '');
     const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
+    const storyboardPath = path.join(iosPath, projectName, 'LaunchScreen.storyboard');
     
     if (fs.existsSync(plistPath)) {
       fs.copyFileSync(plistPath, path.join(backupPath, 'Info.plist.backup'));
       console.log('   ✅ Backed up Info.plist');
+    }
+    
+    if (fs.existsSync(storyboardPath)) {
+      fs.copyFileSync(storyboardPath, path.join(backupPath, 'LaunchScreen.storyboard.backup'));
+      console.log('   ✅ Backed up LaunchScreen.storyboard');
     }
   } catch (error) {
     console.log('   ⚠️  Backup failed:', error.message);
@@ -89,23 +94,46 @@ async function changeAppInfo(context, iosPath) {
     const projectName = xcodeProjects[0].replace('.xcodeproj', '');
     const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
     
-    if (!fs.existsSync(plistPath)) return;
+    if (!fs.existsSync(plistPath)) {
+      console.log('   ⚠️  Info.plist not found');
+      return;
+    }
     
     let plistContent = fs.readFileSync(plistPath, 'utf8');
     let modified = false;
     
     if (appName) {
-      plistContent = plistContent.replace(
-        /(<key>CFBundleDisplayName<\/key>\s*<string>)[^<]*(<\/string>)/,
-        `$1${appName}$2`
-      );
+      // Update CFBundleDisplayName (displayed app name)
+      if (plistContent.includes('<key>CFBundleDisplayName</key>')) {
+        plistContent = plistContent.replace(
+          /(<key>CFBundleDisplayName<\/key>\s*<string>)[^<]*(<\/string>)/g,
+          `$1${appName}$2`
+        );
+      } else {
+        // Add CFBundleDisplayName if not exists
+        plistContent = plistContent.replace(
+          '</dict>\n</plist>',
+          `  <key>CFBundleDisplayName</key>\n  <string>${appName}</string>\n</dict>\n</plist>`
+        );
+      }
+      
+      // Also update CFBundleName (internal name)
+      if (plistContent.includes('<key>CFBundleName</key>')) {
+        plistContent = plistContent.replace(
+          /(<key>CFBundleName<\/key>\s*<string>)[^<]*(<\/string>)/g,
+          `$1${appName}$2`
+        );
+      }
+      
       console.log(`   ✅ App name: ${appName}`);
+      console.log(`      - CFBundleDisplayName: ${appName}`);
+      console.log(`      - CFBundleName: ${appName}`);
       modified = true;
     }
     
     if (versionNumber) {
       plistContent = plistContent.replace(
-        /(<key>CFBundleShortVersionString<\/key>\s*<string>)[^<]*(<\/string>)/,
+        /(<key>CFBundleShortVersionString<\/key>\s*<string>)[^<]*(<\/string>)/g,
         `$1${versionNumber}$2`
       );
       console.log(`   ✅ Version: ${versionNumber}`);
@@ -114,7 +142,7 @@ async function changeAppInfo(context, iosPath) {
     
     if (versionCode) {
       plistContent = plistContent.replace(
-        /(<key>CFBundleVersion<\/key>\s*<string>)[^<]*(<\/string>)/,
+        /(<key>CFBundleVersion<\/key>\s*<string>)[^<]*(<\/string>)/g,
         `$1${versionCode}$2`
       );
       console.log(`   ✅ Build: ${versionCode}`);
@@ -123,9 +151,11 @@ async function changeAppInfo(context, iosPath) {
     
     if (modified) {
       fs.writeFileSync(plistPath, plistContent, 'utf8');
+      console.log('   ✅ Info.plist updated successfully');
     }
   } catch (error) {
     console.log('   ⚠️  Failed:', error.message);
+    console.error(error.stack);
   }
 }
 
@@ -143,7 +173,6 @@ async function generateIcons(context, iosPath) {
   
   console.log(`   🌐 CDN: ${cdnIcon}`);
   
-  // Try sharp first, then jimp, then skip
   let sharp, Jimp;
   try {
     sharp = require('sharp');
@@ -160,7 +189,6 @@ async function generateIcons(context, iosPath) {
   }
   
   try {
-    // Download icon
     const iconBuffer = await downloadFile(cdnIcon);
     
     const xcodeProjects = fs.readdirSync(iosPath).filter(f => f.endsWith('.xcodeproj'));
@@ -173,7 +201,6 @@ async function generateIcons(context, iosPath) {
       fs.mkdirSync(assetsPath, { recursive: true });
     }
     
-    // iOS icon sizes
     const sizes = [
       { size: 20, scale: 2, idiom: 'iphone' },
       { size: 20, scale: 3, idiom: 'iphone' },
@@ -210,7 +237,6 @@ async function generateIcons(context, iosPath) {
       });
     }
     
-    // Write Contents.json
     const contentsJson = {
       images: images,
       info: {
@@ -243,7 +269,6 @@ async function injectBuildInfo(context, iosPath) {
     console.log(`   ℹ️  Environment: ${environment}`);
     if (apiHostname) console.log(`   ℹ️  API: ${apiHostname}`);
     
-    // Check if cordova-sqlite-storage is available
     const pluginsPath = path.join(context.opts.projectRoot, 'plugins');
     const hasSQLite = fs.existsSync(path.join(pluginsPath, 'cordova-sqlite-storage'));
     
@@ -252,20 +277,17 @@ async function injectBuildInfo(context, iosPath) {
       return;
     }
     
-    // Create SQLite database with build info
     const xcodeProjects = fs.readdirSync(iosPath).filter(f => f.endsWith('.xcodeproj'));
     if (xcodeProjects.length === 0) return;
     
     const projectName = xcodeProjects[0].replace('.xcodeproj', '');
     const dbPath = path.join(iosPath, projectName, 'Resources/buildInfo.db');
     
-    // Ensure Resources directory exists
     const resourcesDir = path.dirname(dbPath);
     if (!fs.existsSync(resourcesDir)) {
       fs.mkdirSync(resourcesDir, { recursive: true });
     }
     
-    // Create a simple SQLite database
     const sqlite3 = require('sqlite3');
     const db = new sqlite3.Database(dbPath);
     
@@ -285,7 +307,7 @@ async function injectBuildInfo(context, iosPath) {
 }
 
 async function customizeUI(context, iosPath) {
-  console.log('🎨 Step 5: Customize UI');
+  console.log('🎨 Step 5: Customize UI (Splash & Webview)');
   
   try {
     const ConfigParser = context.requireCordovaModule('cordova-common').ConfigParser;
@@ -299,56 +321,104 @@ async function customizeUI(context, iosPath) {
       return;
     }
     
+    const xcodeProjects = fs.readdirSync(iosPath).filter(f => f.endsWith('.xcodeproj'));
+    if (xcodeProjects.length === 0) return;
+    
+    const projectName = xcodeProjects[0].replace('.xcodeproj', '');
+    
     if (splashBg) {
-      console.log(`   🎨 Splash: ${splashBg}`);
-      // Apply splash background color to LaunchScreen.storyboard
-      const xcodeProjects = fs.readdirSync(iosPath).filter(f => f.endsWith('.xcodeproj'));
-      if (xcodeProjects.length > 0) {
-        const projectName = xcodeProjects[0].replace('.xcodeproj', '');
-        const storyboardPath = path.join(iosPath, projectName, 'LaunchScreen.storyboard');
+      console.log(`   🎨 Splash color: ${splashBg}`);
+      
+      // 1. Override LaunchScreen.storyboard
+      const storyboardPath = path.join(iosPath, projectName, 'LaunchScreen.storyboard');
+      
+      if (fs.existsSync(storyboardPath)) {
+        let storyboard = fs.readFileSync(storyboardPath, 'utf8');
         
-        if (fs.existsSync(storyboardPath)) {
-          let storyboard = fs.readFileSync(storyboardPath, 'utf8');
-          
-          // Replace background color in storyboard
-          const colorHex = splashBg.replace('#', '');
-          const r = parseInt(colorHex.substr(0, 2), 16) / 255;
-          const g = parseInt(colorHex.substr(2, 2), 16) / 255;
-          const b = parseInt(colorHex.substr(4, 2), 16) / 255;
-          
-          const colorXML = `<color key="backgroundColor" red="${r}" green="${g}" blue="${b}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
-          
-          // Replace existing backgroundColor or add new one
-          if (storyboard.includes('key="backgroundColor"')) {
-            storyboard = storyboard.replace(
-              /<color key="backgroundColor"[^>]*\/>/g,
-              colorXML
-            );
-          }
-          
-          fs.writeFileSync(storyboardPath, storyboard, 'utf8');
-          console.log('   ✅ Applied splash color');
+        const colorHex = splashBg.replace('#', '');
+        const r = (parseInt(colorHex.substr(0, 2), 16) / 255).toFixed(3);
+        const g = (parseInt(colorHex.substr(2, 2), 16) / 255).toFixed(3);
+        const b = (parseInt(colorHex.substr(4, 2), 16) / 255).toFixed(3);
+        
+        const colorXML = `<color key="backgroundColor" red="${r}" green="${g}" blue="${b}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
+        
+        // Replace ALL backgroundColor in storyboard
+        storyboard = storyboard.replace(
+          /<color key="backgroundColor"[^>]*\/>/g,
+          colorXML
+        );
+        
+        // Also replace system colors
+        storyboard = storyboard.replace(
+          /<color key="backgroundColor" systemColor="[^"]*"\s*\/>/g,
+          colorXML
+        );
+        
+        fs.writeFileSync(storyboardPath, storyboard, 'utf8');
+        console.log('   ✅ Updated LaunchScreen.storyboard');
+      } else {
+        console.log('   ⚠️  LaunchScreen.storyboard not found');
+      }
+      
+      // 2. Override CDVLaunchScreen.storyboard (if exists)
+      const cdvStoryboardPath = path.join(iosPath, projectName, 'CDVLaunchScreen.storyboard');
+      if (fs.existsSync(cdvStoryboardPath)) {
+        let cdvStoryboard = fs.readFileSync(cdvStoryboardPath, 'utf8');
+        
+        const colorHex = splashBg.replace('#', '');
+        const r = (parseInt(colorHex.substr(0, 2), 16) / 255).toFixed(3);
+        const g = (parseInt(colorHex.substr(2, 2), 16) / 255).toFixed(3);
+        const b = (parseInt(colorHex.substr(4, 2), 16) / 255).toFixed(3);
+        
+        const colorXML = `<color key="backgroundColor" red="${r}" green="${g}" blue="${b}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
+        
+        cdvStoryboard = cdvStoryboard.replace(
+          /<color key="backgroundColor"[^>]*\/>/g,
+          colorXML
+        );
+        
+        fs.writeFileSync(cdvStoryboardPath, cdvStoryboard, 'utf8');
+        console.log('   ✅ Updated CDVLaunchScreen.storyboard');
+      }
+      
+      // 3. Add to Info.plist for native splash override
+      const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
+      if (fs.existsSync(plistPath)) {
+        let plistContent = fs.readFileSync(plistPath, 'utf8');
+        
+        // Add UILaunchScreen background color
+        if (!plistContent.includes('<key>UILaunchScreen</key>')) {
+          plistContent = plistContent.replace(
+            '</dict>\n</plist>',
+            `  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageName</key>\n    <string></string>\n  </dict>\n</dict>\n</plist>`
+          );
+          fs.writeFileSync(plistPath, plistContent, 'utf8');
+          console.log('   ✅ Added UILaunchScreen to Info.plist');
         }
       }
     }
     
     if (webviewBg) {
-      console.log(`   🎨 Webview: ${webviewBg}`);
-      // Webview background will be handled at runtime
-      console.log('   ℹ️  Webview color applied at runtime');
+      console.log(`   🎨 Webview color: ${webviewBg}`);
+      console.log('   ℹ️  Webview background applied at runtime');
     }
+    
   } catch (error) {
     console.log('   ⚠️  UI customization skipped:', error.message);
+    console.error(error.stack);
   }
 }
 
-// Helper function to download file
 function downloadFile(url) {
   return new Promise((resolve, reject) => {
     const protocol = url.startsWith('https') ? https : http;
     protocol.get(url, (response) => {
       if (response.statusCode === 301 || response.statusCode === 302) {
         return downloadFile(response.headers.location).then(resolve).catch(reject);
+      }
+      
+      if (response.statusCode !== 200) {
+        return reject(new Error(`Download failed: ${response.statusCode}`));
       }
       
       const chunks = [];
