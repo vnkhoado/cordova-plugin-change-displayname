@@ -1,70 +1,49 @@
 {
   "name": "cordova-plugin-change-app-info",
-  "version": "2.9.0",
-  "description": "Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info. Supports splash screen and webview background color customization with auto-override for OutSystems. Optimized for OutSystems MABS.",
+  "version": "2.9.7",
+  "description": "Cordova plugin to change app info with iOS optimization",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"No tests yet\"",
-    "postinstall": "node scripts/postinstall.js"
+    "cleanup:ios": "node scripts/cleanup-old-ios-hooks.js",
+    "test": "echo \"No tests specified\" && exit 0"
   },
-  "dependencies": {
-    "better-sqlite3": "^9.0.0",
-    "sharp": "^0.33.0",
-    "node-fetch": "^2.7.0",
-    "xcode": "^3.0.1"
-  },
-  "optionalDependencies": {
-    "jimp": "^0.22.0"
-  },
-  "cordova": {
-    "id": "cordova-plugin-change-app-info",
-    "platforms": [
-      "ios",
-      "android"
-    ]
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vnkhoado/cordova-plugin-change-app-info.git"
   },
   "keywords": [
     "cordova",
-    "cordova-plugin",
-    "app",
-    "info",
-    "package-name",
-    "displayname",
-    "version",
-    "icon",
+    "plugin",
+    "app-info",
     "ios",
     "android",
-    "cdn",
-    "build",
-    "dynamic",
-    "outsystems",
-    "mabs",
-    "sqlite",
-    "readonly",
-    "database",
-    "webview",
-    "background",
-    "splash",
-    "splashscreen",
+    "optimization",
     "ecosystem:cordova",
     "cordova-ios",
     "cordova-android"
   ],
   "author": "vnkhoado",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info.git"
-  },
   "bugs": {
     "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info/issues"
   },
   "homepage": "https://github.com/vnkhoado/cordova-plugin-change-app-info#readme",
-  "engines": {
-    "node": ">=12.0.0",
-    "cordova": ">=9.0.0"
-  },
   "peerDependencies": {
-    "cordova-sqlite-storage": "^6.1.0"
+    "sharp": "^0.32.0 || ^0.33.0",
+    "jimp": "^0.22.0"
+  },
+  "peerDependenciesMeta": {
+    "sharp": {
+      "optional": true
+    },
+    "jimp": {
+      "optional": true
+    }
+  },
+  "optionalDependencies": {
+    "sqlite3": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }
