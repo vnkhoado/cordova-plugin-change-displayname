@@ -8,7 +8,7 @@ Cordova plugin to change app info (package name, display name, version, icon) fr
 - Change package name/bundle ID at build time
 - Set app display name dynamically
 - Configure version number and build code
-- Download and set app icon from CDN URL
+- Download and set app icon from CDN URL (requires sharp or jimp)
 
 ✅ **Build Info Database (READ-ONLY)**
 - Pre-built SQLite database with build information
@@ -19,6 +19,7 @@ Cordova plugin to change app info (package name, display name, version, icon) fr
 ✅ **UI Customization**
 - **Webview background color**: Eliminate white flash on app launch
 - **Native splash screen**: Auto-override OutSystems theme colors
+- **Native pre-splash color**: No white flash when tapping app icon (iOS)
 - **Deep color override**: Replaces ALL color tags in LaunchScreen (not just first)
 - **Force override**: Prevents OutSystems from overriding splash colors
 - **iOS Background Fix**: Automatic code injection to eliminate color flash during app startup
@@ -93,6 +94,41 @@ Add to **Extensibility Configurations**:
 
 ```bash
 cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
+
+# For CDN icon generation (REQUIRED if using CDN_ICON)
+npm install sharp
+# OR fallback to jimp (slower, pure JS)
+npm install jimp
+```
+
+### Image Processing Library
+
+**CDN icon generation requires either sharp or jimp**:
+
+#### Option 1: Sharp (Recommended ⭐)
+```bash
+npm install sharp
+```
+- **Pros**: Very fast, better quality, native performance
+- **Cons**: Requires native compilation (may fail on some build servers)
+
+#### Option 2: Jimp (Fallback)
+```bash
+npm install jimp
+```
+- **Pros**: Pure JavaScript, works everywhere
+- **Cons**: Slower than sharp
+
+#### Auto-install
+The plugin includes sharp and jimp as `optionalDependencies`, so they will be automatically installed when you add the plugin. However, for build servers, you may need to explicitly install:
+
+```bash
+# In your project's package.json
+{
+  "dependencies": {
+    "sharp": "^0.33.0"
+  }
+}
 ```
 
 ## Configuration
@@ -125,7 +161,10 @@ cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.gi
 2. OutSystems: May inject theme colors during build
 3. `before_compile` hook: **Deep scan** - replaces ALL color tags in storyboard (not just first)
 4. **iOS Background Fix**: Automatically injects code into AppDelegate and MainViewController
-5. Result: Your color preference wins everywhere! 🎉
+5. **Native pre-splash**: Creates Color Assets for immediate color on tap
+6. Result: Your color preference wins everywhere! 🎉
+
+**NEW in v2.9.8**: No white flash when tapping app icon! The native pre-splash color is now properly applied before any storyboard loads.
 
 #### Additional Splash Preferences (Optional)
 
@@ -278,6 +317,61 @@ OnApplicationReady
           └─ Handle error
 ```
 
+## Troubleshooting
+
+### CDN Icons Not Generated
+
+**Symptom**: Build logs show "No image processor available"
+
+**Solution**:
+```bash
+# Install sharp (recommended)
+npm install sharp
+
+# OR install jimp (fallback)
+npm install jimp
+
+# Then rebuild
+cordova platform remove ios android
+cordova platform add ios android
+cordova build
+```
+
+**For build servers**, add to your project's `package.json`:
+```json
+{
+  "dependencies": {
+    "sharp": "^0.33.0"
+  }
+}
+```
+
+Then in your build pipeline:
+```bash
+npm install
+cordova build
+```
+
+### White Flash on App Launch (iOS)
+
+**Fixed in v2.9.8!** The plugin now creates proper Color Assets for native pre-splash.
+
+If you still see white flash:
+1. Ensure you're using latest version
+2. Clean and rebuild: `rm -rf platforms/ios && cordova platform add ios`
+3. Check build logs for "Created SplashBackgroundColor.colorset"
+
+### Splash Color Not Changing (OutSystems)
+
+1. Set **ALL THREE** color preferences:
+   - `BackgroundColor`
+   - `SplashScreenBackgroundColor`  
+   - `AndroidWindowSplashScreenBackground`
+
+2. Use same color value for all three
+
+3. Check build logs for "Force override" messages
+
 ## Complete Example
 
 ```json
@@ -367,6 +461,26 @@ OnApplicationReady
 
 ## Changelog
 
+### v2.9.8 (2025-12-16) 🎉 NATIVE PRE-SPLASH FIX
+- **NEW**: Native pre-splash color support - No white flash when tapping app icon!
+- **FEATURE**: Auto-creates Color Assets (SplashBackgroundColor.colorset) with RGB values
+- **FEATURE**: Proper UILaunchScreen configuration in Info.plist
+- **IMPROVED**: Sharp and jimp added to optionalDependencies for auto-install
+- **IMPROVED**: Better icon generation with validation and error handling
+- **IMPROVED**: Seamless color transition: Tap → Native splash → Storyboard → App
+- iOS 14+ UILaunchScreen API fully supported
+
+### v2.9.7 (2025-12-16) 🚀 MAJOR IMPROVEMENTS
+- **FIXED**: iOS app name not updating (CFBundleDisplayName + CFBundleName)
+- **FIXED**: iOS splash color not applying to all storyboard elements
+- **FIXED**: Android icon generation with better error handling
+- **NEW**: Clean old icons before generating new ones
+- **NEW**: Verify each generated icon file
+- **IMPROVED**: Download validation with timeout handling
+- **IMPROVED**: Better progress feedback and logging
+- **IMPROVED**: Support for both iPhone and iPad icons (18 sizes)
+- **IMPROVED**: Android icons with proper verification (6 densities)
+
 ### v2.9.6 (2025-12-16) 🎯 iOS BACKGROUND FIX
 - **NEW**: Automatic iOS background color fix injection
 - **FIXED**: Eliminates "old color flashing" issue during iOS app startup
@@ -403,27 +517,12 @@ OnApplicationReady
 - Updated documentation for splash screen configuration
 - Better OutSystems compatibility
 
-### v2.7.2 (2024-12-13)
-- Added custom splash screen background color hook
-- Support for both Android and iOS splash customization
-
-### v2.7.1 (2024-12-12)
-- Added webview background color customization
-- Fixed race condition in buildInfoReady event
-- Added `waitForReady()` promise-based API
-
-### v2.7.0 (2024-12-10)
-- Migrated to READ-ONLY pre-built SQLite database
-- Improved performance (no runtime database writes)
-- Simplified codebase
-- Better security (read-only data)
-
 ## Requirements
 
 - Cordova >= 9.0.0
 - cordova-sqlite-storage >= 6.1.0
-- Node.js >= 12.0.0
-- For icon generation: sharp or jimp (auto-installed)
+- Node.js >= 14.0.0
+- **For CDN icon generation**: sharp ^0.33.0 OR jimp ^0.22.0
 
 ## License
 
