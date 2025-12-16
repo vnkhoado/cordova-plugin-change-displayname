@@ -2,7 +2,7 @@
 
 /**
  * iOS Unified Prepare Hook - STANDALONE VERSION
- * Fixed: App name and splash screen color override
+ * Fixed: App name, splash screen color, and CDN icon generation
  */
 
 const fs = require('fs');
@@ -103,21 +103,18 @@ async function changeAppInfo(context, iosPath) {
     let modified = false;
     
     if (appName) {
-      // Update CFBundleDisplayName (displayed app name)
       if (plistContent.includes('<key>CFBundleDisplayName</key>')) {
         plistContent = plistContent.replace(
           /(<key>CFBundleDisplayName<\/key>\s*<string>)[^<]*(<\/string>)/g,
           `$1${appName}$2`
         );
       } else {
-        // Add CFBundleDisplayName if not exists
         plistContent = plistContent.replace(
           '</dict>\n</plist>',
           `  <key>CFBundleDisplayName</key>\n  <string>${appName}</string>\n</dict>\n</plist>`
         );
       }
       
-      // Also update CFBundleName (internal name)
       if (plistContent.includes('<key>CFBundleName</key>')) {
         plistContent = plistContent.replace(
           /(<key>CFBundleName<\/key>\s*<string>)[^<]*(<\/string>)/g,
@@ -126,8 +123,6 @@ async function changeAppInfo(context, iosPath) {
       }
       
       console.log(`   ✅ App name: ${appName}`);
-      console.log(`      - CFBundleDisplayName: ${appName}`);
-      console.log(`      - CFBundleName: ${appName}`);
       modified = true;
     }
     
@@ -151,57 +146,90 @@ async function changeAppInfo(context, iosPath) {
     
     if (modified) {
       fs.writeFileSync(plistPath, plistContent, 'utf8');
-      console.log('   ✅ Info.plist updated successfully');
     }
   } catch (error) {
     console.log('   ⚠️  Failed:', error.message);
-    console.error(error.stack);
   }
 }
 
 async function generateIcons(context, iosPath) {
-  console.log('🎨 Step 3: Generate Icons');
+  console.log('🎨 Step 3: Generate Icons from CDN');
   
-  const ConfigParser = context.requireCordovaModule('cordova-common').ConfigParser;
-  const config = new ConfigParser(path.join(context.opts.projectRoot, 'config.xml'));
-  const cdnIcon = config.getPreference('CDN_ICON');
-  
-  if (!cdnIcon) {
-    console.log('   ℹ️  No CDN_ICON, using existing icons');
-    return;
-  }
-  
-  console.log(`   🌐 CDN: ${cdnIcon}`);
-  
-  let sharp, Jimp;
   try {
-    sharp = require('sharp');
-    console.log('   ✅ Using sharp for image processing');
-  } catch (e) {
-    try {
-      Jimp = require('jimp');
-      console.log('   ✅ Using jimp for image processing');
-    } catch (e2) {
-      console.log('   ⚠️  No image processor available (sharp/jimp)');
-      console.log('   💡 Install: npm install sharp');
+    const ConfigParser = context.requireCordovaModule('cordova-common').ConfigParser;
+    const config = new ConfigParser(path.join(context.opts.projectRoot, 'config.xml'));
+    const cdnIcon = config.getPreference('CDN_ICON');
+    
+    if (!cdnIcon) {
+      console.log('   ℹ️  No CDN_ICON preference, using existing icons');
       return;
     }
-  }
-  
-  try {
-    const iconBuffer = await downloadFile(cdnIcon);
+    
+    console.log(`   🌐 CDN URL: ${cdnIcon}`);
+    
+    // Check for image processor
+    let sharp, Jimp, processor;
+    try {
+      sharp = require('sharp');
+      processor = 'sharp';
+      console.log('   ✅ Using sharp (recommended)');
+    } catch (e) {
+      try {
+        Jimp = require('jimp');
+        processor = 'jimp';
+        console.log('   ✅ Using jimp (fallback)');
+      } catch (e2) {
+        console.log('   ❌ No image processor available!');
+        console.log('   💡 Install one: npm install sharp');
+        console.log('   💡 Or fallback: npm install jimp');
+        return;
+      }
+    }
+    
+    // Download icon
+    console.log('   💾 Downloading icon from CDN...');
+    let iconBuffer;
+    try {
+      iconBuffer = await downloadFile(cdnIcon);
+      console.log(`   ✅ Downloaded ${(iconBuffer.length / 1024).toFixed(2)} KB`);
+    } catch (downloadError) {
+      console.log('   ❌ Download failed:', downloadError.message);
+      console.log('   💡 Check URL and network connection');
+      return;
+    }
+    
+    // Validate buffer
+    if (!iconBuffer || iconBuffer.length === 0) {
+      console.log('   ❌ Downloaded file is empty');
+      return;
+    }
     
     const xcodeProjects = fs.readdirSync(iosPath).filter(f => f.endsWith('.xcodeproj'));
-    if (xcodeProjects.length === 0) return;
+    if (xcodeProjects.length === 0) {
+      console.log('   ⚠️  No Xcode project found');
+      return;
+    }
     
     const projectName = xcodeProjects[0].replace('.xcodeproj', '');
     const assetsPath = path.join(iosPath, projectName, 'Images.xcassets/AppIcon.appiconset');
     
-    if (!fs.existsSync(assetsPath)) {
+    // Clean old icons first
+    if (fs.existsSync(assetsPath)) {
+      console.log('   🧹 Cleaning old icon assets...');
+      const oldIcons = fs.readdirSync(assetsPath).filter(f => f.endsWith('.png'));
+      oldIcons.forEach(icon => {
+        try {
+          fs.unlinkSync(path.join(assetsPath, icon));
+        } catch (e) {}
+      });
+      console.log(`   ✅ Cleaned ${oldIcons.length} old icon(s)`);
+    } else {
       fs.mkdirSync(assetsPath, { recursive: true });
     }
     
+    // All iOS icon sizes (including iPad)
     const sizes = [
+      // iPhone
       { size: 20, scale: 2, idiom: 'iphone' },
       { size: 20, scale: 3, idiom: 'iphone' },
       { size: 29, scale: 2, idiom: 'iphone' },
@@ -210,33 +238,70 @@ async function generateIcons(context, iosPath) {
       { size: 40, scale: 3, idiom: 'iphone' },
       { size: 60, scale: 2, idiom: 'iphone' },
       { size: 60, scale: 3, idiom: 'iphone' },
+      // iPad
+      { size: 20, scale: 1, idiom: 'ipad' },
+      { size: 20, scale: 2, idiom: 'ipad' },
+      { size: 29, scale: 1, idiom: 'ipad' },
+      { size: 29, scale: 2, idiom: 'ipad' },
+      { size: 40, scale: 1, idiom: 'ipad' },
+      { size: 40, scale: 2, idiom: 'ipad' },
+      { size: 76, scale: 1, idiom: 'ipad' },
+      { size: 76, scale: 2, idiom: 'ipad' },
+      { size: 83.5, scale: 2, idiom: 'ipad' },
+      // App Store
       { size: 1024, scale: 1, idiom: 'ios-marketing' }
     ];
     
+    console.log(`   🎨 Generating ${sizes.length} icon sizes...`);
+    
     const images = [];
+    let successCount = 0;
     
     for (const icon of sizes) {
-      const actualSize = icon.size * icon.scale;
-      const filename = `icon-${actualSize}.png`;
+      const actualSize = Math.floor(icon.size * icon.scale);
+      const filename = `icon-${icon.size}@${icon.scale}x.png`;
       const filepath = path.join(assetsPath, filename);
       
-      if (sharp) {
-        await sharp(iconBuffer)
-          .resize(actualSize, actualSize)
-          .toFile(filepath);
-      } else if (Jimp) {
-        const image = await Jimp.read(iconBuffer);
-        await image.resize(actualSize, actualSize).writeAsync(filepath);
+      try {
+        if (processor === 'sharp') {
+          await sharp(iconBuffer)
+            .resize(actualSize, actualSize, {
+              fit: 'cover',
+              position: 'center'
+            })
+            .png()
+            .toFile(filepath);
+        } else if (processor === 'jimp') {
+          const image = await Jimp.read(iconBuffer);
+          await image
+            .resize(actualSize, actualSize)
+            .writeAsync(filepath);
+        }
+        
+        // Verify file was created
+        if (fs.existsSync(filepath)) {
+          const stats = fs.statSync(filepath);
+          if (stats.size > 0) {
+            successCount++;
+            images.push({
+              size: `${icon.size}x${icon.size}`,
+              idiom: icon.idiom,
+              filename: filename,
+              scale: `${icon.scale}x`
+            });
+          }
+        }
+      } catch (resizeError) {
+        console.log(`   ⚠️  Failed to generate ${actualSize}x${actualSize}:`, resizeError.message);
       }
-      
-      images.push({
-        size: `${icon.size}x${icon.size}`,
-        idiom: icon.idiom,
-        filename: filename,
-        scale: `${icon.scale}x`
-      });
     }
     
+    if (successCount === 0) {
+      console.log('   ❌ No icons generated successfully');
+      return;
+    }
+    
+    // Write Contents.json
     const contentsJson = {
       images: images,
       info: {
@@ -247,12 +312,17 @@ async function generateIcons(context, iosPath) {
     
     fs.writeFileSync(
       path.join(assetsPath, 'Contents.json'),
-      JSON.stringify(contentsJson, null, 2)
+      JSON.stringify(contentsJson, null, 2),
+      'utf8'
     );
     
-    console.log(`   ✅ Generated ${sizes.length} icon sizes`);
+    console.log(`   ✅ Generated ${successCount}/${sizes.length} icon sizes`);
+    console.log(`   ✅ Updated Contents.json`);
+    console.log(`   📂 Assets path: ${assetsPath}`);
+    
   } catch (error) {
-    console.log('   ⚠️  Icon generation failed:', error.message);
+    console.log('   ❌ Icon generation failed:', error.message);
+    console.error('   Stack trace:', error.stack);
   }
 }
 
@@ -329,7 +399,6 @@ async function customizeUI(context, iosPath) {
     if (splashBg) {
       console.log(`   🎨 Splash color: ${splashBg}`);
       
-      // 1. Override LaunchScreen.storyboard
       const storyboardPath = path.join(iosPath, projectName, 'LaunchScreen.storyboard');
       
       if (fs.existsSync(storyboardPath)) {
@@ -342,13 +411,11 @@ async function customizeUI(context, iosPath) {
         
         const colorXML = `<color key="backgroundColor" red="${r}" green="${g}" blue="${b}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
         
-        // Replace ALL backgroundColor in storyboard
         storyboard = storyboard.replace(
           /<color key="backgroundColor"[^>]*\/>/g,
           colorXML
         );
         
-        // Also replace system colors
         storyboard = storyboard.replace(
           /<color key="backgroundColor" systemColor="[^"]*"\s*\/>/g,
           colorXML
@@ -356,11 +423,8 @@ async function customizeUI(context, iosPath) {
         
         fs.writeFileSync(storyboardPath, storyboard, 'utf8');
         console.log('   ✅ Updated LaunchScreen.storyboard');
-      } else {
-        console.log('   ⚠️  LaunchScreen.storyboard not found');
       }
       
-      // 2. Override CDVLaunchScreen.storyboard (if exists)
       const cdvStoryboardPath = path.join(iosPath, projectName, 'CDVLaunchScreen.storyboard');
       if (fs.existsSync(cdvStoryboardPath)) {
         let cdvStoryboard = fs.readFileSync(cdvStoryboardPath, 'utf8');
@@ -381,12 +445,10 @@ async function customizeUI(context, iosPath) {
         console.log('   ✅ Updated CDVLaunchScreen.storyboard');
       }
       
-      // 3. Add to Info.plist for native splash override
       const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
       if (fs.existsSync(plistPath)) {
         let plistContent = fs.readFileSync(plistPath, 'utf8');
         
-        // Add UILaunchScreen background color
         if (!plistContent.includes('<key>UILaunchScreen</key>')) {
           plistContent = plistContent.replace(
             '</dict>\n</plist>',
@@ -400,31 +462,42 @@ async function customizeUI(context, iosPath) {
     
     if (webviewBg) {
       console.log(`   🎨 Webview color: ${webviewBg}`);
-      console.log('   ℹ️  Webview background applied at runtime');
     }
     
   } catch (error) {
     console.log('   ⚠️  UI customization skipped:', error.message);
-    console.error(error.stack);
   }
 }
 
 function downloadFile(url) {
   return new Promise((resolve, reject) => {
     const protocol = url.startsWith('https') ? https : http;
-    protocol.get(url, (response) => {
+    const request = protocol.get(url, (response) => {
+      // Handle redirects
       if (response.statusCode === 301 || response.statusCode === 302) {
         return downloadFile(response.headers.location).then(resolve).catch(reject);
       }
       
       if (response.statusCode !== 200) {
-        return reject(new Error(`Download failed: ${response.statusCode}`));
+        return reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
       }
       
       const chunks = [];
       response.on('data', chunk => chunks.push(chunk));
-      response.on('end', () => resolve(Buffer.concat(chunks)));
+      response.on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        if (buffer.length === 0) {
+          return reject(new Error('Downloaded file is empty'));
+        }
+        resolve(buffer);
+      });
       response.on('error', reject);
-    }).on('error', reject);
+    });
+    
+    request.on('error', reject);
+    request.setTimeout(30000, () => {
+      request.destroy();
+      reject(new Error('Download timeout after 30s'));
+    });
   });
 }
