@@ -5,7 +5,6 @@
   "main": "index.js",
   "scripts": {
     "setup": "node scripts/auto-install-deps.js",
-    "setup:gradient": "node scripts/install-gradient-deps.js",
     "cleanup:ios": "node scripts/cleanup-old-ios-hooks.js",
     "test": "echo \"No tests specified\" && exit 0"
   },
@@ -64,10 +63,11 @@
   },
   "_comment": {
     "dependencies": "Build-time Node.js dependencies",
-    "sharp": "Fast image processing for gradient splash generation (RECOMMENDED)",
-    "jimp": "Fallback image processor - pure JavaScript, no compilation needed",
-    "gradient-setup": "Run 'npm run setup:gradient' to install gradient dependencies",
-    "gradient-feature": "CSS gradient support for native splash screens on Android and iOS",
-    "usage": "Add SPLASH_GRADIENT preference to config.xml with linear-gradient CSS value"
+    "sharp": "Fast image processing for icons and gradient splash generation (RECOMMENDED)",
+    "jimp": "Fallback image processor (pure JS) for icons and gradients",
+    "auto-install": "Dependencies auto-install via 'npm install' - runs at before_prepare hook",
+    "gradient-support": "CSS gradient support for native splash screens on Android and iOS",
+    "usage": "Add SPLASH_GRADIENT preference to config.xml with linear-gradient CSS value",
+    "note": "No need to manually install - auto-install-deps.js handles everything during build"
   }
 }
