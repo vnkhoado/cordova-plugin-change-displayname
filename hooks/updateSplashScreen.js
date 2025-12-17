@@ -17,7 +17,8 @@ const AndroidGradientGenerator = require('./android/gradient-generator');
 const IOSGradientGenerator = require('./ios/gradient-generator');
 const utils = require('./utils');
 
-module.exports = function(ctx) {
+// IMPORTANT: This must be async to properly handle iOS image generation
+module.exports = async function(ctx) {
   console.log('\n[Splash Screen] Starting splash screen configuration...');
   
   try {
@@ -94,15 +95,22 @@ module.exports = function(ctx) {
       }
     }
     
-    // Process iOS gradient
+    // Process iOS gradient - MUST USE AWAIT!
     if (platforms.includes('ios')) {
       console.log('\n[iOS] Processing gradient splash screen...');
       try {
         const iosGen = new IOSGradientGenerator(projectRoot);
         
-        // Generate images
+        // Generate images - WAIT for this to complete!
         console.log('[iOS] Generating splash images...');
-        const images = iosGen.generateSplashImages(splashGradient);
+        const images = await iosGen.generateSplashImages(splashGradient);
+        
+        if (!images || images.length === 0) {
+          console.warn('[iOS] ⚠️  No images were generated');
+          throw new Error('Image generation returned no results');
+        }
+        
+        console.log(`[iOS] ✓ Generated ${images.length} splash images`);
         
         // Generate Contents.json
         console.log('[iOS] Generating Contents.json...');
