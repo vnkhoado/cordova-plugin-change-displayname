@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 /**
  * Android Gradient Generator
  * Creates Android drawable resources from CSS gradient
@@ -20,9 +22,10 @@ class AndroidGradientGenerator {
     const parsed = GradientParser.parse(gradientStr);
     
     if (!parsed || !parsed.colors || parsed.colors.length < 2) {
-      console.warn('Invalid gradient, falling back to solid color');
+      console.warn('[Android] Invalid gradient, falling back to solid color');
       return this.generateSolidColor(
-        GradientParser.getDominantColor(gradientStr) || '#000000'
+        GradientParser.getDominantColor(gradientStr) || '#000000',
+        filename
       );
     }
 
@@ -32,28 +35,23 @@ class AndroidGradientGenerator {
 
   /**
    * Create gradient XML drawable
+   * Must be properly formatted for Android resource compiler
    */
   createGradientXml(parsed) {
     const { angle, colors } = parsed;
+    
+    if (!colors || colors.length < 2) {
+      throw new Error('Gradient must have at least 2 colors');
+    }
     
     // Android gradient angles
     // 0deg = bottom-to-top, 90deg = left-to-right
     // Convert CSS angle to Android angle
     const androidAngle = this.convertAngleToAndroid(angle);
     
-    let colorElements = colors
-      .map((stop, index) => {
-        const position = Math.round(stop.position * 100);
-        return `        <item android:color="${stop.color}" android:offset="${stop.position}"/>`;
-      })
-      .join('\n');
+    console.log(`[Android] Creating gradient: angle=${androidAngle}°, colors=${colors.length}`);
 
-    // Ensure at least start and end colors
-    if (colors.length < 2) {
-      colorElements = `        <item android:color="${colors[0].color}" android:offset="0.0"/>
-        <item android:color="${colors[colors.length - 1].color}" android:offset="1.0"/>`;
-    }
-
+    // Create proper gradient XML
     const xml = `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
@@ -78,8 +76,14 @@ class AndroidGradientGenerator {
     // Android only supports: 0, 45, 90, 135, 180, 225, 270, 315
     const validAngles = [0, 45, 90, 135, 180, 225, 270, 315];
     
+    // Normalize CSS angle
+    let normalizedAngle = cssAngle % 360;
+    if (normalizedAngle < 0) {
+      normalizedAngle += 360;
+    }
+    
     // Convert CSS angle (0 = top-to-bottom) to Android angle (0 = bottom-to-top)
-    let androidAngle = (360 - cssAngle) % 360;
+    let androidAngle = (360 - normalizedAngle) % 360;
     
     // Round to nearest valid angle
     let nearest = validAngles[0];
@@ -93,40 +97,65 @@ class AndroidGradientGenerator {
       }
     }
 
+    console.log(`[Android] Angle conversion: ${cssAngle}° (CSS) → ${nearest}° (Android)`);
     return nearest;
   }
 
   /**
    * Generate solid color drawable (fallback)
    */
-  generateSolidColor(colorHex) {
+  generateSolidColor(colorHex, filename) {
+    console.log(`[Android] Generating solid color drawable: ${colorHex}`);
+    
     const xml = `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="${colorHex}" />
 </shape>`;
 
-    return xml;
+    return this.saveDrawable(xml, filename);
   }
 
   /**
-   * Save drawable to values directory
+   * Save drawable to drawable folder (NOT values!)
+   * Drawables must go in res/drawable or res/drawable-* folders
    */
   saveDrawable(xml, filename) {
     try {
-      const valuesDir = path.join(this.resPath, 'values');
+      // IMPORTANT: Save to drawable folder, NOT values!
+      // Android resource compiler expects drawables in drawable/
+      const drawableDir = path.join(this.resPath, 'drawable');
       
-      if (!fs.existsSync(valuesDir)) {
-        fs.mkdirSync(valuesDir, { recursive: true });
+      console.log(`[Android] Ensuring drawable directory exists: ${drawableDir}`);
+      if (!fs.existsSync(drawableDir)) {
+        fs.mkdirSync(drawableDir, { recursive: true });
       }
 
-      const filePath = path.join(valuesDir, `${filename}.xml`);
+      const filePath = path.join(drawableDir, `${filename}.xml`);
+      
+      // Validate XML before saving
+      if (!xml || xml.length === 0) {
+        throw new Error('XML content is empty');
+      }
+      
+      if (!xml.includes('<shape') || !xml.includes('</shape>')) {
+        throw new Error('Invalid XML structure: missing shape tags');
+      }
+      
+      // Write file
       fs.writeFileSync(filePath, xml, 'utf8');
       
-      console.log(`✓ Generated Android drawable: ${filePath}`);
+      // Verify file was created
+      if (!fs.existsSync(filePath)) {
+        throw new Error('File was not created');
+      }
+      
+      const fileSize = fs.statSync(filePath).size;
+      console.log(`[Android] ✓ Generated drawable: ${filePath} (${fileSize} bytes)`);
+      
       return filePath;
     } catch (error) {
-      console.error('Error saving drawable:', error);
+      console.error(`[Android] ✗ Error saving drawable: ${error.message}`);
       throw error;
     }
   }
@@ -135,11 +164,13 @@ class AndroidGradientGenerator {
    * Generate splash screen layout using gradient
    */
   generateSplashLayout(gradientStr) {
-    // Generate the gradient drawable first
-    this.generateDrawable(gradientStr, 'splash_background');
+    try {
+      // Generate the gradient drawable first
+      console.log('[Android] Generating splash background drawable...');
+      this.generateDrawable(gradientStr, 'splash_background');
 
-    // Create layout that references the gradient
-    const layoutXml = `<?xml version="1.0" encoding="utf-8"?>
+      // Create layout that references the gradient
+      const layoutXml = `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -155,7 +186,6 @@ class AndroidGradientGenerator {
     
 </LinearLayout>`;
 
-    try {
       const layoutDir = path.join(this.resPath, 'layout');
       if (!fs.existsSync(layoutDir)) {
         fs.mkdirSync(layoutDir, { recursive: true });
@@ -164,10 +194,10 @@ class AndroidGradientGenerator {
       const filePath = path.join(layoutDir, 'activity_splash.xml');
       fs.writeFileSync(filePath, layoutXml, 'utf8');
       
-      console.log(`✓ Generated splash layout: ${filePath}`);
+      console.log(`[Android] ✓ Generated splash layout: ${filePath}`);
       return filePath;
     } catch (error) {
-      console.error('Error saving layout:', error);
+      console.error('[Android] ✗ Error saving layout:', error.message);
       throw error;
     }
   }
@@ -182,9 +212,20 @@ class AndroidGradientGenerator {
         'platforms/android/app/src/main/AndroidManifest.xml'
       );
 
+      if (!fs.existsSync(manifestPath)) {
+        console.warn(`[Android] ⚠️ AndroidManifest.xml not found at ${manifestPath}`);
+        return;
+      }
+
       let manifest = fs.readFileSync(manifestPath, 'utf8');
 
-      // Add splash theme if not exists
+      // Check if theme already exists to avoid duplication
+      if (manifest.includes('SplashTheme')) {
+        console.log('[Android] SplashTheme already exists in AndroidManifest.xml');
+        return;
+      }
+
+      // Add splash theme
       const themeStyle = `
     <style name="SplashTheme" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@drawable/splash_background</item>
@@ -192,16 +233,31 @@ class AndroidGradientGenerator {
         <item name="android:windowFullscreen">true</item>
     </style>`;
 
-      // Insert theme in application tag
-      manifest = manifest.replace(
-        /(<application[^>]*>)/,
-        `$1\n${themeStyle}`
-      );
-
-      fs.writeFileSync(manifestPath, manifest, 'utf8');
-      console.log('✓ Updated AndroidManifest.xml with splash theme');
+      // Insert theme in resources tag (safer than application tag)
+      let updated = false;
+      
+      // Try to insert after last style tag
+      if (manifest.includes('</style>')) {
+        const lastStyleIndex = manifest.lastIndexOf('</style>');
+        manifest = manifest.substring(0, lastStyleIndex + 8) + themeStyle + manifest.substring(lastStyleIndex + 8);
+        updated = true;
+      } else if (manifest.includes('<resources>')) {
+        // If no styles, add inside resources
+        manifest = manifest.replace(
+          /<resources[^>]*>/,
+          `$&${themeStyle}`
+        );
+        updated = true;
+      }
+      
+      if (updated) {
+        fs.writeFileSync(manifestPath, manifest, 'utf8');
+        console.log('[Android] ✓ Updated AndroidManifest.xml with splash theme');
+      } else {
+        console.warn('[Android] ⚠️ Could not update AndroidManifest.xml - structure not recognized');
+      }
     } catch (error) {
-      console.error('Error updating manifest:', error);
+      console.error('[Android] ✗ Error updating manifest:', error.message);
     }
   }
 }
