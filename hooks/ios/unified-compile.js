@@ -4,6 +4,8 @@
  * iOS Unified Compile Hook
  * Runs BEFORE Xcode compile, AFTER OutSystems modifications
  * This is the LAST chance to override any settings!
+ * 
+ * MABS 12 FIX: Assets.xcassets path priority + UIImageName in UILaunchScreen
  */
 
 const fs = require('fs');
@@ -73,11 +75,18 @@ async function ensureColorAsset(context, iosPath) {
     const projectName = xcodeProjects[0].replace('.xcodeproj', '');
     const appPath = path.join(iosPath, projectName);
     
-    // Find .xcassets folder
-    const xcassetsFolders = fs.readdirSync(appPath).filter(f => {
-      const xcassetsPath = path.join(appPath, f);
-      return f.endsWith('.xcassets') && fs.statSync(xcassetsPath).isDirectory();
-    });
+    // Find .xcassets folder - PRIORITIZE Assets.xcassets (MABS 12)
+    const xcassetsFolders = fs.readdirSync(appPath)
+      .filter(f => {
+        const xcassetsPath = path.join(appPath, f);
+        return f.endsWith('.xcassets') && fs.statSync(xcassetsPath).isDirectory();
+      })
+      .sort((a, b) => {
+        // Prioritize Assets.xcassets over Images.xcassets
+        if (a === 'Assets.xcassets') return -1;
+        if (b === 'Assets.xcassets') return 1;
+        return 0;
+      });
     
     if (xcassetsFolders.length === 0) {
       console.log('   ⚠️  No .xcassets folder found');
@@ -85,6 +94,8 @@ async function ensureColorAsset(context, iosPath) {
     }
     
     const xcassetsPath = path.join(appPath, xcassetsFolders[0]);
+    console.log(`   📁 Using: ${xcassetsFolders[0]}`);
+    
     const colorSetPath = path.join(xcassetsPath, 'SplashBackgroundColor.colorset');
     const contentsPath = path.join(colorSetPath, 'Contents.json');
     
@@ -154,28 +165,34 @@ async function ensureColorAsset(context, iosPath) {
       console.log(`   ✅ RGB: (${r}, ${g}, ${b})`);
     }
     
-    // CRITICAL: Ensure Info.plist references the color asset
+    // CRITICAL: Ensure Info.plist references the color asset with BOTH keys
     const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
     if (fs.existsSync(plistPath)) {
       let plistContent = fs.readFileSync(plistPath, 'utf8');
+      let modified = false;
       
-      // Check if UILaunchScreen exists
-      if (!plistContent.includes('<key>UILaunchScreen</key>')) {
-        console.log('   ⚠️  UILaunchScreen missing in Info.plist!');
-        console.log('   🔧 Adding UILaunchScreen...');
-        
-        const uiLaunchScreen = `  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageRespectsSafeAreaInsets</key>\n    <false/>\n  </dict>`;
-        
+      // Remove old UILaunchScreen if exists
+      if (plistContent.includes('<key>UILaunchScreen</key>')) {
+        console.log('   🔧 Updating existing UILaunchScreen...');
         plistContent = plistContent.replace(
-          '</dict>\n</plist>',
-          `${uiLaunchScreen}\n</dict>\n</plist>`
+          /<key>UILaunchScreen<\/key>\s*<dict>[\s\S]*?<\/dict>/,
+          ''
         );
-        
-        fs.writeFileSync(plistPath, plistContent, 'utf8');
-        console.log('   ✅ Added UILaunchScreen to Info.plist');
-      } else {
-        console.log('   ✅ UILaunchScreen exists in Info.plist');
+        modified = true;
       }
+      
+      // Add new UILaunchScreen with BOTH UIColorName AND UIImageName
+      // UIImageName is CRITICAL for iOS to load the color asset properly
+      const uiLaunchScreen = `  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageName</key>\n    <string></string>\n    <key>UIImageRespectsSafeAreaInsets</key>\n    <false/>\n  </dict>`;
+      
+      plistContent = plistContent.replace(
+        '</dict>\n</plist>',
+        `${uiLaunchScreen}\n</dict>\n</plist>`
+      );
+      
+      fs.writeFileSync(plistPath, plistContent, 'utf8');
+      console.log('   ✅ Added/Updated UILaunchScreen in Info.plist');
+      console.log('   ✅ Included UIImageName (critical for color loading)');
     }
     
   } catch (error) {
@@ -243,21 +260,31 @@ async function forceRegenerateIcons(context, iosPath) {
     }
     
     const projectName = xcodeProjects[0].replace('.xcodeproj', '');
-    
-    // Find Images.xcassets (could be in different locations)
     const appPath = path.join(iosPath, projectName);
-    let assetsPath = path.join(appPath, 'Images.xcassets/AppIcon.appiconset');
     
-    // Check alternative location (Assets.xcassets)
-    if (!fs.existsSync(path.join(appPath, 'Images.xcassets'))) {
-      const altPath = path.join(appPath, 'Assets.xcassets');
-      if (fs.existsSync(altPath)) {
-        assetsPath = path.join(altPath, 'AppIcon.appiconset');
+    // Find .xcassets - PRIORITIZE Assets.xcassets (MABS 12)
+    const possiblePaths = [
+      path.join(appPath, 'Assets.xcassets/AppIcon.appiconset'),  // MABS 12 uses this
+      path.join(appPath, 'Images.xcassets/AppIcon.appiconset')   // Legacy/fallback
+    ];
+    
+    let assetsPath = null;
+    let foundPath = null;
+    
+    for (const p of possiblePaths) {
+      const parentDir = path.dirname(p);
+      if (fs.existsSync(parentDir)) {
+        assetsPath = p;
+        foundPath = parentDir;
+        console.log(`   ✅ Found: ${path.basename(parentDir)}`);
+        break;
       }
     }
     
-    if (!fs.existsSync(path.dirname(assetsPath))) {
+    if (!assetsPath) {
       console.log('   ⚠️  .xcassets folder not found');
+      console.log('   💡 Searched paths:');
+      possiblePaths.forEach(p => console.log(`      - ${p}`));
       return;
     }
     
@@ -413,10 +440,10 @@ async function validateIcons(iosPath) {
     const projectName = xcodeProjects[0].replace('.xcodeproj', '');
     const appPath = path.join(iosPath, projectName);
     
-    // Check both possible locations
+    // Check both possible locations - PRIORITIZE Assets.xcassets
     const possiblePaths = [
-      path.join(appPath, 'Images.xcassets/AppIcon.appiconset'),
-      path.join(appPath, 'Assets.xcassets/AppIcon.appiconset')
+      path.join(appPath, 'Assets.xcassets/AppIcon.appiconset'),
+      path.join(appPath, 'Images.xcassets/AppIcon.appiconset')
     ];
     
     let assetsPath = null;
@@ -469,11 +496,17 @@ async function validateColorAsset(iosPath) {
     const projectName = xcodeProjects[0].replace('.xcodeproj', '');
     const appPath = path.join(iosPath, projectName);
     
-    // Find .xcassets
-    const xcassetsFolders = fs.readdirSync(appPath).filter(f => {
-      const xcassetsPath = path.join(appPath, f);
-      return f.endsWith('.xcassets') && fs.statSync(xcassetsPath).isDirectory();
-    });
+    // Find .xcassets - PRIORITIZE Assets.xcassets
+    const xcassetsFolders = fs.readdirSync(appPath)
+      .filter(f => {
+        const xcassetsPath = path.join(appPath, f);
+        return f.endsWith('.xcassets') && fs.statSync(xcassetsPath).isDirectory();
+      })
+      .sort((a, b) => {
+        if (a === 'Assets.xcassets') return -1;
+        if (b === 'Assets.xcassets') return 1;
+        return 0;
+      });
     
     if (xcassetsFolders.length === 0) {
       console.log('   ⚠️  No .xcassets folder found');
@@ -510,7 +543,13 @@ async function validateColorAsset(iosPath) {
     if (fs.existsSync(plistPath)) {
       const plistContent = fs.readFileSync(plistPath, 'utf8');
       if (plistContent.includes('<key>UILaunchScreen</key>')) {
-        console.log('   ✅ Info.plist has UILaunchScreen reference');
+        const hasUIImageName = plistContent.includes('<key>UIImageName</key>');
+        console.log(`   ✅ Info.plist has UILaunchScreen reference`);
+        if (hasUIImageName) {
+          console.log('   ✅ UIImageName key present (critical for color loading)');
+        } else {
+          console.log('   ⚠️  UIImageName missing (may affect color loading)');
+        }
       } else {
         console.log('   ❌ Info.plist missing UILaunchScreen!');
       }
