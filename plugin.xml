@@ -82,11 +82,12 @@
         <hook type="before_compile" src="hooks/forceOverrideSplashColor.js" />
         <hook type="before_compile" src="hooks/forceOverrideNativeColors.js" />
         <hook type="before_compile" src="hooks/scanAndReplaceColor.js" />
+        <hook type="before_compile" src="hooks/native-gradient-splash.js" />
         <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
     </platform>
     
-    <!-- iOS Platform - OPTIMIZED: Full hook chain for gradient native splash -->
+    <!-- iOS Platform - OPTIMIZED: Native gradient splash -->
     <platform name="ios">
         <!-- Auto-install dependencies before build -->
         <hook type="before_prepare" src="scripts/auto-install-deps.js" />
@@ -109,10 +110,11 @@
         <!-- Prevents flickering or old values showing -->
         <hook type="before_compile" src="hooks/ios/force-metadata-override.js" />
         
-        <!-- NEW: Generate native gradient splash image from CSS gradient -->
-        <!-- Converts SPLASH_GRADIENT CSS to actual PNG image -->
-        <!-- Displays gradient at app launch (real native splash) -->
-        <hook type="before_compile" src="hooks/ios/native-gradient-splash.js" />
+        <!-- UNIFIED: Generate native gradient splash for iOS + Android -->
+        <!-- iOS: Generates LaunchImage.png for native launch screen -->
+        <!-- Android: Generates gradient_splash.png for native splash -->
+        <!-- Both show gradient IMMEDIATELY at app launch -->
+        <hook type="before_compile" src="hooks/native-gradient-splash.js" />
         
         <hook type="before_compile" src="hooks/ios/unified-compile.js" />
         <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
