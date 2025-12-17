@@ -29,7 +29,86 @@ Cordova plugin to change app info (package name, display name, version, icon) fr
 - Configurable endpoint and bearer token
 - Useful for CI/CD pipelines
 
+## Requirements
+
+- **Cordova**: >= 9.0.0
+- **Node.js**: >= 14.0.0
+- **npm**: >= 6.0.0
+
+### Required Dependencies
+
+- **better-sqlite3**: Required for build-time database generation
+  - ✅ **Auto-installed** on first build (via `before_prepare` hook)
+  - Or manually: `npm install better-sqlite3`
+
+### Optional Dependencies
+
+- **sharp**: Fast image resizing for CDN icon generation (⭐ **Recommended**)
+  - `npm install sharp`
+  - Faster and better quality than jimp
+  - Requires native compilation (may need build tools)
+
+- **jimp**: Fallback image processor (pure JavaScript)
+  - `npm install jimp`
+  - Works everywhere, slower than sharp
+
+- **cordova-sqlite-storage**: Runtime SQLite access for app (optional)
+  - Only needed if your app needs to access/modify the database at runtime
+  - `cordova plugin add cordova-sqlite-storage@6.1.0`
+
 ## Installation
+
+### Quick Start (Recommended)
+
+```bash
+# 1. Add the plugin
+cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
+
+# 2. Dependencies are auto-installed on first build!
+# 3. Just build normally
+cordova build android
+```
+
+✨ The auto-install hook will:
+- ✅ Check for `better-sqlite3` (required)
+- ✅ Check for `sharp` (recommended)
+- ✅ Install missing dependencies automatically
+- ✅ Display clear status messages
+
+### Manual Setup (if auto-install fails)
+
+```bash
+# 1. Add the plugin
+cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
+
+# 2. Install dependencies
+npm install better-sqlite3  # REQUIRED
+npm install sharp           # Optional but recommended
+# OR fallback:
+npm install jimp            # Optional fallback
+
+# 3. Build
+cordova build android ios
+```
+
+### For Build Servers
+
+If using CI/CD pipelines, add dependencies to your project's `package.json`:
+
+```json
+{
+  "dependencies": {
+    "better-sqlite3": "^9.0.0",
+    "sharp": "^0.33.0"
+  }
+}
+```
+
+Then your build pipeline:
+```bash
+npm install
+cordova build android
+```
 
 ### OutSystems (MABS)
 
@@ -90,53 +169,12 @@ Add to **Extensibility Configurations**:
 }
 ```
 
-### Cordova CLI
-
-```bash
-cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
-
-# For CDN icon generation (REQUIRED if using CDN_ICON)
-npm install sharp
-# OR fallback to jimp (slower, pure JS)
-npm install jimp
-```
-
-### Image Processing Library
-
-**CDN icon generation requires either sharp or jimp**:
-
-#### Option 1: Sharp (Recommended ⭐)
-```bash
-npm install sharp
-```
-- **Pros**: Very fast, better quality, native performance
-- **Cons**: Requires native compilation (may fail on some build servers)
-
-#### Option 2: Jimp (Fallback)
-```bash
-npm install jimp
-```
-- **Pros**: Pure JavaScript, works everywhere
-- **Cons**: Slower than sharp
-
-#### Auto-install
-The plugin includes sharp and jimp as `optionalDependencies`, so they will be automatically installed when you add the plugin. However, for build servers, you may need to explicitly install:
-
-```bash
-# In your project's package.json
-{
-  "dependencies": {
-    "sharp": "^0.33.0"
-  }
-}
-```
-
 ## Configuration
 
 ### App Configuration
 
 | Preference | Description | Example |
-|------------|-------------|---------||
+|------------|-------------|----------|
 | `APP_NAME` | App display name | `"MyApp"` |
 | `VERSION_NUMBER` | Version string | `"1.0.0"` |
 | `VERSION_CODE` | Build number | `"1"` |
@@ -151,7 +189,7 @@ The plugin includes sharp and jimp as `optionalDependencies`, so they will be au
 **Important for OutSystems**: Set ALL three preferences to ensure override works:
 
 | Preference | Description | Example |
-|------------|-------------|---------||
+|------------|-------------|----------|
 | `BackgroundColor` | Legacy Cordova splash color | `"#001833"` |
 | `SplashScreenBackgroundColor` | Standard splash color | `"#001833"` |
 | `AndroidWindowSplashScreenBackground` | Android 12+ splash | `"#001833"` |
@@ -169,7 +207,7 @@ The plugin includes sharp and jimp as `optionalDependencies`, so they will be au
 #### Additional Splash Preferences (Optional)
 
 | Preference | Description | Example |
-|------------|-------------|---------||
+|------------|-------------|----------|
 | `SplashScreenDelay` | Splash duration (ms) | `"3000"` |
 | `FadeSplashScreen` | Enable fade effect | `"true"` |
 | `FadeSplashScreenDuration` | Fade duration (ms) | `"300"` |
@@ -178,7 +216,7 @@ The plugin includes sharp and jimp as `optionalDependencies`, so they will be au
 #### Webview Background
 
 | Preference | Description | Example |
-|------------|-------------|---------||
+|------------|-------------|----------|
 | `WEBVIEW_BACKGROUND_COLOR` | Pre-render webview background | `"#001833"` |
 
 **Best Practice**: Match all colors for smooth transition:
@@ -204,7 +242,7 @@ The plugin includes sharp and jimp as `optionalDependencies`, so they will be au
 ### Build Notification (Optional)
 
 | Preference | Description | Example |
-|------------|-------------|---------||
+|------------|-------------|----------|
 | `ENABLE_BUILD_NOTIFICATION` | Enable notification | `"true"` |
 | `BUILD_SUCCESS_API_URL` | API endpoint | `"https://api.com/build"` |
 | `BUILD_API_BEARER_TOKEN` | Bearer token | `"your-token"` |
@@ -318,6 +356,23 @@ OnApplicationReady
 ```
 
 ## Troubleshooting
+
+### Build Error: "better-sqlite3 not installed"
+
+**Solution**:
+```bash
+# Option 1: Auto-install will run on next build
+cordova build android
+
+# Option 2: Install manually
+npm install better-sqlite3
+cordova build android
+
+# Option 3: Clean rebuild
+rm -rf node_modules package-lock.json
+npm install
+cordova build android
+```
 
 ### CDN Icons Not Generated
 
@@ -461,6 +516,14 @@ If you still see white flash:
 
 ## Changelog
 
+### v2.9.10 (2025-12-17) ✨ AUTO-INSTALL DEPENDENCIES
+- **NEW**: Auto-install hook automatically installs `better-sqlite3` on first build
+- **NEW**: Auto-check for optional dependencies (sharp, jimp)
+- **IMPROVED**: Clear status messages showing what's being installed
+- **FEATURE**: `npm run setup` script for manual dependency installation
+- **FIXED**: Eliminates "better-sqlite3 not installed" error on fresh builds
+- Build now succeeds even if dependencies not pre-installed!
+
 ### v2.9.8 (2025-12-16) 🎉 NATIVE PRE-SPLASH FIX
 - **NEW**: Native pre-splash color support - No white flash when tapping app icon!
 - **FEATURE**: Auto-creates Color Assets (SplashBackgroundColor.colorset) with RGB values
@@ -516,13 +579,6 @@ If you still see white flash:
 - **Recommended**: Use Cordova native `SplashScreenBackgroundColor` preference instead
 - Updated documentation for splash screen configuration
 - Better OutSystems compatibility
-
-## Requirements
-
-- Cordova >= 9.0.0
-- cordova-sqlite-storage >= 6.1.0
-- Node.js >= 14.0.0
-- **For CDN icon generation**: sharp ^0.33.0 OR jimp ^0.22.0
 
 ## License
 
