@@ -5,6 +5,7 @@
  * Fixed: App name, splash screen color (including native pre-splash), and CDN icon generation
  * MABS 12 FIX: Assets.xcassets detection + UIImageName in UILaunchScreen
  * STORYBOARD FIX: Force override ALL background colors (including MABS defaults)
+ * MABS 12 CRITICAL FIX: CREATE LaunchScreen.storyboard if it doesn't exist
  */
 
 const fs = require('fs');
@@ -429,10 +430,47 @@ async function customizeUI(context, iosPath) {
       
       const colorXML = `<color key="backgroundColor" red="${r}" green="${g}" blue="${b}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
       
-      // 1. Update LaunchScreen.storyboard (CRITICAL - Native pre-splash)
+      // 1. CREATE or UPDATE LaunchScreen.storyboard (CRITICAL - Native pre-splash)
       const storyboardPath = path.join(iosPath, projectName, 'LaunchScreen.storyboard');
       
-      if (fs.existsSync(storyboardPath)) {
+      if (!fs.existsSync(storyboardPath)) {
+        // MABS 12 doesn't create this file - WE CREATE IT!
+        console.log('   🆕 Creating LaunchScreen.storyboard (MABS 12 fix)');
+        
+        const minimalStoryboard = `<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="23094" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" colorMatched="YES" initialViewController="01J-lp-oVM">
+    <device id="retina6_1" orientation="portrait" appearance="light"/>
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="23084"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <scene sceneID="EHf-IW-A2E">
+            <objects>
+                <viewController id="01J-lp-oVM" sceneMemberID="viewController">
+                    <layoutGuides>
+                        <viewControllerLayoutGuide type="top" id="Llm-lL-Icb"/>
+                        <viewControllerLayoutGuide type="bottom" id="xb3-aO-Qok"/>
+                    </layoutGuides>
+                    <view key="view" contentMode="scaleToFill" id="Ze5-6b-2t3">
+                        <rect key="frame" x="0.0" y="0.0" width="414" height="896"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        ${colorXML}
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="iYj-Kq-Ea1" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="53" y="375"/>
+        </scene>
+    </scenes>
+</document>
+`;
+        
+        fs.writeFileSync(storyboardPath, minimalStoryboard, 'utf8');
+        console.log('   ✅ CREATED LaunchScreen.storyboard with color');
+      } else {
+        // File exists - update it
         let storyboard = fs.readFileSync(storyboardPath, 'utf8');
         const originalLength = storyboard.length;
         
@@ -452,8 +490,6 @@ async function customizeUI(context, iosPath) {
         const changed = storyboard.length !== originalLength;
         fs.writeFileSync(storyboardPath, storyboard, 'utf8');
         console.log(`   ✅ Updated LaunchScreen.storyboard${changed ? ' (FORCED OVERRIDE)' : ''}`);
-      } else {
-        console.log('   ⚠️  LaunchScreen.storyboard not found');
       }
       
       // 2. Update CDVLaunchScreen.storyboard (Cordova splash)
