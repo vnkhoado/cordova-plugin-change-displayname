@@ -7,8 +7,7 @@
  * 
  * MABS 12 FIX: Assets.xcassets path priority + UIImageName in UILaunchScreen
  * STORYBOARD FIX: Force override ALL background colors (including MABS defaults)
- * CRITICAL FIX: CREATE LaunchScreen.storyboard if it doesn't exist
- * FINAL FIX: Add UILaunchStoryboardName to tell iOS to load the storyboard!
+ * CRITICAL CRASH FIX: Use CDVLaunchScreen (already in bundle) instead of creating new one
  */
 
 const fs = require('fs');
@@ -88,71 +87,12 @@ async function forceStoryboardColors(context, iosPath) {
     
     const colorXML = `<color key="backgroundColor" red="${r}" green="${g}" blue="${b}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
     
-    // 1. CREATE or FORCE override LaunchScreen.storyboard (Native pre-splash)
-    const storyboardPath = path.join(iosPath, projectName, 'LaunchScreen.storyboard');
-    
-    if (!fs.existsSync(storyboardPath)) {
-      // MABS might delete this file or it never existed
-      console.log('   🆕 Creating LaunchScreen.storyboard (MABS 12 compile-time fix)');
-      
-      const minimalStoryboard = `<?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="23094" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" colorMatched="YES" initialViewController="01J-lp-oVM">
-    <device id="retina6_1" orientation="portrait" appearance="light"/>
-    <dependencies>
-        <deployment identifier="iOS"/>
-        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="23084"/>
-        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
-    </dependencies>
-    <scenes>
-        <scene sceneID="EHf-IW-A2E">
-            <objects>
-                <viewController id="01J-lp-oVM" sceneMemberID="viewController">
-                    <layoutGuides>
-                        <viewControllerLayoutGuide type="top" id="Llm-lL-Icb"/>
-                        <viewControllerLayoutGuide type="bottom" id="xb3-aO-Qok"/>
-                    </layoutGuides>
-                    <view key="view" contentMode="scaleToFill" id="Ze5-6b-2t3">
-                        <rect key="frame" x="0.0" y="0.0" width="414" height="896"/>
-                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
-                        ${colorXML}
-                    </view>
-                </viewController>
-                <placeholder placeholderIdentifier="IBFirstResponder" id="iYj-Kq-Ea1" userLabel="First Responder" sceneMemberID="firstResponder"/>
-            </objects>
-            <point key="canvasLocation" x="53" y="375"/>
-        </scene>
-    </scenes>
-</document>
-`;
-      
-      fs.writeFileSync(storyboardPath, minimalStoryboard, 'utf8');
-      console.log('   ✅ CREATED LaunchScreen.storyboard with color');
-    } else {
-      // File exists - FORCE override colors
-      let storyboard = fs.readFileSync(storyboardPath, 'utf8');
-      const originalLength = storyboard.length;
-      
-      // AGGRESSIVE REPLACE: Remove ALL color definitions
-      storyboard = storyboard.replace(
-        /<color key="backgroundColor"[^>]*\/>/g,
-        colorXML
-      );
-      
-      storyboard = storyboard.replace(
-        /<color key="backgroundColor"[^>]*>[\s\S]*?<\/color>/g,
-        colorXML
-      );
-      
-      const changed = storyboard.length !== originalLength;
-      fs.writeFileSync(storyboardPath, storyboard, 'utf8');
-      console.log(`   ✅ FORCE updated LaunchScreen.storyboard${changed ? ' (OVERRIDDEN)' : ''}`);
-    }
-    
-    // 2. FORCE override CDVLaunchScreen.storyboard (Cordova splash)
+    // FORCE override CDVLaunchScreen.storyboard (Cordova splash)
     const cdvStoryboardPath = path.join(iosPath, projectName, 'CDVLaunchScreen.storyboard');
     if (fs.existsSync(cdvStoryboardPath)) {
       let cdvStoryboard = fs.readFileSync(cdvStoryboardPath, 'utf8');
       
+      // AGGRESSIVE REPLACE
       cdvStoryboard = cdvStoryboard.replace(
         /<color key="backgroundColor"[^>]*\/>/g,
         colorXML
@@ -165,6 +105,8 @@ async function forceStoryboardColors(context, iosPath) {
       
       fs.writeFileSync(cdvStoryboardPath, cdvStoryboard, 'utf8');
       console.log('   ✅ FORCE updated CDVLaunchScreen.storyboard');
+    } else {
+      console.log('   ⚠️  CDVLaunchScreen.storyboard not found!');
     }
     
   } catch (error) {
@@ -286,11 +228,10 @@ async function ensureColorAsset(context, iosPath) {
       console.log(`   ✅ RGB: (${r}, ${g}, ${b})`);
     }
     
-    // CRITICAL: Ensure Info.plist has BOTH UILaunchStoryboardName AND UILaunchScreen
+    // CRITICAL: Ensure Info.plist points to CDVLaunchScreen
     const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
     if (fs.existsSync(plistPath)) {
       let plistContent = fs.readFileSync(plistPath, 'utf8');
-      let modified = false;
       
       // Remove old UILaunchStoryboardName if exists
       if (plistContent.includes('<key>UILaunchStoryboardName</key>')) {
@@ -302,16 +243,14 @@ async function ensureColorAsset(context, iosPath) {
       
       // Remove old UILaunchScreen if exists
       if (plistContent.includes('<key>UILaunchScreen</key>')) {
-        console.log('   🔧 Updating existing UILaunchScreen...');
         plistContent = plistContent.replace(
           /<key>UILaunchScreen<\/key>\s*<dict>[\s\S]*?<\/dict>/,
           ''
         );
-        modified = true;
       }
       
-      // Add BOTH keys (iOS 13+ storyboard + iOS 14+ dictionary fallback)
-      const launchScreenConfig = `  <key>UILaunchStoryboardName</key>\n  <string>LaunchScreen</string>\n  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageName</key>\n    <string></string>\n    <key>UIImageRespectsSafeAreaInsets</key>\n    <false/>\n  </dict>`;
+      // Add: UILaunchStoryboardName = CDVLaunchScreen + iOS 14+ dictionary
+      const launchScreenConfig = `  <key>UILaunchStoryboardName</key>\n  <string>CDVLaunchScreen</string>\n  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageName</key>\n    <string></string>\n    <key>UIImageRespectsSafeAreaInsets</key>\n    <false/>\n  </dict>`;
       
       plistContent = plistContent.replace(
         '</dict>\n</plist>',
@@ -319,9 +258,8 @@ async function ensureColorAsset(context, iosPath) {
       );
       
       fs.writeFileSync(plistPath, plistContent, 'utf8');
-      console.log('   ✅ Added UILaunchStoryboardName (iOS will load storyboard!)');
+      console.log('   ✅ Set UILaunchStoryboardName = CDVLaunchScreen (iOS 13+)');
       console.log('   ✅ Added UILaunchScreen dictionary (iOS 14+ fallback)');
-      console.log('   ✅ Included UIImageName (critical for color loading)');
     }
     
   } catch (error) {
@@ -675,22 +613,27 @@ async function validateColorAsset(iosPath) {
       const hasUILaunchStoryboardName = plistContent.includes('<key>UILaunchStoryboardName</key>');
       const hasUILaunchScreen = plistContent.includes('<key>UILaunchScreen</key>');
       const hasUIImageName = plistContent.includes('<key>UIImageName</key>');
+      const usesCDVLaunchScreen = plistContent.includes('<string>CDVLaunchScreen</string>');
       
       if (hasUILaunchStoryboardName) {
-        console.log('   ✅ UILaunchStoryboardName present (iOS will load storyboard!)');
+        if (usesCDVLaunchScreen) {
+          console.log('   ✅ UILaunchStoryboardName = CDVLaunchScreen (CORRECT!)');
+        } else {
+          console.log('   ⚠️  UILaunchStoryboardName set but NOT to CDVLaunchScreen');
+        }
       } else {
-        console.log('   ❌ UILaunchStoryboardName missing (CRITICAL - iOS won\'t load storyboard!)');
+        console.log('   ❌ UILaunchStoryboardName missing (iOS won\'t load storyboard!)');
       }
       
       if (hasUILaunchScreen) {
-        console.log(`   ✅ Info.plist has UILaunchScreen dictionary`);
+        console.log(`   ✅ UILaunchScreen dictionary present (iOS 14+ fallback)`);
         if (hasUIImageName) {
-          console.log('   ✅ UIImageName key present (critical for color loading)');
+          console.log('   ✅ UIImageName key present');
         } else {
-          console.log('   ⚠️  UIImageName missing (may affect color loading)');
+          console.log('   ⚠️  UIImageName missing');
         }
       } else {
-        console.log('   ❌ Info.plist missing UILaunchScreen!');
+        console.log('   ❌ UILaunchScreen dictionary missing!');
       }
     }
     
