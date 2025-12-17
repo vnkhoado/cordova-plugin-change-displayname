@@ -4,12 +4,13 @@
  * Auto-Install Dependencies Script
  * 
  * This script automatically installs optional dependencies if not already present:
- * - better-sqlite3 (optional - for build info database)
  * - sharp (recommended for fast icon generation)
  * - jimp (fallback icon processor)
  * 
  * IMPORTANT: This script runs in cloud environments (MABS) where native modules
- * like better-sqlite3 may fail to compile. This is GRACEFULLY HANDLED.
+ * like sqlite3 may fail to compile. This is GRACEFULLY HANDLED.
+ * 
+ * NOTE: Removed sqlite3 support - now using JSON config storage instead
  * 
  * Runs at: pre-build stage (before_prepare hook)
  */
@@ -79,14 +80,6 @@ function main() {
   // Dependencies to check
   const dependencies = [
     {
-      name: 'better-sqlite3',
-      version: '^9.0.0',
-      type: 'OPTIONAL',
-      description: 'Build-time database generation (may fail on cloud builds)',
-      required: false,  // Changed: now OPTIONAL
-      gracefulFail: true  // Fail gracefully if not available
-    },
-    {
       name: 'sharp',
       version: '^0.33.0',
       type: 'OPTIONAL',
@@ -105,7 +98,6 @@ function main() {
   let installed = 0;
   let skipped = 0;
   let failed = 0;
-  let gracefulFails = 0;
   
   for (const dep of dependencies) {
     const isInstalled = checkPackageInstalled(dep.name);
@@ -126,11 +118,7 @@ function main() {
         log(colors.green, `   ✅ Successfully installed (v${version})`);
         installed++;
       } else {
-        if (dep.gracefulFail) {
-          log(colors.yellow, `   ⚠️  Installation failed (expected on cloud builds)`);
-          log(colors.yellow, `   💡 Build will continue with fallback handlers`);
-          gracefulFails++;
-        } else if (dep.required) {
+        if (dep.required) {
           log(colors.red, `   ❌ Installation failed`);
           log(colors.red, `   ⚠️  WARNING: This is REQUIRED for the build to succeed!`);
           failed++;
@@ -147,9 +135,6 @@ function main() {
   log(colors.bright + colors.blue, 'Summary:');
   log(colors.green, `  ✅ Already installed: ${skipped}`);
   log(colors.green, `  ✨ Newly installed: ${installed}`);
-  if (gracefulFails > 0) {
-    log(colors.yellow, `  ⚠️  Gracefully failed (non-blocking): ${gracefulFails}`);
-  }
   if (failed > 0) {
     log(colors.red, `  ❌ Failed: ${failed}`);
   }
@@ -159,12 +144,8 @@ function main() {
     log(colors.red, `\n❌ FATAL: Some REQUIRED dependencies failed!`);
     log(colors.red, `   Please ensure required packages are installed locally.\n`);
     process.exit(1);
-  } else if (gracefulFails > 0) {
-    log(colors.green, `\n✅ Build setup complete!`);
-    log(colors.yellow, `   Note: Some optional packages failed to install.`);
-    log(colors.yellow, `   Build will use fallback handlers.\n`);
   } else {
-    log(colors.green, `\n✅ All dependencies ready!\n`);
+    log(colors.green, `\n✅ Build setup complete!\n`);
   }
 }
 
