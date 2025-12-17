@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 /**
  * iOS Gradient Image Generator
  * Creates PNG images from CSS gradient for iOS splash screen
@@ -13,12 +15,12 @@ class IOSGradientGenerator {
     this.assetsPath = path.join(projectRoot, 'platforms/ios/*/Images.xcassets');
     // Standard iOS splash sizes
     this.splashSizes = [
-      { name: '1x', width: 320, height: 568 },
-      { name: '2x', width: 750, height: 1334 },
-      { name: '3x', width: 1125, height: 2001 },
+      { name: '1x', width: 320, height: 568, scale: '1x', idiom: 'universal' },
+      { name: '2x', width: 750, height: 1334, scale: '2x', idiom: 'universal' },
+      { name: '3x', width: 1125, height: 2001, scale: '3x', idiom: 'universal' },
       // iPad
-      { name: 'ipad', width: 768, height: 1024 },
-      { name: 'ipad-2x', width: 1536, height: 2048 }
+      { name: 'ipad', width: 768, height: 1024, scale: '1x', idiom: 'ipad' },
+      { name: 'ipad-2x', width: 1536, height: 2048, scale: '2x', idiom: 'ipad' }
     ];
   }
 
@@ -29,7 +31,7 @@ class IOSGradientGenerator {
     const parsed = GradientParser.parse(gradientStr);
     
     if (!parsed) {
-      console.warn('Invalid gradient format');
+      console.warn('[iOS] Invalid gradient format');
       return [];
     }
 
@@ -38,28 +40,43 @@ class IOSGradientGenerator {
     try {
       // Try using sharp (better quality, but optional dependency)
       const sharp = require('sharp');
-      console.log('Using sharp for gradient generation');
+      console.log('[iOS] Using sharp for gradient generation');
       
       for (const size of this.splashSizes) {
-        const imagePath = await this.generateWithSharp(sharp, parsed, size);
-        results.push(imagePath);
+        try {
+          const imagePath = await this.generateWithSharp(sharp, parsed, size);
+          results.push(imagePath);
+        } catch (err) {
+          console.error(`[iOS] Error generating ${size.name}: ${err.message}`);
+          // Continue with other sizes
+        }
       }
     } catch (err) {
-      console.log('Sharp not available, trying jimp fallback');
+      console.log('[iOS] Sharp not available, trying jimp fallback');
       
       try {
         // Fallback to jimp
         const Jimp = require('jimp');
         
         for (const size of this.splashSizes) {
-          const imagePath = await this.generateWithJimp(Jimp, parsed, size);
-          results.push(imagePath);
+          try {
+            const imagePath = await this.generateWithJimp(Jimp, parsed, size);
+            results.push(imagePath);
+          } catch (jimpErr) {
+            console.error(`[iOS] Error generating ${size.name} with jimp: ${jimpErr.message}`);
+          }
         }
       } catch (jimpErr) {
-        console.error('Both sharp and jimp unavailable');
-        console.warn('Falling back to solid color');
+        console.error('[iOS] Both sharp and jimp unavailable');
+        console.warn('[iOS] Falling back to solid color');
         return this.generateSolidColorImages(parsed.colors[0].color);
       }
+    }
+
+    if (results.length === 0) {
+      console.warn('[iOS] No splash images were successfully generated');
+      console.log('[iOS] Falling back to solid color');
+      return this.generateSolidColorImages(parsed.colors[0].color);
     }
 
     return results;
@@ -82,6 +99,7 @@ class IOSGradientGenerator {
       // Create directory if not exists
       if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
+        console.log(`[iOS] Created directory: ${outputDir}`);
       }
 
       // Convert SVG to PNG using sharp
@@ -93,10 +111,10 @@ class IOSGradientGenerator {
         })
         .toFile(outputPath);
 
-      console.log(`✓ Generated iOS splash: ${outputPath}`);
+      console.log(`[iOS] ✓ Generated splash: ${filename}`);
       return outputPath;
     } catch (error) {
-      console.error(`Error generating with sharp: ${error.message}`);
+      console.error(`[iOS] Error generating with sharp for ${size.name}: ${error.message}`);
       throw error;
     }
   }
@@ -125,10 +143,10 @@ class IOSGradientGenerator {
       // Save to file
       await image.write(outputPath);
 
-      console.log(`✓ Generated iOS splash (jimp): ${outputPath}`);
+      console.log(`[iOS] ✓ Generated splash (jimp): ${filename}`);
       return outputPath;
     } catch (error) {
-      console.error(`Error generating with jimp: ${error.message}`);
+      console.error(`[iOS] Error generating with jimp for ${size.name}: ${error.message}`);
       throw error;
     }
   }
@@ -249,11 +267,11 @@ class IOSGradientGenerator {
   generateSolidColorImages(color) {
     const results = [];
     
-    console.warn(`Generating solid color splash images (${color}) as fallback`);
+    console.warn(`[iOS] Generating solid color splash images (${color}) as fallback`);
     
     // Document the fallback usage
     this.splashSizes.forEach(size => {
-      console.log(`  - ${size.name}: ${size.width}x${size.height} (${color})`);
+      console.log(`[iOS]   - ${size.name}: ${size.width}x${size.height} (${color})`);
       results.push(`splash_${size.name} [solid: ${color}]`);
     });
 
@@ -269,21 +287,26 @@ class IOSGradientGenerator {
     
     if (fs.existsSync(platformsPath)) {
       const dirs = fs.readdirSync(platformsPath);
-      const appDir = dirs.find(d => d.endsWith('.xcodeproj') || d.includes('app'));
+      const appDir = dirs.find(d => d.endsWith('.xcodeproj') || d.includes('app') || !d.startsWith('.'));
       
-      if (appDir) {
-        const imagePath = path.join(platformsPath, appDir.replace('.xcodeproj', ''), 'Images.xcassets', 'splash.imageset');
+      if (appDir && !appDir.includes('.')) {
+        const imagePath = path.join(platformsPath, appDir, 'Images.xcassets', 'splash.imageset');
+        console.log(`[iOS] Image path: ${imagePath}`);
         return imagePath;
       }
     }
 
-    return path.join(platformsPath, 'Images.xcassets', 'splash.imageset');
+    const defaultPath = path.join(platformsPath, 'Images.xcassets', 'splash.imageset');
+    console.log(`[iOS] Using default image path: ${defaultPath}`);
+    return defaultPath;
   }
 
   /**
-   * Update LaunchScreen.storyboard or create Contents.json for image set
+   * Generate Contents.json for image set
+   * IMPORTANT: Must include ALL splash images (1x, 2x, 3x, ipad, ipad-2x)
    */
   generateContentsJson() {
+    // FIXED: Include all 5 splash sizes!
     const contentsJson = {
       "images": [
         {
@@ -300,6 +323,16 @@ class IOSGradientGenerator {
           "filename": "splash_3x.png",
           "idiom": "universal",
           "scale": "3x"
+        },
+        {
+          "filename": "splash_ipad.png",
+          "idiom": "ipad",
+          "scale": "1x"
+        },
+        {
+          "filename": "splash_ipad-2x.png",
+          "idiom": "ipad",
+          "scale": "2x"
         }
       ],
       "info": {
@@ -312,12 +345,13 @@ class IOSGradientGenerator {
     
     if (!fs.existsSync(imageSetPath)) {
       fs.mkdirSync(imageSetPath, { recursive: true });
+      console.log(`[iOS] Created imageset directory: ${imageSetPath}`);
     }
 
     const jsonPath = path.join(imageSetPath, 'Contents.json');
     fs.writeFileSync(jsonPath, JSON.stringify(contentsJson, null, 2), 'utf8');
     
-    console.log(`✓ Generated iOS Contents.json: ${jsonPath}`);
+    console.log(`[iOS] ✓ Generated Contents.json with ${contentsJson.images.length} entries`);
     return jsonPath;
   }
 }
