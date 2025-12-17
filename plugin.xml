@@ -83,10 +83,15 @@
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
     </platform>
     
-    <!-- iOS Platform - OPTIMIZED: 3 standalone unified hooks -->
+    <!-- iOS Platform - OPTIMIZED: 3 standalone unified hooks + cache clearing -->
     <platform name="ios">
         <!-- Auto-install dependencies before build -->
         <hook type="before_prepare" src="scripts/auto-install-deps.js" />
+        
+        <!-- IMPORTANT: Clear old cache to ensure app name/icon updates are visible -->
+        <!-- This hook automatically clears Xcode cache and metadata before building -->
+        <!-- Prevents issue where app name/icon show old values after rebuild -->
+        <hook type="before_prepare" src="hooks/ios-cache-clear.js" />
         
         <!-- iOS-optimized hooks -->
         <hook type="after_prepare" src="hooks/ios/unified-prepare-standalone.js" />
