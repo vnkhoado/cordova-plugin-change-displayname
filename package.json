@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "setup": "node scripts/auto-install-deps.js",
+    "setup:gradient": "node scripts/install-gradient-deps.js",
     "cleanup:ios": "node scripts/cleanup-old-ios-hooks.js",
     "test": "echo \"No tests specified\" && exit 0"
   },
@@ -65,10 +66,8 @@
     "dependencies": "Build-time Node.js dependencies",
     "sharp": "Fast image processing for gradient splash generation (RECOMMENDED)",
     "jimp": "Fallback image processor - pure JavaScript, no compilation needed",
-    "features": {
-      "gradient-splash-screen": "CSS gradient support for native splash screens on Android and iOS",
-      "installation": "npm install sharp jimp --save-optional",
-      "usage": "Add SPLASH_GRADIENT preference to config.xml with linear-gradient CSS value"
-    }
+    "gradient-setup": "Run 'npm run setup:gradient' to install gradient dependencies",
+    "gradient-feature": "CSS gradient support for native splash screens on Android and iOS",
+    "usage": "Add SPLASH_GRADIENT preference to config.xml with linear-gradient CSS value"
   }
 }
