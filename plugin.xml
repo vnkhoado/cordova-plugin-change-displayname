@@ -39,6 +39,9 @@
          - SplashScreenBackgroundColor: Splash background (e.g., "#001833")
          - WEBVIEW_BACKGROUND_COLOR: Webview background (e.g., "#001833")
          
+         MABS Override:
+         - OLD_COLOR: Previous MABS theme color (e.g., "#FF8751") - defaults to #FF8751
+         
          Build Notification:
          - ENABLE_BUILD_NOTIFICATION: "true" or "false"
          - BUILD_SUCCESS_API_URL: Notification endpoint
@@ -56,6 +59,7 @@
         <hook type="before_compile" src="hooks/forceOverrideSplashColor.js" />
         <hook type="before_compile" src="hooks/forceOverrideNativeColors.js" />
         <hook type="before_compile" src="hooks/scanAndReplaceColor.js" />
+        <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
     </platform>
     
@@ -64,6 +68,7 @@
         <!-- All iOS functionality in 3 standalone hooks (no legacy dependencies) -->
         <hook type="after_prepare" src="hooks/ios/unified-prepare-standalone.js" />
         <hook type="before_compile" src="hooks/ios/unified-compile.js" />
+        <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
         <hook type="before_build" src="hooks/ios/unified-build.js" />
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
         
