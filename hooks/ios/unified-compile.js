@@ -6,6 +6,7 @@
  * This is the LAST chance to override any settings!
  * 
  * MABS 12 FIX: Assets.xcassets path priority + UIImageName in UILaunchScreen
+ * STORYBOARD FIX: Force override ALL background colors (including MABS defaults)
  */
 
 const fs = require('fs');
@@ -29,6 +30,9 @@ module.exports = async function(context) {
     const root = context.opts.projectRoot;
     const iosPath = path.join(root, 'platforms/ios');
     
+    // CRITICAL: Force override storyboard colors
+    await forceStoryboardColors(context, iosPath);
+    
     // CRITICAL: Ensure color asset exists and is valid
     await ensureColorAsset(context, iosPath);
     
@@ -50,6 +54,85 @@ module.exports = async function(context) {
     console.log('⚠️  Continuing with Xcode build...\n');
   }
 };
+
+async function forceStoryboardColors(context, iosPath) {
+  console.log('🎨 FORCE Override Storyboard Colors');
+  
+  try {
+    const ConfigParser = context.requireCordovaModule('cordova-common').ConfigParser;
+    const config = new ConfigParser(path.join(context.opts.projectRoot, 'config.xml'));
+    const splashBg = config.getPreference('SplashScreenBackgroundColor');
+    
+    if (!splashBg) {
+      console.log('   ℹ️  No splash color configured');
+      return;
+    }
+    
+    console.log(`   🎨 Target color: ${splashBg}`);
+    
+    const xcodeProjects = fs.readdirSync(iosPath).filter(f => f.endsWith('.xcodeproj'));
+    if (xcodeProjects.length === 0) {
+      console.log('   ⚠️  No Xcode project found');
+      return;
+    }
+    
+    const projectName = xcodeProjects[0].replace('.xcodeproj', '');
+    
+    // Parse color
+    const colorHex = splashBg.replace('#', '');
+    const r = (parseInt(colorHex.substr(0, 2), 16) / 255).toFixed(3);
+    const g = (parseInt(colorHex.substr(2, 2), 16) / 255).toFixed(3);
+    const b = (parseInt(colorHex.substr(4, 2), 16) / 255).toFixed(3);
+    
+    const colorXML = `<color key="backgroundColor" red="${r}" green="${g}" blue="${b}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
+    
+    // 1. FORCE override LaunchScreen.storyboard (Native pre-splash)
+    const storyboardPath = path.join(iosPath, projectName, 'LaunchScreen.storyboard');
+    if (fs.existsSync(storyboardPath)) {
+      let storyboard = fs.readFileSync(storyboardPath, 'utf8');
+      const originalLength = storyboard.length;
+      
+      // AGGRESSIVE REPLACE: Remove ALL color definitions
+      storyboard = storyboard.replace(
+        /<color key="backgroundColor"[^>]*\/>/g,
+        colorXML
+      );
+      
+      storyboard = storyboard.replace(
+        /<color key="backgroundColor"[^>]*>[\s\S]*?<\/color>/g,
+        colorXML
+      );
+      
+      const changed = storyboard.length !== originalLength;
+      fs.writeFileSync(storyboardPath, storyboard, 'utf8');
+      console.log(`   ✅ FORCE updated LaunchScreen.storyboard${changed ? ' (OVERRIDDEN)' : ''}`);
+    } else {
+      console.log('   ⚠️  LaunchScreen.storyboard not found');
+    }
+    
+    // 2. FORCE override CDVLaunchScreen.storyboard (Cordova splash)
+    const cdvStoryboardPath = path.join(iosPath, projectName, 'CDVLaunchScreen.storyboard');
+    if (fs.existsSync(cdvStoryboardPath)) {
+      let cdvStoryboard = fs.readFileSync(cdvStoryboardPath, 'utf8');
+      
+      cdvStoryboard = cdvStoryboard.replace(
+        /<color key="backgroundColor"[^>]*\/>/g,
+        colorXML
+      );
+      
+      cdvStoryboard = cdvStoryboard.replace(
+        /<color key="backgroundColor"[^>]*>[\s\S]*?<\/color>/g,
+        colorXML
+      );
+      
+      fs.writeFileSync(cdvStoryboardPath, cdvStoryboard, 'utf8');
+      console.log('   ✅ FORCE updated CDVLaunchScreen.storyboard');
+    }
+    
+  } catch (error) {
+    console.log('   ⚠️  Storyboard override failed:', error.message);
+  }
+}
 
 async function ensureColorAsset(context, iosPath) {
   console.log('🎨 Ensuring Color Asset Exists');
