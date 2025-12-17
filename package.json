@@ -19,15 +19,17 @@
     "ios",
     "android",
     "optimization",
+    "gradient",
+    "splash-screen",
     "ecosystem:cordova",
     "cordova-ios",
     "cordova-android",
     "cdn-icons",
-    "splash-screen",
     "outsystems",
     "no-white-flash",
     "sqlite",
-    "build-info"
+    "build-info",
+    "native-gradient"
   ],
   "author": "vnkhoado",
   "license": "MIT",
@@ -58,5 +60,15 @@
   "engines": {
     "node": ">=14.0.0",
     "npm": ">=6.0.0"
+  },
+  "_comment": {
+    "dependencies": "Build-time Node.js dependencies",
+    "sharp": "Fast image processing for gradient splash generation (RECOMMENDED)",
+    "jimp": "Fallback image processor - pure JavaScript, no compilation needed",
+    "features": {
+      "gradient-splash-screen": "CSS gradient support for native splash screens on Android and iOS",
+      "installation": "npm install sharp jimp --save-optional",
+      "usage": "Add SPLASH_GRADIENT preference to config.xml with linear-gradient CSS value"
+    }
   }
 }
