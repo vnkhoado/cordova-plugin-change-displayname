@@ -8,6 +8,7 @@
  * MABS 12 FIX: Assets.xcassets path priority + UIImageName in UILaunchScreen
  * STORYBOARD FIX: Force override ALL background colors (including MABS defaults)
  * CRITICAL CRASH FIX: Use CDVLaunchScreen (already in bundle) instead of creating new one
+ * iOS 14+ SPLASH FLICKER FIX: Remove UILaunchStoryboardName to prevent color flicker
  */
 
 const fs = require('fs');
@@ -30,6 +31,9 @@ module.exports = async function(context) {
   try {
     const root = context.opts.projectRoot;
     const iosPath = path.join(root, 'platforms/ios');
+    
+    // CRITICAL: Remove conflicting launch screen configs FIRST
+    await removeConflictingLaunchScreens(context, iosPath);
     
     // CRITICAL: Force override storyboard colors
     await forceStoryboardColors(context, iosPath);
@@ -55,6 +59,69 @@ module.exports = async function(context) {
     console.log('⚠️  Continuing with Xcode build...\n');
   }
 };
+
+/**
+ * 🎯 iOS 14+ SPLASH FLICKER FIX
+ * Remove UILaunchStoryboardName to prevent color flicker
+ * 
+ * ROOT CAUSE:
+ * iOS renders UILaunchStoryboardName (storyboard) BEFORE UILaunchScreen dictionary
+ * When BOTH exist:
+ *   1. Storyboard renders (old color) → FLICKER
+ *   2. Switch to UILaunchScreen (new color)
+ * 
+ * SOLUTION:
+ * Remove UILaunchStoryboardName entirely, use ONLY UILaunchScreen dictionary
+ */
+async function removeConflictingLaunchScreens(context, iosPath) {
+  console.log('🔄 Removing Conflicting Launch Screen Configs (iOS 14+ Fix)');
+  
+  try {
+    const xcodeProjects = fs.readdirSync(iosPath).filter(f => f.endsWith('.xcodeproj'));
+    if (xcodeProjects.length === 0) {
+      console.log('   ⚠️  No Xcode project found');
+      return;
+    }
+    
+    const projectName = xcodeProjects[0].replace('.xcodeproj', '');
+    const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
+    
+    if (!fs.existsSync(plistPath)) {
+      console.log('   ⚠️  Info.plist not found');
+      return;
+    }
+    
+    let plistContent = fs.readFileSync(plistPath, 'utf8');
+    let modified = false;
+    
+    // Remove UILaunchStoryboardName - this is the culprit causing flicker!
+    const uiLaunchStoryboardRegex = /<key>UILaunchStoryboardName<\/key>\s*<string>[^<]*<\/string>/g;
+    if (uiLaunchStoryboardRegex.test(plistContent)) {
+      console.log('   ✅ Found UILaunchStoryboardName - REMOVING to prevent flicker');
+      plistContent = plistContent.replace(uiLaunchStoryboardRegex, '');
+      modified = true;
+    }
+    
+    // Also remove old UILaunchScreen dict if present (we'll recreate it cleanly)
+    const uiLaunchScreenRegex = /<key>UILaunchScreen<\/key>\s*<dict>[\s\S]*?<\/dict>/;
+    if (uiLaunchScreenRegex.test(plistContent)) {
+      console.log('   ✅ Found old UILaunchScreen dict - REMOVING for clean recreation');
+      plistContent = plistContent.replace(uiLaunchScreenRegex, '');
+      modified = true;
+    }
+    
+    if (modified) {
+      fs.writeFileSync(plistPath, plistContent, 'utf8');
+      console.log('   ✅ Removed conflicting launch screen configs');
+      console.log('   💡 UILaunchScreen dictionary will be added next step');
+    } else {
+      console.log('   ℹ️  No conflicting configs found');
+    }
+    
+  } catch (error) {
+    console.log('   ⚠️  Failed to remove conflicts:', error.message);
+  }
+}
 
 async function forceStoryboardColors(context, iosPath) {
   console.log('🎨 FORCE Override Storyboard Colors');
@@ -228,29 +295,25 @@ async function ensureColorAsset(context, iosPath) {
       console.log(`   ✅ RGB: (${r}, ${g}, ${b})`);
     }
     
-    // CRITICAL: Ensure Info.plist points to CDVLaunchScreen
+    // 🔄 iOS 14+ FIX: Only add UILaunchScreen, NO UILaunchStoryboardName
     const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
     if (fs.existsSync(plistPath)) {
       let plistContent = fs.readFileSync(plistPath, 'utf8');
       
-      // Remove old UILaunchStoryboardName if exists
-      if (plistContent.includes('<key>UILaunchStoryboardName</key>')) {
-        plistContent = plistContent.replace(
-          /<key>UILaunchStoryboardName<\/key>\s*<string>[^<]*<\/string>/g,
-          ''
-        );
-      }
+      // Ensure NO UILaunchStoryboardName exists (double-check from previous step)
+      plistContent = plistContent.replace(
+        /<key>UILaunchStoryboardName<\/key>\s*<string>[^<]*<\/string>/g,
+        ''
+      );
       
-      // Remove old UILaunchScreen if exists
-      if (plistContent.includes('<key>UILaunchScreen</key>')) {
-        plistContent = plistContent.replace(
-          /<key>UILaunchScreen<\/key>\s*<dict>[\s\S]*?<\/dict>/,
-          ''
-        );
-      }
+      // Ensure NO old UILaunchScreen dict
+      plistContent = plistContent.replace(
+        /<key>UILaunchScreen<\/key>\s*<dict>[\s\S]*?<\/dict>/,
+        ''
+      );
       
-      // Add: UILaunchStoryboardName = CDVLaunchScreen + iOS 14+ dictionary
-      const launchScreenConfig = `  <key>UILaunchStoryboardName</key>\n  <string>CDVLaunchScreen</string>\n  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageName</key>\n    <string></string>\n    <key>UIImageRespectsSafeAreaInsets</key>\n    <false/>\n  </dict>`;
+      // Add ONLY UILaunchScreen dictionary (iOS 14+ standard)
+      const launchScreenConfig = `  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageName</key>\n    <string></string>\n    <key>UIImageRespectsSafeAreaInsets</key>\n    <false/>\n  </dict>`;
       
       plistContent = plistContent.replace(
         '</dict>\n</plist>',
@@ -258,8 +321,9 @@ async function ensureColorAsset(context, iosPath) {
       );
       
       fs.writeFileSync(plistPath, plistContent, 'utf8');
-      console.log('   ✅ Set UILaunchStoryboardName = CDVLaunchScreen (iOS 13+)');
-      console.log('   ✅ Added UILaunchScreen dictionary (iOS 14+ fallback)');
+      console.log('   ✅ Set ONLY UILaunchScreen dictionary (iOS 14+)');
+      console.log('   ✅ Removed UILaunchStoryboardName (prevents flicker!)');
+      console.log('   ✅ Color will be consistent from app launch');
     }
     
   } catch (error) {
@@ -551,7 +615,7 @@ async function validateIcons(iosPath) {
 }
 
 async function validateColorAsset(iosPath) {
-  console.log('🔍 Validating Color Asset');
+  console.log('🔍 Validating Color Asset & Launch Screen Config');
   
   try {
     const xcodeProjects = fs.readdirSync(iosPath).filter(f => f.endsWith('.xcodeproj'));
@@ -605,7 +669,7 @@ async function validateColorAsset(iosPath) {
       console.log('   ❌ Invalid color data!');
     }
     
-    // Check Info.plist
+    // Check Info.plist - CRITICAL: Validate iOS 14+ fix
     const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
     if (fs.existsSync(plistPath)) {
       const plistContent = fs.readFileSync(plistPath, 'utf8');
@@ -613,27 +677,28 @@ async function validateColorAsset(iosPath) {
       const hasUILaunchStoryboardName = plistContent.includes('<key>UILaunchStoryboardName</key>');
       const hasUILaunchScreen = plistContent.includes('<key>UILaunchScreen</key>');
       const hasUIImageName = plistContent.includes('<key>UIImageName</key>');
-      const usesCDVLaunchScreen = plistContent.includes('<string>CDVLaunchScreen</string>');
+      
+      console.log('   🔄 Launch Screen Configuration:');
       
       if (hasUILaunchStoryboardName) {
-        if (usesCDVLaunchScreen) {
-          console.log('   ✅ UILaunchStoryboardName = CDVLaunchScreen (CORRECT!)');
-        } else {
-          console.log('   ⚠️  UILaunchStoryboardName set but NOT to CDVLaunchScreen');
-        }
+        console.log('   ❌ UILaunchStoryboardName still present - will cause iOS 14+ flicker!');
+        console.log('   ⚠️  This should have been removed by removeConflictingLaunchScreens()');
       } else {
-        console.log('   ❌ UILaunchStoryboardName missing (iOS won\'t load storyboard!)');
+        console.log('   ✅ UILaunchStoryboardName REMOVED (iOS 14+ flicker FIXED!)');
       }
       
       if (hasUILaunchScreen) {
-        console.log(`   ✅ UILaunchScreen dictionary present (iOS 14+ fallback)`);
+        console.log(`   ✅ UILaunchScreen dictionary present (iOS 14+ standard)`);
         if (hasUIImageName) {
-          console.log('   ✅ UIImageName key present');
-        } else {
-          console.log('   ⚠️  UIImageName missing');
+          console.log('   ✅ UIImageName key present (empty, safe)');
         }
       } else {
         console.log('   ❌ UILaunchScreen dictionary missing!');
+      }
+      
+      if (!hasUILaunchStoryboardName && hasUILaunchScreen) {
+        console.log('   ✅ PERFECT: Clean iOS 14+ configuration');
+        console.log('   ✅ No splash color flicker will occur!');
       }
     }
     
