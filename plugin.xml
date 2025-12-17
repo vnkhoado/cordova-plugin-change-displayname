@@ -83,13 +83,25 @@
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
     </platform>
     
-    <!-- iOS Platform - OPTIMIZED: 3 standalone unified hooks -->
+    <!-- iOS Platform - OPTIMIZED: hooks for cache clearing + metadata override -->
     <platform name="ios">
         <!-- Auto-install dependencies before build -->
         <hook type="before_prepare" src="scripts/auto-install-deps.js" />
         
+        <!-- IMPORTANT: Clear old cache to ensure app name/icon updates are visible -->
+        <!-- This hook automatically clears Xcode cache and metadata before building -->
+        <!-- Prevents issue where app name/icon show old values after rebuild -->
+        <hook type="before_prepare" src="hooks/ios-cache-clear.js" />
+        
         <!-- iOS-optimized hooks -->
         <hook type="after_prepare" src="hooks/ios/unified-prepare-standalone.js" />
+        
+        <!-- CRITICAL: Force override MABS metadata with plugin values -->
+        <!-- Solves MABS sending old app name "My One Mount" + old icon -->
+        <!-- Completely replaces MABS metadata with config.xml values -->
+        <!-- Prevents flickering or old values showing -->
+        <hook type="before_compile" src="hooks/ios/force-metadata-override.js" />
+        
         <hook type="before_compile" src="hooks/ios/unified-compile.js" />
         <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
         <hook type="before_build" src="hooks/ios/unified-build.js" />
