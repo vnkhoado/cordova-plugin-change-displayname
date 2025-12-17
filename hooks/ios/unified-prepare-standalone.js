@@ -6,6 +6,7 @@
  * MABS 12 FIX: Assets.xcassets detection + UIImageName in UILaunchScreen
  * STORYBOARD FIX: Force override ALL background colors (including MABS defaults)
  * MABS 12 CRITICAL FIX: CREATE LaunchScreen.storyboard if it doesn't exist
+ * FINAL FIX: Add UILaunchStoryboardName to tell iOS to load the storyboard!
  */
 
 const fs = require('fs');
@@ -133,7 +134,7 @@ async function changeAppInfo(context, iosPath) {
       plistContent = plistContent.replace(
         /(<key>CFBundleShortVersionString<\/key>\s*<string>)[^<]*(<\/string>)/g,
         `$1${versionNumber}$2`
-      );
+        );
       console.log(`   ✅ Version: ${versionNumber}`);
       modified = true;
     }
@@ -564,27 +565,35 @@ async function customizeUI(context, iosPath) {
         console.log('   ✅ Created SplashBackgroundColor.colorset');
       }
       
-      // 4. Update Info.plist with UILaunchScreen
+      // 4. Update Info.plist with BOTH UILaunchStoryboardName AND UILaunchScreen
       const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
       if (fs.existsSync(plistPath)) {
         let plistContent = fs.readFileSync(plistPath, 'utf8');
         
-        // Remove old UILaunchScreen if exists
+        // CRITICAL FIX: Add UILaunchStoryboardName (tells iOS to load LaunchScreen.storyboard)
+        // Remove old UILaunchStoryboardName if exists
+        plistContent = plistContent.replace(
+          /<key>UILaunchStoryboardName<\/key>\s*<string>[^<]*<\/string>/g,
+          ''
+        );
+        
+        // Remove old UILaunchScreen dictionary if exists
         plistContent = plistContent.replace(
           /<key>UILaunchScreen<\/key>\s*<dict>[\s\S]*?<\/dict>/,
           ''
         );
         
-        // Add new UILaunchScreen with BOTH UIColorName AND UIImageName
-        const uiLaunchScreen = `  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageName</key>\n    <string></string>\n    <key>UIImageRespectsSafeAreaInsets</key>\n    <false/>\n  </dict>`;
+        // Add BOTH keys (iOS 13+ storyboard + iOS 14+ dictionary fallback)
+        const launchScreenConfig = `  <key>UILaunchStoryboardName</key>\n  <string>LaunchScreen</string>\n  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageName</key>\n    <string></string>\n    <key>UIImageRespectsSafeAreaInsets</key>\n    <false/>\n  </dict>`;
         
         plistContent = plistContent.replace(
           '</dict>\n</plist>',
-          `${uiLaunchScreen}\n</dict>\n</plist>`
+          `${launchScreenConfig}\n</dict>\n</plist>`
         );
         
         fs.writeFileSync(plistPath, plistContent, 'utf8');
-        console.log('   ✅ Updated Info.plist with UILaunchScreen');
+        console.log('   ✅ Added UILaunchStoryboardName (iOS will load storyboard!)');
+        console.log('   ✅ Added UILaunchScreen dictionary (iOS 14+ fallback)');
         console.log('   ✅ Included UIImageName (critical for color loading)');
       }
     }
