@@ -127,6 +127,9 @@ function updateAndroidAppInfo(root, prefs) {
 
 /**
  * Update iOS app info
+ * 
+ * FIX: Ensure CFBundleName is CREATED if missing (not just updated)
+ * This prevents old process name from appearing in app switcher
  */
 function updateIOSAppInfo(root, appFolderName, prefs) {
   const { appName, versionNumber, versionCode } = prefs;
@@ -148,58 +151,94 @@ function updateIOSAppInfo(root, appFolderName, prefs) {
 
   try {
     let content = fs.readFileSync(plistPath, "utf8");
+    let modified = false;
     
-    // REMOVED: CFBundleIdentifier update to avoid provisioning profile conflicts
-    
-    // Update CFBundleDisplayName - only if set
+    // ✅ FIX #1: Update/Create CFBundleDisplayName AND CFBundleName together
+    // This ensures process name & display name are synchronized
     if (appName) {
+      const finalAppName = appName.trim();
+      
+      // ────── Update or create CFBundleDisplayName ──────
+      console.log('   🔄 Processing CFBundleDisplayName (Home Screen)...');
       const displayNameRegex = /<key>CFBundleDisplayName<\/key>\s*<string>.*?<\/string>/;
       if (displayNameRegex.test(content)) {
+        // UPDATE existing
         content = content.replace(
           displayNameRegex,
-          `<key>CFBundleDisplayName</key>\n\t<string>${appName}</string>`
+          `<key>CFBundleDisplayName</key>\n\t<string>${finalAppName}</string>`
         );
+        console.log('   ✅ Updated CFBundleDisplayName');
+        modified = true;
       } else {
+        // CREATE new if missing
         content = content.replace(
           /<\/dict>\s*<\/plist>/,
-          `\t<key>CFBundleDisplayName</key>\n\t<string>${appName}</string>\n</dict>\n</plist>`
+          `\t<key>CFBundleDisplayName</key>\n\t<string>${finalAppName}</string>\n</dict>\n</plist>`
         );
+        console.log('   ✅ Created CFBundleDisplayName');
+        modified = true;
       }
-
-      // Update CFBundleName
+      
+      // ────── Update or create CFBundleName (PROCESS NAME) ──────
+      // THIS IS THE KEY FIX - CFBundleName was only being UPDATED, never CREATED
+      // If missing, iOS uses cache from previous build → old process name appears!
+      console.log('   🔄 Processing CFBundleName (Process Name)...');
       const bundleNameRegex = /<key>CFBundleName<\/key>\s*<string>.*?<\/string>/;
       if (bundleNameRegex.test(content)) {
+        // UPDATE existing
         content = content.replace(
           bundleNameRegex,
-          `<key>CFBundleName</key>\n\t<string>${appName}</string>`
+          `<key>CFBundleName</key>\n\t<string>${finalAppName}</string>`
         );
+        console.log('   ✅ Updated CFBundleName (Process Name)');
+        modified = true;
+      } else {
+        // CREATE new (THIS WAS THE BUG - THIS CODE WAS MISSING!)
+        // Without this, old process name from cache appears in app switcher
+        content = content.replace(
+          /<\/dict>\s*<\/plist>/,
+          `\t<key>CFBundleName</key>\n\t<string>${finalAppName}</string>\n</dict>\n</plist>`
+        );
+        console.log('   ✅ Created CFBundleName (Process Name) - FIX APPLIED!');
+        modified = true;
       }
     }
 
     // Update CFBundleShortVersionString (Version Number) - only if set
     if (versionNumber) {
+      console.log('   🔄 Processing CFBundleShortVersionString (Version)...');
       const versionRegex = /<key>CFBundleShortVersionString<\/key>\s*<string>.*?<\/string>/;
       if (versionRegex.test(content)) {
         content = content.replace(
           versionRegex,
           `<key>CFBundleShortVersionString</key>\n\t<string>${versionNumber}</string>`
         );
+        console.log('   ✅ Updated CFBundleShortVersionString');
+        modified = true;
       }
     }
 
     // Update CFBundleVersion (Build Number) - only if set
     if (versionCode) {
+      console.log('   🔄 Processing CFBundleVersion (Build Number)...');
       const buildRegex = /<key>CFBundleVersion<\/key>\s*<string>.*?<\/string>/;
       if (buildRegex.test(content)) {
         content = content.replace(
           buildRegex,
           `<key>CFBundleVersion</key>\n\t<string>${versionCode}</string>`
         );
+        console.log('   ✅ Updated CFBundleVersion');
+        modified = true;
       }
     }
 
-    fs.writeFileSync(plistPath, content, "utf8");
-    console.log(`✅ iOS Info.plist updated`);
+    if (modified) {
+      fs.writeFileSync(plistPath, content, "utf8");
+      console.log(`✅ iOS Info.plist updated successfully`);
+    } else {
+      console.log(`ℹ️  No changes needed for iOS Info.plist`);
+    }
+    
     return true;
   } catch (err) {
     console.error("✖ Failed to update iOS Info.plist:", err.message);
@@ -217,6 +256,8 @@ module.exports = function(context) {
   console.log("\n══════════════════════════════════");
   console.log("       CHANGE APP INFO HOOK        ");
   console.log("══════════════════════════════════");
+  console.log("📝 FIX: CFBundleName now CREATED if missing");
+  console.log("✅ Prevents old process name from appearing");
   console.log("⚠️ Note: PACKAGE_NAME feature removed to avoid iOS provisioning profile conflicts");
 
   // Get preferences from root config
