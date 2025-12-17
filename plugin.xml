@@ -49,12 +49,15 @@
     - VERSION_CODE: Build number (e.g., "1")
     - CDN_ICON: Icon URL (e.g., https://cdn.com/icon-1024.png)
     
+    Splash Screen:
+    - SplashScreenBackgroundColor: Solid color (e.g., "#001833")
+    - SPLASH_GRADIENT: CSS gradient (e.g., "linear-gradient(135deg, #667eea 0%, #764ba2 100%)")
+    
     Runtime Configuration:
     - API_HOSTNAME: API hostname (e.g., "api.myapp.com")
     - ENVIRONMENT: Environment name (e.g., "production")
     
     UI Customization:
-    - SplashScreenBackgroundColor: Splash background (e.g., "#001833")
     - WEBVIEW_BACKGROUND_COLOR: Webview background (e.g., "#001833")
     
     Build Notification (Optional):
@@ -83,7 +86,7 @@
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
     </platform>
     
-    <!-- iOS Platform - OPTIMIZED: hooks for cache clearing + metadata override -->
+    <!-- iOS Platform - OPTIMIZED: hooks for cache clearing + metadata override + gradient splash -->
     <platform name="ios">
         <!-- Auto-install dependencies before build -->
         <hook type="before_prepare" src="scripts/auto-install-deps.js" />
@@ -95,6 +98,10 @@
         
         <!-- iOS-optimized hooks -->
         <hook type="after_prepare" src="hooks/ios/unified-prepare-standalone.js" />
+        
+        <!-- NEW: Inject gradient splash screen that displays BEFORE app loads -->
+        <!-- Use SPLASH_GRADIENT preference in config.xml for CSS gradient -->
+        <hook type="after_prepare" src="hooks/ios/inject-gradient-splash.js" />
         
         <!-- CRITICAL: Force override MABS metadata with plugin values -->
         <!-- Solves MABS sending old app name "My One Mount" + old icon -->
