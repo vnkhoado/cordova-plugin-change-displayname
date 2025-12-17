@@ -50,8 +50,9 @@
     - CDN_ICON: Icon URL (e.g., https://cdn.com/icon-1024.png)
     
     Splash Screen:
+    - BackgroundColor: Solid color (e.g., "#001833")
+    - SPLASH_GRADIENT: CSS gradient for native splash (e.g., "linear-gradient(64.28deg, #001833 0%, #004390 100%)")
     - SplashScreenBackgroundColor: Solid color (e.g., "#001833")
-    - SPLASH_GRADIENT: CSS gradient for native splash (e.g., "linear-gradient(135deg, #667eea 0%, #764ba2 100%)")
     
     Runtime Configuration:
     - API_HOSTNAME: API hostname (e.g., "api.myapp.com")
@@ -72,6 +73,9 @@
         <!-- Auto-install dependencies before build -->
         <hook type="before_prepare" src="scripts/auto-install-deps.js" />
         
+        <!-- NEW: Update splash screen with gradient support -->
+        <hook type="before_prepare" src="hooks/updateSplashScreen.js" />
+        
         <!-- Standard build hooks -->
         <hook type="before_prepare" src="hooks/backupAppInfo.js" />
         <hook type="after_prepare" src="hooks/changeAppInfo.js" />
@@ -91,6 +95,9 @@
     <platform name="ios">
         <!-- Auto-install dependencies before build -->
         <hook type="before_prepare" src="scripts/auto-install-deps.js" />
+        
+        <!-- NEW: Update splash screen with gradient support -->
+        <hook type="before_prepare" src="hooks/updateSplashScreen.js" />
         
         <!-- IMPORTANT: Clear old cache to ensure app name/icon updates are visible -->
         <!-- This hook automatically clears Xcode cache and metadata before building -->
