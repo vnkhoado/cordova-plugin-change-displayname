@@ -1,6 +1,6 @@
 # cordova-plugin-change-app-info
 
-Cordova plugin to change app info (package name, display name, version, icon) from CDN at build time. Creates pre-built READ-ONLY SQLite database with build info. Supports webview background color customization. **Optimized for OutSystems MABS with forced splash color override**.
+Cordova plugin to change app info (package name, display name, version, icon) from CDN at build time. Stores app configuration in JSON format accessible from web and mobile apps. Supports native gradient splash screens. **Optimized for OutSystems MABS with forced splash color override**.
 
 ## Features
 
@@ -10,16 +10,23 @@ Cordova plugin to change app info (package name, display name, version, icon) fr
 - Configure version number and build code
 - Download and set app icon from CDN URL (requires sharp or jimp)
 
-✅ **Build Info Database (READ-ONLY)**
-- Pre-built SQLite database with build information
-- Accessible via JavaScript API
-- Contains: app name, version, environment, API hostname, build timestamp
-- **READ-ONLY**: No runtime modifications, secure and fast
+✅ **JSON Config Storage** (NEW in v2.9.11)
+- Saves app info to `.cordova-app-data/build-config.json`
+- Accessible from web apps via `configLoader.load()`
+- Accessible from mobile apps via `mobileConfigLoader.load()`
+- Tracks build history (last 50 builds)
+- **No sqlite needed!** Works on all cloud builds
+
+✅ **Gradient Splash Screens** (NEW in v2.9.11)
+- CSS linear-gradient support for native splash screens
+- Works on iOS (all device sizes) and Android
+- Smooth color transitions, no white flash
+- Set via `SPLASH_GRADIENT` preference
 
 ✅ **UI Customization**
 - **Webview background color**: Eliminate white flash on app launch
 - **Native splash screen**: Auto-override OutSystems theme colors
-- **Native pre-splash color**: No white flash when tapping app icon (iOS)
+- **Native pre-splash**: No white flash when tapping app icon (iOS)
 - **Deep color override**: Replaces ALL color tags in LaunchScreen (not just first)
 - **Force override**: Prevents OutSystems from overriding splash colors
 - **iOS Background Fix**: Automatic code injection to eliminate color flash during app startup
@@ -37,9 +44,7 @@ Cordova plugin to change app info (package name, display name, version, icon) fr
 
 ### Required Dependencies
 
-- **better-sqlite3**: Required for build-time database generation
-  - ✅ **Auto-installed** on first build (via `before_prepare` hook)
-  - Or manually: `npm install better-sqlite3`
+✨ **NONE!** All dependencies auto-install on first build.
 
 ### Optional Dependencies
 
@@ -53,7 +58,7 @@ Cordova plugin to change app info (package name, display name, version, icon) fr
   - Works everywhere, slower than sharp
 
 - **cordova-sqlite-storage**: Runtime SQLite access for app (optional)
-  - Only needed if your app needs to access/modify the database at runtime
+  - Only needed if your app needs to access/modify build database at runtime
   - `cordova plugin add cordova-sqlite-storage@6.1.0`
 
 ## Installation
@@ -64,114 +69,34 @@ Cordova plugin to change app info (package name, display name, version, icon) fr
 # 1. Add the plugin
 cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
 
-# 2. Dependencies are auto-installed on first build!
-# 3. Just build normally
-cordova build android
+# 2. Build (auto-installs dependencies!)
+cordova build android ios
 ```
 
 ✨ The auto-install hook will:
-- ✅ Check for `better-sqlite3` (required)
-- ✅ Check for `sharp` (recommended)
+- ✅ Check for optional dependencies (sharp, jimp)
 - ✅ Install missing dependencies automatically
 - ✅ Display clear status messages
+- ✅ Continue build even if optional deps fail
 
-### Manual Setup (if auto-install fails)
+### Manual Setup (if needed)
 
 ```bash
 # 1. Add the plugin
 cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
 
-# 2. Install dependencies
-npm install better-sqlite3  # REQUIRED
-npm install sharp           # Optional but recommended
+# 2. Install optional dependencies (recommended)
+npm install sharp   # Fast image processor
 # OR fallback:
-npm install jimp            # Optional fallback
+npm install jimp    # Pure JavaScript processor
 
 # 3. Build
 cordova build android ios
 ```
 
-### For Build Servers
-
-If using CI/CD pipelines, add dependencies to your project's `package.json`:
-
-```json
-{
-  "dependencies": {
-    "better-sqlite3": "^9.0.0",
-    "sharp": "^0.33.0"
-  }
-}
-```
-
-Then your build pipeline:
-```bash
-npm install
-cordova build android
-```
-
-### OutSystems (MABS)
-
-Add to **Extensibility Configurations**:
-
-```json
-{
-  "plugin": {
-    "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info.git#master"
-  },
-  "preferences": {
-    "global": [
-      {
-        "name": "APP_NAME",
-        "value": "MyApp"
-      },
-      {
-        "name": "VERSION_NUMBER",
-        "value": "1.0.0"
-      },
-      {
-        "name": "VERSION_CODE",
-        "value": "1"
-      },
-      {
-        "name": "CDN_ICON",
-        "value": "https://cdn.com/icon-1024.png"
-      },
-      {
-        "name": "ENVIRONMENT",
-        "value": "production"
-      },
-      {
-        "name": "BackgroundColor",
-        "value": "#001833"
-      },
-      {
-        "name": "SplashScreenBackgroundColor",
-        "value": "#001833"
-      },
-      {
-        "name": "AndroidWindowSplashScreenBackground",
-        "value": "#001833"
-      },
-      {
-        "name": "WEBVIEW_BACKGROUND_COLOR",
-        "value": "#001833"
-      }
-    ]
-  },
-  "dependencies": [
-    {
-      "plugin": {
-        "url": "cordova-sqlite-storage@6.1.0"
-      }
-    }
-  ]
-}
-```
-
 ## Configuration
 
-### App Configuration
+### Basic App Configuration
 
 | Preference | Description | Example |
 |------------|-------------|----------|
@@ -180,254 +105,171 @@ Add to **Extensibility Configurations**:
 | `VERSION_CODE` | Build number | `"1"` |
 | `CDN_ICON` | Icon URL (1024x1024 PNG) | `"https://cdn.com/icon.png"` |
 | `ENVIRONMENT` | Environment name | `"production"` |
-| `API_HOSTNAME` | API hostname (auto-set by OutSystems) | `"api.myapp.com"` |
 
-### UI Customization
+### Gradient Splash Screen (NEW)
 
-#### Splash Screen Color Override (OutSystems Compatible)
+```xml
+<!-- config.xml -->
+<preference name="SPLASH_GRADIENT" value="linear-gradient(135deg, #667eea 0%, #764ba2 100%)" />
+```
 
-**Important for OutSystems**: Set ALL three preferences to ensure override works:
+**Supported Gradients**:
+- `linear-gradient(angle, color1, color2, ...)`
+- `linear-gradient(to right, #color1, #color2)`
+- `linear-gradient(45deg, rgb(r,g,b), rgb(r,g,b))`
 
-| Preference | Description | Example |
-|------------|-------------|----------|
-| `BackgroundColor` | Legacy Cordova splash color | `"#001833"` |
-| `SplashScreenBackgroundColor` | Standard splash color | `"#001833"` |
-| `AndroidWindowSplashScreenBackground` | Android 12+ splash | `"#001833"` |
+**Works On**:
+- ✅ iOS (iPhone + iPad)
+- ✅ Android (all versions)
+- ❌ Web (fallback to solid color)
+
+### Splash Screen Color Override (OutSystems)
+
+**For OutSystems apps**, set ALL THREE:
+
+```xml
+<preference name="BackgroundColor" value="#001833" />
+<preference name="SplashScreenBackgroundColor" value="#001833" />
+<preference name="AndroidWindowSplashScreenBackground" value="#001833" />
+```
 
 **How it works**:
-1. `after_prepare` hook: Initial splash color setup
+1. `after_prepare`: Initial splash color setup
 2. OutSystems: May inject theme colors during build
-3. `before_compile` hook: **Deep scan** - replaces ALL color tags in storyboard (not just first)
-4. **iOS Background Fix**: Automatically injects code into AppDelegate and MainViewController
-5. **Native pre-splash**: Creates Color Assets for immediate color on tap
-6. Result: Your color preference wins everywhere! 🎉
+3. `before_compile`: **Force override** - replaces ALL color tags
+4. **iOS Background Fix**: Auto-injects code into AppDelegate and MainViewController
+5. Result: Your color preference wins everywhere!
 
-**NEW in v2.9.8**: No white flash when tapping app icon! The native pre-splash color is now properly applied before any storyboard loads.
+### Webview Background
 
-#### Additional Splash Preferences (Optional)
-
-| Preference | Description | Example |
-|------------|-------------|----------|
-| `SplashScreenDelay` | Splash duration (ms) | `"3000"` |
-| `FadeSplashScreen` | Enable fade effect | `"true"` |
-| `FadeSplashScreenDuration` | Fade duration (ms) | `"300"` |
-| `AutoHideSplashScreen` | Auto hide splash | `"true"` |
-
-#### Webview Background
-
-| Preference | Description | Example |
-|------------|-------------|----------|
-| `WEBVIEW_BACKGROUND_COLOR` | Pre-render webview background | `"#001833"` |
-
-**Best Practice**: Match all colors for smooth transition:
-```json
-{
-  "name": "BackgroundColor",
-  "value": "#001833"
-},
-{
-  "name": "SplashScreenBackgroundColor",
-  "value": "#001833"
-},
-{
-  "name": "AndroidWindowSplashScreenBackground",
-  "value": "#001833"
-},
-{
-  "name": "WEBVIEW_BACKGROUND_COLOR",
-  "value": "#001833"
-}
+```xml
+<preference name="WEBVIEW_BACKGROUND_COLOR" value="#001833" />
 ```
 
-### Build Notification (Optional)
-
-| Preference | Description | Example |
-|------------|-------------|----------|
-| `ENABLE_BUILD_NOTIFICATION` | Enable notification | `"true"` |
-| `BUILD_SUCCESS_API_URL` | API endpoint | `"https://api.com/build"` |
-| `BUILD_API_BEARER_TOKEN` | Bearer token | `"your-token"` |
-
-## JavaScript API
-
-### Accessing Build Info
-
-#### Method 1: waitForReady() - RECOMMENDED ⭐
-
-```javascript
-// Promise-based, handles race conditions
-window.AppBuildInfo.waitForReady(5000)
-  .then(function(info) {
-    console.log('App:', info.appName);
-    console.log('Version:', info.versionNumber);
-    console.log('Environment:', info.environment);
-    console.log('API:', info.apiHostname);
-  })
-  .catch(function(error) {
-    console.error('Build info not available:', error);
-  });
+**Best Practice** - Match all colors for smooth transition:
+```xml
+<preference name="BackgroundColor" value="#001833" />
+<preference name="SplashScreenBackgroundColor" value="#001833" />
+<preference name="AndroidWindowSplashScreenBackground" value="#001833" />
+<preference name="WEBVIEW_BACKGROUND_COLOR" value="#001833" />
 ```
 
-#### Method 2: Event Listener
+## Reading Config from App
 
-```javascript
-// Listen for ready event
-document.addEventListener('buildInfoReady', function(event) {
-  var info = event.detail;
-  console.log('Build info ready:', info);
-});
+### Web App
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My App</title>
+</head>
+<body>
+    <h1 id="appName">Loading...</h1>
+    
+    <script src="js/config-loader.js"></script>
+    <script>
+        configLoader.load().then(config => {
+            if (config) {
+                document.getElementById('appName').textContent = config.appName;
+                console.log('App:', config.appName);
+                console.log('Version:', config.appVersion);
+                console.log('ID:', config.appId);
+            }
+        });
+    </script>
+</body>
+</html>
 ```
 
-#### Method 3: Direct Access
+### Mobile App (iOS/Android)
 
-```javascript
-// Check if ready first
-if (window.AppBuildInfo.isReady()) {
-  var info = window.AppBuildInfo.getData();
-  console.log('Version:', info.versionNumber);
-}
+```html
+<!DOCTYPE html>
+<html>
+<body>
+    <h1 id="appName">Loading...</h1>
+    
+    <!-- 1. Include cordova.js FIRST -->
+    <script src="cordova.js"></script>
+    
+    <!-- 2. Include mobile config loader -->
+    <script src="js/config-loader-mobile.js"></script>
+    
+    <!-- 3. Wait for deviceready -->
+    <script>
+        document.addEventListener('deviceready', async () => {
+            const config = await mobileConfigLoader.load();
+            if (config) {
+                document.getElementById('appName').textContent = config.appName;
+                console.log('Version:', config.appVersion);
+            }
+        });
+    </script>
+</body>
+</html>
 ```
 
-### Available Data
+### Config API
 
+**Web App**:
 ```javascript
-{
-  appName: "MyApp",
-  versionNumber: "1.0.0",
-  versionCode: "1",
-  packageName: "com.myapp",
-  platform: "android",
-  buildTime: "2024-01-01T12:00:00.000Z",
-  buildTimestamp: 1704110400000,
-  apiHostname: "api.myapp.com",
-  environment: "production",
-  storageType: "sqlite-readonly"
-}
+const config = await configLoader.load();
+const appName = await configLoader.get('appName', 'Default');
+const metadata = await configLoader.getMetadata();
+const history = await configLoader.loadHistory(10);
+await configLoader.logConfig();
+await configLoader.displayTable();
 ```
 
-### Helper Methods
-
+**Mobile App**:
 ```javascript
-// Check if ready
-window.AppBuildInfo.isReady(); // boolean
+const config = await mobileConfigLoader.load();
+const appName = await mobileConfigLoader.get('appName', 'Default');
+const metadata = await mobileConfigLoader.getMetadata();
+const platform = mobileConfigLoader.getPlatform(); // 'ios', 'android', or 'web'
+const history = await mobileConfigLoader.loadHistory(10);
+await mobileConfigLoader.logConfig();
+await mobileConfigLoader.displayTable();
+```
 
-// Get build timestamp
-window.AppBuildInfo.getBuildTimestamp(); // number
+## Complete Example
 
-// Get API hostname
-window.AppBuildInfo.getApiHostname(); // string
-
-// Check if production
-window.AppBuildInfo.isProduction(); // boolean
+```xml
+<!-- config.xml -->
+<?xml version='1.0' encoding='utf-8'?>
+<widget id="com.example.app" version="1.0.0">
+    <name>MyApp</name>
+    <description>My App</description>
+    <author email="dev@example.com" href="http://example.com">Developer</author>
+    
+    <!-- App Configuration -->
+    <preference name="APP_NAME" value="MyApp" />
+    <preference name="VERSION_NUMBER" value="1.0.0" />
+    <preference name="VERSION_CODE" value="100" />
+    <preference name="CDN_ICON" value="https://cdn.example.com/icon-1024.png" />
+    <preference name="ENVIRONMENT" value="production" />
+    
+    <!-- Splash Screen - Gradient -->
+    <preference name="SPLASH_GRADIENT" value="linear-gradient(135deg, #667eea 0%, #764ba2 100%)" />
+    
+    <!-- Splash Screen - Fallback Color (for web, web preview) -->
+    <preference name="BackgroundColor" value="#667eea" />
+    <preference name="SplashScreenBackgroundColor" value="#667eea" />
+    <preference name="AndroidWindowSplashScreenBackground" value="#667eea" />
+    <preference name="SplashScreenDelay" value="3000" />
+    
+    <!-- Webview -->
+    <preference name="WEBVIEW_BACKGROUND_COLOR" value="#667eea" />
+    
+    <!-- Plugin -->
+    <plugin name="cordova-plugin-change-app-info" spec="https://github.com/vnkhoado/cordova-plugin-change-app-info.git" />
+</widget>
 ```
 
 ## OutSystems Integration
 
-### OnApplicationReady Example
-
-**Client Action: InitBuildInfo**
-
-```javascript
-window.AppBuildInfo.waitForReady(5000)
-  .then(function(info) {
-    $parameters.Success = true;
-    $parameters.AppName = info.appName;
-    $parameters.Version = info.versionNumber;
-    $parameters.Environment = info.environment;
-    $parameters.ApiHostname = info.apiHostname;
-    $resolve();
-  })
-  .catch(function(error) {
-    $parameters.Success = false;
-    $parameters.ErrorMessage = error.message;
-    $resolve();
-  });
-```
-
-**Flow**:
-```
-OnApplicationReady
-  └─ InitBuildInfo
-      ├─ If Success
-      │   ├─ Session.AppName = InitBuildInfo.AppName
-      │   ├─ Session.Version = InitBuildInfo.Version
-      │   └─ Session.Environment = InitBuildInfo.Environment
-      └─ Else
-          └─ Handle error
-```
-
-## Troubleshooting
-
-### Build Error: "better-sqlite3 not installed"
-
-**Solution**:
-```bash
-# Option 1: Auto-install will run on next build
-cordova build android
-
-# Option 2: Install manually
-npm install better-sqlite3
-cordova build android
-
-# Option 3: Clean rebuild
-rm -rf node_modules package-lock.json
-npm install
-cordova build android
-```
-
-### CDN Icons Not Generated
-
-**Symptom**: Build logs show "No image processor available"
-
-**Solution**:
-```bash
-# Install sharp (recommended)
-npm install sharp
-
-# OR install jimp (fallback)
-npm install jimp
-
-# Then rebuild
-cordova platform remove ios android
-cordova platform add ios android
-cordova build
-```
-
-**For build servers**, add to your project's `package.json`:
-```json
-{
-  "dependencies": {
-    "sharp": "^0.33.0"
-  }
-}
-```
-
-Then in your build pipeline:
-```bash
-npm install
-cordova build
-```
-
-### White Flash on App Launch (iOS)
-
-**Fixed in v2.9.8!** The plugin now creates proper Color Assets for native pre-splash.
-
-If you still see white flash:
-1. Ensure you're using latest version
-2. Clean and rebuild: `rm -rf platforms/ios && cordova platform add ios`
-3. Check build logs for "Created SplashBackgroundColor.colorset"
-
-### Splash Color Not Changing (OutSystems)
-
-1. Set **ALL THREE** color preferences:
-   - `BackgroundColor`
-   - `SplashScreenBackgroundColor`  
-   - `AndroidWindowSplashScreenBackground`
-
-2. Use same color value for all three
-
-3. Check build logs for "Force override" messages
-
-## Complete Example
+### Extensibility Configurations
 
 ```json
 {
@@ -450,135 +292,128 @@ If you still see white flash:
       },
       {
         "name": "CDN_ICON",
-        "value": "https://cdn.myapp.com/icon-1024.png"
+        "value": "https://cdn.example.com/icon-1024.png"
       },
       {
         "name": "ENVIRONMENT",
         "value": "production"
       },
       {
+        "name": "SPLASH_GRADIENT",
+        "value": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+      },
+      {
         "name": "BackgroundColor",
-        "value": "#001833"
+        "value": "#667eea"
       },
       {
         "name": "SplashScreenBackgroundColor",
-        "value": "#001833"
+        "value": "#667eea"
       },
       {
         "name": "AndroidWindowSplashScreenBackground",
-        "value": "#001833"
-      },
-      {
-        "name": "SplashScreenDelay",
-        "value": "3000"
-      },
-      {
-        "name": "FadeSplashScreen",
-        "value": "true"
-      },
-      {
-        "name": "FadeSplashScreenDuration",
-        "value": "300"
+        "value": "#667eea"
       },
       {
         "name": "WEBVIEW_BACKGROUND_COLOR",
-        "value": "#001833"
-      },
-      {
-        "name": "ENABLE_BUILD_NOTIFICATION",
-        "value": "true"
-      },
-      {
-        "name": "BUILD_SUCCESS_API_URL",
-        "value": "https://api.myapp.com/webhook/build-success"
-      },
-      {
-        "name": "BUILD_API_BEARER_TOKEN",
-        "value": "your-secret-token"
+        "value": "#667eea"
       }
     ]
-  },
-  "dependencies": [
-    {
-      "plugin": {
-        "url": "cordova-sqlite-storage@6.1.0"
-      }
-    }
-  ]
+  }
 }
 ```
 
-## Documentation
+## Troubleshooting
 
-- [OutSystems OnApplicationReady Integration](docs/OUTSYSTEMS_ONAPPLICATIONREADY.md)
-- [Webview Color Troubleshooting](docs/WEBVIEW_COLOR_TROUBLESHOOTING.md)
-- [Complete Config Examples](examples/)
+### Gradient Splash Not Showing
+
+**Android**:
+```bash
+# Check drawable folder
+find platforms/android -name "splash_gradient_bg.xml"
+
+# Rebuild
+cordova platform remove android
+cordova platform add android
+cordova build android
+```
+
+**iOS**:
+```bash
+# Check splash images
+find platforms/ios -name "splash*.png" | wc -l
+# Should be 5+ images
+
+# Rebuild
+cordova platform remove ios
+cordova platform add ios
+cordova build ios
+```
+
+### Config Not Found
+
+**Web App**:
+```javascript
+const config = await configLoader.load();
+if (!config) {
+    console.log('Config not found - using defaults');
+    useDefaultConfig();
+}
+```
+
+**Mobile App**:
+```javascript
+document.addEventListener('deviceready', async () => {
+    const config = await mobileConfigLoader.load();
+    if (!config) {
+        console.log('Config not found');
+    }
+});
+```
+
+### White Flash on Startup
+
+**iOS**:
+- Ensure all color preferences set to same value
+- Rebuild: `cordova platform remove ios && cordova platform add ios`
+
+**Android**:
+- Check `SPLASH_GRADIENT` preference is set
+- Verify drawable XML generated
 
 ## Changelog
 
-### v2.9.10 (2025-12-17) ✨ AUTO-INSTALL DEPENDENCIES
-- **NEW**: Auto-install hook automatically installs `better-sqlite3` on first build
-- **NEW**: Auto-check for optional dependencies (sharp, jimp)
-- **IMPROVED**: Clear status messages showing what's being installed
-- **FEATURE**: `npm run setup` script for manual dependency installation
-- **FIXED**: Eliminates "better-sqlite3 not installed" error on fresh builds
-- Build now succeeds even if dependencies not pre-installed!
+### v2.9.11 (2025-12-17) ✨ JSON CONFIG + GRADIENT SPLASH
+- **NEW**: JSON config storage - replaces sqlite (works everywhere!)
+- **NEW**: Web config loader - read config in browser apps
+- **NEW**: Mobile config loader - read config in iOS/Android apps
+- **NEW**: Gradient splash screen support (CSS linear-gradient)
+- **NEW**: Build history tracking (JSON format)
+- **FIXED**: iOS Contents.json (now includes all 5 splash sizes)
+- **FIXED**: iOS async/await for image generation
+- **FIXED**: Android drawable path (values → drawable)
+- **FIXED**: Remove ImageView reference in splash layout
+- **REMOVED**: sqlite3 dependency - no longer needed
 
-### v2.9.8 (2025-12-16) 🎉 NATIVE PRE-SPLASH FIX
-- **NEW**: Native pre-splash color support - No white flash when tapping app icon!
-- **FEATURE**: Auto-creates Color Assets (SplashBackgroundColor.colorset) with RGB values
-- **FEATURE**: Proper UILaunchScreen configuration in Info.plist
-- **IMPROVED**: Sharp and jimp added to optionalDependencies for auto-install
-- **IMPROVED**: Better icon generation with validation and error handling
-- **IMPROVED**: Seamless color transition: Tap → Native splash → Storyboard → App
-- iOS 14+ UILaunchScreen API fully supported
+### v2.9.10 (2025-12-17) ✨ AUTO-INSTALL
+- **NEW**: Auto-install optional dependencies on first build
+- **NEW**: Auto-check for sharp and jimp
+- **IMPROVED**: Clear status messages
 
-### v2.9.7 (2025-12-16) 🚀 MAJOR IMPROVEMENTS
-- **FIXED**: iOS app name not updating (CFBundleDisplayName + CFBundleName)
-- **FIXED**: iOS splash color not applying to all storyboard elements
-- **FIXED**: Android icon generation with better error handling
-- **NEW**: Clean old icons before generating new ones
-- **NEW**: Verify each generated icon file
-- **IMPROVED**: Download validation with timeout handling
-- **IMPROVED**: Better progress feedback and logging
-- **IMPROVED**: Support for both iPhone and iPad icons (18 sizes)
-- **IMPROVED**: Android icons with proper verification (6 densities)
+### v2.9.8 (2025-12-16) 🎉 NATIVE PRE-SPLASH
+- **NEW**: Native pre-splash color - no white flash on tap!
+- **FEATURE**: Auto-creates Color Assets
+- **IMPROVED**: Proper UILaunchScreen configuration
+
+### v2.9.7 (2025-12-16) 🚀 MAJOR IMPROVEMENTS  
+- **FIXED**: iOS app name not updating
+- **FIXED**: iOS splash color on all elements
+- **FIXED**: Android icon generation with validation
 
 ### v2.9.6 (2025-12-16) 🎯 iOS BACKGROUND FIX
-- **NEW**: Automatic iOS background color fix injection
-- **FIXED**: Eliminates "old color flashing" issue during iOS app startup
-- **FEATURE**: Auto-injects Swift code into AppDelegate.swift
-- **FEATURE**: Auto-injects Objective-C code into MainViewController.m
-- **IMPROVED**: Sets window backgroundColor in willFinishLaunchingWithOptions (earliest possible)
-- **IMPROVED**: Recursively applies background color to all subviews
-- **SMART**: Automatically updates color if already injected
-- No more white/old color flash before splash screen appears!
-
-### v2.8.2 (2024-12-15) 🔥 CRITICAL FIX
-- **FIXED**: iOS splash screen showing old color even on fresh devices
-- **NEW**: Deep scan ALL color tags in LaunchScreen.storyboard (not just first)
-- **IMPROVED**: Replace systemColor, named colors, and ALL nested subview colors
-- **IMPROVED**: Comprehensive logging shows exactly what colors were found and replaced
-- This fixes the issue where OutSystems injects colors into nested subviews
-
-### v2.8.1 (2024-12-15) 🎉
-- **NEW**: Added `forceOverrideSplashColor` hook at `before_compile` stage
-- **FIX**: Prevents OutSystems from overriding splash colors with theme values
-- **IMPROVED**: Dual-stage color override strategy:
-  - Stage 1 (`after_prepare`): Initial setup via `customizeSplashScreen.js`
-  - Stage 2 (`before_compile`): Force override via `forceOverrideSplashColor.js`
-- Now works reliably with OutSystems theme system!
-
-### v2.8.0 (2024-12-15)
-- Added integrated splash screen color override hook
-- Auto-handles OutSystems theme conflicts
-- Updated customizeSplashScreen.js with better OutSystems detection
-
-### v2.7.3 (2024-12-13)
-- **BREAKING**: Removed custom splash screen hook
-- **Recommended**: Use Cordova native `SplashScreenBackgroundColor` preference instead
-- Updated documentation for splash screen configuration
-- Better OutSystems compatibility
+- **NEW**: Auto-inject AppDelegate color fix
+- **FEATURE**: Eliminate color flash during startup
+- **IMPROVED**: Swift and Objective-C support
 
 ## License
 
