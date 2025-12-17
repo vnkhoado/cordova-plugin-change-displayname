@@ -20,12 +20,7 @@ This feature adds full CSS gradient support for native splash screens on both An
 
 ## Quick Start
 
-### 1. Install Dependencies
-```bash
-npm install sharp jimp --save-optional
-```
-
-### 2. Configure
+### 1. Configure
 Add to your `config.xml`:
 
 ```xml
@@ -42,12 +37,59 @@ Add to your `config.xml`:
 </platform>
 ```
 
-### 3. Build
+### 2. Build
 ```bash
 cordova build android ios
 ```
 
-That's it! The gradient splash screen is automatically generated.
+**That's it!** Dependencies are automatically installed, and gradient splash screens are generated.
+
+## How It Works
+
+### Architecture
+
+```
+config.xml (SPLASH_GRADIENT preference)
+    ↓
+cordova build
+    ↓
+before_prepare hook triggered
+    ↓
+auto-install-deps.js (auto-install sharp/jimp)
+    ↓
+updateSplashScreen.js hook
+    ↓
+    ├─ GradientParser (validates & parses gradient)
+    │
+    ├─ Android
+    │  └─ AndroidGradientGenerator
+    │     └─ Generate drawable XML
+    │
+    └─ iOS
+       └─ IOSGradientGenerator
+          └─ Generate PNG images (@1x, @2x, @3x)
+    ↓
+Resources ready for native build
+    ↓
+✅ Gradient splash screen!
+```
+
+### Automatic Setup
+
+1. **Auto-Install Dependencies**
+   - `auto-install-deps.js` detects `SPLASH_GRADIENT` in config.xml
+   - Automatically installs `sharp` (recommended) and `jimp` (fallback)
+   - Gracefully handles failures - falls back to solid color
+
+2. **Hook Execution**
+   - `updateSplashScreen.js` hook runs during `before_prepare` phase
+   - Parses gradient using `GradientParser`
+   - Generates platform-specific resources
+
+3. **Build Integration**
+   - Android: Creates drawable XML in native build
+   - iOS: Creates PNG images for all resolutions
+   - Native build automatically includes resources
 
 ## Gradient Format
 
@@ -80,42 +122,6 @@ linear-gradient(angle, color1 position1, color2 position2, ...)
 "linear-gradient(64.28deg, #001833 0%, #004390 100%)"
 ```
 
-## How It Works
-
-### Architecture
-
-```
-config.xml
-  ↓
-before_prepare hook
-  ↓
-updateSplashScreen.js
-  ↓
-  ├─ GradientParser
-  │   └─ Validates & parses gradient
-  ↓
-  ├─ Android
-  │   └─ AndroidGradientGenerator
-  │       └─ Drawable XML
-  └─ iOS
-      └─ IOSGradientGenerator
-          └─ PNG images (@1x, @2x, @3x)
-  ↓
-Native build includes resources
-  ↓
-✅ Gradient splash screen!
-```
-
-### Flow
-
-1. **Config Reading**: Reads `SPLASH_GRADIENT` from config.xml
-2. **Parsing**: GradientParser extracts angle, colors, and positions
-3. **Validation**: Validates gradient format and falls back if invalid
-4. **Android Generation**: Creates drawable XML with gradient
-5. **iOS Generation**: Creates PNG images for all resolutions
-6. **Build Integration**: Native build picks up resources
-7. **Display**: Beautiful gradient splash at app launch
-
 ## Files Included
 
 ### Core Implementation
@@ -144,6 +150,13 @@ Native build includes resources
   - Handles errors and fallback
   - Provides detailed logging
 
+### Automatic Dependency Installation
+- **scripts/auto-install-deps.js** (updated)
+  - Detects `SPLASH_GRADIENT` in config.xml
+  - Auto-installs sharp and jimp if needed
+  - Gracefully handles cloud build environments
+  - Runs automatically during `before_prepare` phase
+
 ### Configuration
 - **plugin.xml** (updated)
   - Registers updateSplashScreen hook
@@ -162,10 +175,11 @@ Native build includes resources
 ✅ **Multiple colors** - Unlimited color stops
 ✅ **Angle units** - deg, rad, turn, grad all supported
 ✅ **Color formats** - Hex (#RGB, #RRGGBB), RGB, RGBA
+✅ **Auto-install** - Dependencies installed automatically
 ✅ **Auto fallback** - Falls back to solid color on error
 ✅ **Platform specific** - Android drawable XML, iOS PNG images
 ✅ **Error handling** - Validates input, provides helpful logs
-✅ **Comprehensive logging** - See exactly what's happening during build
+✅ **Comprehensive logging** - See exactly what's happening
 ❌ **Radial gradients** - Not supported yet (future enhancement)
 ❌ **Animations** - Not supported yet (future enhancement)
 
@@ -199,6 +213,28 @@ cordova run ios
 # Launch app in simulator and observe splash screen
 ```
 
+### Build Logs
+
+```bash
+# Verbose build output
+cordova build android -d 2>&1 | grep -i gradient
+cordova build ios -d 2>&1 | grep -i gradient
+```
+
+**Expected output**:
+```
+[Splash Screen] Starting splash screen configuration...
+[Splash Screen] Found SPLASH_GRADIENT preference
+[Splash Screen] ✓ Gradient parsed successfully
+[Android] Processing gradient splash screen...
+[Android] Generating drawable XML...
+[Android] ✓ Gradient splash screen configured successfully
+[iOS] Processing gradient splash screen...
+[iOS] Generating splash images...
+[iOS] ✓ Gradient splash screen configured successfully
+[Splash Screen] ✓ All platforms configured
+```
+
 ## Troubleshooting
 
 ### Issue: Gradient not showing
@@ -222,29 +258,22 @@ ls platforms/android/app/src/main/res/values/splash_gradient_bg.xml
 ls platforms/ios/*/Images.xcassets/splash.imageset/splash_*.png
 ```
 
-### Issue: Sharp not found
+### Issue: Build fails during auto-install
 
-**Solution**:
+**Solution 1**: Check Node.js version
 ```bash
-npm install sharp --force
-# Or fallback to jimp
-npm install jimp
+node -v  # Should be 14.0.0+
+npm -v   # Should be 6.0.0+
 ```
 
-### Issue: Build fails
-
-**Solution 1**: Update Gradle
+**Solution 2**: Manual dependency install
 ```bash
-cd platforms/android
-./gradlew wrapper --gradle-version=latest
-cd ../..
-cordova build android
+# If auto-install fails, install manually
+npm install sharp jimp --save-optional
 ```
 
-**Solution 2**: Check Node.js version
-```bash
-node -v  # Should be 12.x or higher
-```
+**Solution 3**: Cloud build fallback
+If building on cloud (MABS), dependencies will gracefully fail and use solid color instead.
 
 ## Configuration Examples
 
@@ -277,35 +306,37 @@ node -v  # Should be 12.x or higher
 - ✅ **Android** 5.0+ (API 21)
 - ✅ **iOS** 13.0+
 - ✅ **Cordova** 9.0+
+- ✅ **Node.js** 14.0.0+
+- ✅ **npm** 6.0.0+
 
 ## Performance
 
-- **Build time impact**: Minimal (~100-200ms added per platform)
+- **Build time impact**: Minimal (~100-200ms per platform)
 - **App size impact**: Negligible (gradient is native, not embedded)
 - **Runtime impact**: None (generated at build time)
 
-## Optional Dependencies
+## Dependencies
 
 ### sharp (Recommended)
 - ✅ Fast image processing
 - ✅ High quality
 - ❌ Requires compilation
-- **Install**: `npm install sharp`
+- Auto-installed if not present
 
 ### jimp (Fallback)
 - ✅ Pure JavaScript (100%)
 - ✅ No compilation needed
 - ❌ Slower processing
-- **Install**: `npm install jimp`
+- Auto-installed as fallback
 
-Both are optional. If neither available, falls back to solid color.
+**Both are optional.** Auto-install-deps handles everything.
 
 ## Next Steps
 
-1. ✅ Merge this PR
-2. ✅ Install dependencies: `npm install sharp jimp --save-optional`
-3. ✅ Update your config.xml with SPLASH_GRADIENT preference
-4. ✅ Run: `cordova build android ios`
+1. ✅ Add SPLASH_GRADIENT to your config.xml
+2. ✅ Run: `cordova build android ios`
+3. ✅ Dependencies auto-install
+4. ✅ Gradient splash screen generates
 5. ✅ Test on devices
 6. ✅ Deploy!
 
