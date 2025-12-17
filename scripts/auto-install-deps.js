@@ -3,10 +3,13 @@
 /**
  * Auto-Install Dependencies Script
  * 
- * This script automatically installs required dependencies if not already present:
- * - better-sqlite3 (required for build info database)
+ * This script automatically installs optional dependencies if not already present:
+ * - better-sqlite3 (optional - for build info database)
  * - sharp (recommended for fast icon generation)
  * - jimp (fallback icon processor)
+ * 
+ * IMPORTANT: This script runs in cloud environments (MABS) where native modules
+ * like better-sqlite3 may fail to compile. This is GRACEFULLY HANDLED.
  * 
  * Runs at: pre-build stage (before_prepare hook)
  */
@@ -56,7 +59,6 @@ function installPackage(packageName, version = '') {
     execSync(installCmd, { stdio: 'pipe' });
     return true;
   } catch (error) {
-    log(colors.red, `  ❌ Failed to install ${packageName}`);
     return false;
   }
 }
@@ -79,9 +81,10 @@ function main() {
     {
       name: 'better-sqlite3',
       version: '^9.0.0',
-      type: 'REQUIRED',
-      description: 'Build-time database generation',
-      required: true
+      type: 'OPTIONAL',
+      description: 'Build-time database generation (may fail on cloud builds)',
+      required: false,  // Changed: now OPTIONAL
+      gracefulFail: true  // Fail gracefully if not available
     },
     {
       name: 'sharp',
@@ -102,6 +105,7 @@ function main() {
   let installed = 0;
   let skipped = 0;
   let failed = 0;
+  let gracefulFails = 0;
   
   for (const dep of dependencies) {
     const isInstalled = checkPackageInstalled(dep.name);
@@ -114,11 +118,7 @@ function main() {
       log(colors.green, `   ✅ Already installed (v${installedVersion})`);
       skipped++;
     } else {
-      if (dep.required) {
-        log(colors.yellow, `   ⚠️  REQUIRED but not found. Installing...`);
-      } else {
-        log(colors.yellow, `   ⚠️  Optional but recommended. Installing...`);
-      }
+      log(colors.yellow, `   ⚠️  Not found. Attempting to install...`);
       
       const success = installPackage(dep.name, dep.version);
       if (success) {
@@ -126,12 +126,17 @@ function main() {
         log(colors.green, `   ✅ Successfully installed (v${version})`);
         installed++;
       } else {
-        log(colors.red, `   ❌ Installation failed`);
-        if (dep.required) {
+        if (dep.gracefulFail) {
+          log(colors.yellow, `   ⚠️  Installation failed (expected on cloud builds)`);
+          log(colors.yellow, `   💡 Build will continue with fallback handlers`);
+          gracefulFails++;
+        } else if (dep.required) {
+          log(colors.red, `   ❌ Installation failed`);
           log(colors.red, `   ⚠️  WARNING: This is REQUIRED for the build to succeed!`);
           failed++;
         } else {
-          log(colors.yellow, `   💡 Continuing without this package...`);
+          log(colors.yellow, `   ⚠️  Installation failed (optional, continuing)`);
+          skipped++;
         }
       }
     }
@@ -142,16 +147,22 @@ function main() {
   log(colors.bright + colors.blue, 'Summary:');
   log(colors.green, `  ✅ Already installed: ${skipped}`);
   log(colors.green, `  ✨ Newly installed: ${installed}`);
+  if (gracefulFails > 0) {
+    log(colors.yellow, `  ⚠️  Gracefully failed (non-blocking): ${gracefulFails}`);
+  }
   if (failed > 0) {
     log(colors.red, `  ❌ Failed: ${failed}`);
   }
   log(colors.reset, '═'.repeat(60));
   
   if (failed > 0) {
-    log(colors.red, `\n⚠️  Some REQUIRED dependencies failed to install!`);
-    log(colors.red, `   Please run manually: npm install better-sqlite3`);
-    log(colors.red, `   Then retry: cordova build android\n`);
+    log(colors.red, `\n❌ FATAL: Some REQUIRED dependencies failed!`);
+    log(colors.red, `   Please ensure required packages are installed locally.\n`);
     process.exit(1);
+  } else if (gracefulFails > 0) {
+    log(colors.green, `\n✅ Build setup complete!`);
+    log(colors.yellow, `   Note: Some optional packages failed to install.`);
+    log(colors.yellow, `   Build will use fallback handlers.\n`);
   } else {
     log(colors.green, `\n✅ All dependencies ready!\n`);
   }

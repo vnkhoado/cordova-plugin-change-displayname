@@ -5,17 +5,47 @@ const path = require("path");
 const { getConfigParser } = require("./utils");
 
 let Database;
+let hasBetterSqlite3 = true;
+
 try {
   Database = require("better-sqlite3");
 } catch (e) {
-  console.error("\n⚠️  better-sqlite3 not installed. Run: npm install better-sqlite3");
-  process.exit(1);
+  hasBetterSqlite3 = false;
+  console.log("\n⚠️  better-sqlite3 not available.");
+  console.log("   Build will continue with fallback handlers.");
+  console.log("   To enable SQLite database: npm install better-sqlite3\n");
 }
 
 /**
- * Tạo SQLite database READ-ONLY với build info (minimal)
+ * Creat SQLite database READ-ONLY with build info (minimal)
+ * Falls back to file-based storage if better-sqlite3 unavailable
  */
 function createBuildInfoDatabase(buildInfo, dbPath) {
+  if (!hasBetterSqlite3) {
+    // Fallback: Create JSON file instead
+    const jsonPath = dbPath.replace('.db', '.json');
+    console.log(`📁 Creating fallback JSON build info: ${jsonPath}`);
+    
+    const jsonData = {
+      id: 1,
+      app_name: buildInfo.appName,
+      version_number: buildInfo.versionNumber,
+      version_code: buildInfo.versionCode,
+      package_name: buildInfo.packageName,
+      platform: buildInfo.platform,
+      build_time: buildInfo.buildTime,
+      build_timestamp: buildInfo.buildTimestamp,
+      api_hostname: buildInfo.apiHostname,
+      environment: buildInfo.environment,
+      updated_at: new Date().toISOString(),
+      storage_type: 'json-fallback'
+    };
+    
+    fs.writeFileSync(jsonPath, JSON.stringify(jsonData, null, 2));
+    console.log(`   ✅ Fallback JSON created`);
+    return;
+  }
+  
   console.log(`📦 Creating READ-ONLY SQLite database: ${dbPath}`);
   
   if (fs.existsSync(dbPath)) {
@@ -45,7 +75,7 @@ function createBuildInfoDatabase(buildInfo, dbPath) {
       )
     `);
     
-    console.log(`   ✓ Table created (minimal schema)`);
+    console.log(`   ✅ Table created (minimal schema)`);
     
     const insertBuildInfo = db.prepare(`
       INSERT INTO build_info 
@@ -67,15 +97,15 @@ function createBuildInfoDatabase(buildInfo, dbPath) {
       new Date().toISOString()
     );
     
-    console.log(`   ✓ Build info inserted`);
+    console.log(`   ✅ Build info inserted`);
     
     const row = db.prepare('SELECT * FROM build_info WHERE id = 1').get();
     if (row) {
-      console.log(`   ✓ Verified: ${row.app_name} v${row.version_number}`);
+      console.log(`   ✅ Verified: ${row.app_name} v${row.version_number}`);
     }
     
     db.close();
-    console.log(`   ✓ READ-ONLY database created`);
+    console.log(`   ✅ READ-ONLY database created`);
     
   } catch (error) {
     db.close();
@@ -90,9 +120,20 @@ function copyDatabaseToAndroid(dbPath, root) {
     fs.mkdirSync(assetsPath, { recursive: true });
   }
   
-  const destPath = path.join(assetsPath, "app_build_info.db");
-  fs.copyFileSync(dbPath, destPath);
-  console.log(`   ✓ Copied to Android assets`);
+  // Copy SQLite DB if exists
+  if (fs.existsSync(dbPath)) {
+    const destPath = path.join(assetsPath, "app_build_info.db");
+    fs.copyFileSync(dbPath, destPath);
+    console.log(`   ✅ Copied SQLite DB to Android assets`);
+  }
+  
+  // Also copy JSON fallback if exists
+  const jsonPath = dbPath.replace('.db', '.json');
+  if (fs.existsSync(jsonPath)) {
+    const jsonDestPath = path.join(assetsPath, "app_build_info.json");
+    fs.copyFileSync(jsonPath, jsonDestPath);
+    console.log(`   ✅ Copied JSON fallback to Android assets`);
+  }
 }
 
 function copyDatabaseToIOS(dbPath, root, config) {
@@ -111,9 +152,20 @@ function copyDatabaseToIOS(dbPath, root, config) {
     fs.mkdirSync(resourcesPath, { recursive: true });
   }
   
-  const destPath = path.join(resourcesPath, "app_build_info.db");
-  fs.copyFileSync(dbPath, destPath);
-  console.log(`   ✓ Copied to iOS Resources`);
+  // Copy SQLite DB if exists
+  if (fs.existsSync(dbPath)) {
+    const destPath = path.join(resourcesPath, "app_build_info.db");
+    fs.copyFileSync(dbPath, destPath);
+    console.log(`   ✅ Copied SQLite DB to iOS Resources`);
+  }
+  
+  // Also copy JSON fallback if exists
+  const jsonPath = dbPath.replace('.db', '.json');
+  if (fs.existsSync(jsonPath)) {
+    const jsonDestPath = path.join(resourcesPath, "app_build_info.json");
+    fs.copyFileSync(jsonPath, jsonDestPath);
+    console.log(`   ✅ Copied JSON fallback to iOS Resources`);
+  }
   
   try {
     const pbxprojPath = path.join(iosPath, `${projectName}.xcodeproj/project.pbxproj`);
@@ -122,13 +174,28 @@ function copyDatabaseToIOS(dbPath, root, config) {
       const proj = xcode.project(pbxprojPath);
       proj.parseSync();
       
-      const dbFileRelPath = `${projectName}/Resources/app_build_info.db`;
-      const existingFile = proj.hasFile(dbFileRelPath);
+      // Add DB file
+      if (fs.existsSync(dbPath)) {
+        const dbFileRelPath = `${projectName}/Resources/app_build_info.db`;
+        const existingFile = proj.hasFile(dbFileRelPath);
+        
+        if (!existingFile) {
+          proj.addResourceFile(dbFileRelPath);
+          fs.writeFileSync(pbxprojPath, proj.writeSync());
+          console.log(`   ✅ Added DB to Xcode project`);
+        }
+      }
       
-      if (!existingFile) {
-        proj.addResourceFile(dbFileRelPath);
-        fs.writeFileSync(pbxprojPath, proj.writeSync());
-        console.log(`   ✓ Added to Xcode project`);
+      // Add JSON fallback file
+      if (fs.existsSync(jsonPath)) {
+        const jsonFileRelPath = `${projectName}/Resources/app_build_info.json`;
+        const existingJsonFile = proj.hasFile(jsonFileRelPath);
+        
+        if (!existingJsonFile) {
+          proj.addResourceFile(jsonFileRelPath);
+          fs.writeFileSync(pbxprojPath, proj.writeSync());
+          console.log(`   ✅ Added JSON fallback to Xcode project`);
+        }
       }
     }
   } catch (error) {
@@ -138,15 +205,18 @@ function copyDatabaseToIOS(dbPath, root, config) {
 
 function createHelperJS(wwwPath, buildInfo) {
   const isProduction = buildInfo.environment === 'production';
+  const storageType = hasBetterSqlite3 ? 'sqlite-readonly' : 'json-fallback';
   
   const helperContent = `
-// Auto-generated by cordova-plugin-change-app-info v2.7.1
+// Auto-generated by cordova-plugin-change-app-info v2.9.10
 // READ-ONLY version - Essential build info only
+// Storage Type: ${storageType}
 
 (function() {
   'use strict';
   
   var IS_PRODUCTION = ${isProduction};
+  var STORAGE_TYPE = '${storageType}';
   var db = null;
   var buildInfoCache = null;
   var isInitialized = false;
@@ -167,13 +237,18 @@ function createHelperJS(wwwPath, buildInfo) {
   }
   
   document.addEventListener('deviceready', function() {
-    initDatabase();
+    if (STORAGE_TYPE === 'sqlite-readonly') {
+      initDatabase();
+    } else {
+      initJSONFallback();
+    }
   }, false);
   
   function initDatabase() {
     try {
       if (!window.sqlitePlugin) {
-        safeError('[Build Info] SQLite plugin not found');
+        safeError('[Build Info] SQLite plugin not found. Using fallback...');
+        initJSONFallback();
         return;
       }
       
@@ -189,7 +264,13 @@ function createHelperJS(wwwPath, buildInfo) {
       
     } catch (e) {
       safeError('[Build Info] Failed to open database:', e);
+      initJSONFallback();
     }
+  }
+  
+  function initJSONFallback() {
+    safeLog('[Build Info] Using JSON fallback storage');
+    loadBuildInfoFromJSON();
   }
   
   function loadBuildInfo() {
@@ -218,13 +299,47 @@ function createHelperJS(wwwPath, buildInfo) {
           safeLog('[Build Info] Loaded');
           safeLog('[Build Info] ' + info.app_name + ' v' + info.version_number);
           
-          // Fire event
           fireReadyEvent();
         }
       }, function(tx, error) {
         safeError('[Build Info] Load failed:', error);
+        initJSONFallback();
       });
     });
+  }
+  
+  function loadBuildInfoFromJSON() {
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', 'app_build_info.json', false);
+      xhr.send();
+      
+      if (xhr.status === 200) {
+        var data = JSON.parse(xhr.responseText);
+        
+        buildInfoCache = {
+          appName: data.app_name,
+          versionNumber: data.version_number,
+          versionCode: data.version_code,
+          packageName: data.package_name,
+          platform: data.platform,
+          buildTime: data.build_time,
+          buildTimestamp: data.build_timestamp,
+          apiHostname: data.api_hostname,
+          environment: data.environment,
+          storageType: 'json-fallback'
+        };
+        
+        isInitialized = true;
+        
+        safeLog('[Build Info] Loaded from JSON');
+        safeLog('[Build Info] ' + data.app_name + ' v' + data.version_number);
+        
+        fireReadyEvent();
+      }
+    } catch (e) {
+      safeError('[Build Info] JSON fallback failed:', e);
+    }
   }
   
   function fireReadyEvent() {
@@ -286,6 +401,10 @@ function createHelperJS(wwwPath, buildInfo) {
     
     isProduction: function() {
       return isInitialized && buildInfoCache.environment === 'production';
+    },
+    
+    getStorageType: function() {
+      return STORAGE_TYPE;
     }
   };
   
@@ -309,7 +428,7 @@ function createHelperJS(wwwPath, buildInfo) {
   
   const helperPath = path.join(wwwPath, "build-info-helper.js");
   fs.writeFileSync(helperPath, helperContent, "utf8");
-  console.log(`   ✓ Created helper JS`);
+  console.log(`   ✅ Created helper JS (${storageType})`);
 }
 
 function injectScriptTag(wwwPath) {
@@ -338,7 +457,7 @@ function injectScriptTag(wwwPath) {
   }
   
   fs.writeFileSync(indexPath, html, "utf8");
-  console.log(`   ✓ Injected script tag`);
+  console.log(`   ✅ Injected script tag`);
 }
 
 function injectBuildInfo(context, platform) {
@@ -369,14 +488,17 @@ function injectBuildInfo(context, platform) {
     copyDatabaseToIOS(tmpDbPath, root, config);
   }
   
-  fs.unlinkSync(tmpDbPath);
+  // Clean up temp files
+  if (fs.existsSync(tmpDbPath)) fs.unlinkSync(tmpDbPath);
+  const tmpJsonPath = tmpDbPath.replace('.db', '.json');
+  if (fs.existsSync(tmpJsonPath)) fs.unlinkSync(tmpJsonPath);
   
   if (fs.existsSync(wwwPath)) {
     createHelperJS(wwwPath, buildInfo);
     injectScriptTag(wwwPath);
   }
   
-  console.log(`\n   ✅ Build info created (READ-ONLY)`);
+  console.log(`\n   ✅ Build info created (${hasBetterSqlite3 ? 'SQLite' : 'JSON Fallback'})`);
   console.log(`   ${buildInfo.appName} v${buildInfo.versionNumber}`);
   console.log(`   Environment: ${buildInfo.environment}`);
 }
@@ -385,8 +507,8 @@ module.exports = function(context) {
   const platforms = context.opts.platforms;
   
   console.log("\n══════════════════════════════════════════════");
-  console.log("  BUILD INFO v2.7.1 (READ-ONLY - MINIMAL)     ");
-  console.log("══════════════════════════════════════════════");
+  console.log(`  BUILD INFO v2.9.10 (${hasBetterSqlite3 ? 'SQLite' : 'JSON Fallback'})`);
+  console.log("\u2550═════════════════════════════════════════════");
   
   for (const platform of platforms) {
     console.log(`\n📱 ${platform}...`);
