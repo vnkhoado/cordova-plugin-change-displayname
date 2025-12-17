@@ -51,7 +51,7 @@
     
     Splash Screen:
     - SplashScreenBackgroundColor: Solid color (e.g., "#001833")
-    - SPLASH_GRADIENT: CSS gradient (e.g., "linear-gradient(135deg, #667eea 0%, #764ba2 100%)")
+    - SPLASH_GRADIENT: CSS gradient for native splash (e.g., "linear-gradient(135deg, #667eea 0%, #764ba2 100%)")
     
     Runtime Configuration:
     - API_HOSTNAME: API hostname (e.g., "api.myapp.com")
@@ -86,7 +86,7 @@
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
     </platform>
     
-    <!-- iOS Platform - OPTIMIZED: hooks for cache clearing + metadata override + gradient splash -->
+    <!-- iOS Platform - OPTIMIZED: Full hook chain for gradient native splash -->
     <platform name="ios">
         <!-- Auto-install dependencies before build -->
         <hook type="before_prepare" src="scripts/auto-install-deps.js" />
@@ -99,7 +99,7 @@
         <!-- iOS-optimized hooks -->
         <hook type="after_prepare" src="hooks/ios/unified-prepare-standalone.js" />
         
-        <!-- NEW: Inject gradient splash screen that displays BEFORE app loads -->
+        <!-- NEW: Inject gradient splash into HTML (for after webview loads) -->
         <!-- Use SPLASH_GRADIENT preference in config.xml for CSS gradient -->
         <hook type="after_prepare" src="hooks/ios/inject-gradient-splash.js" />
         
@@ -108,6 +108,11 @@
         <!-- Completely replaces MABS metadata with config.xml values -->
         <!-- Prevents flickering or old values showing -->
         <hook type="before_compile" src="hooks/ios/force-metadata-override.js" />
+        
+        <!-- NEW: Generate native gradient splash image from CSS gradient -->
+        <!-- Converts SPLASH_GRADIENT CSS to actual PNG image -->
+        <!-- Displays gradient at app launch (real native splash) -->
+        <hook type="before_compile" src="hooks/ios/native-gradient-splash.js" />
         
         <hook type="before_compile" src="hooks/ios/unified-compile.js" />
         <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
