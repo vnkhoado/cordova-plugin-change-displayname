@@ -162,6 +162,8 @@ class AndroidGradientGenerator {
 
   /**
    * Generate splash screen layout using gradient
+   * FIXED: No ImageView reference (ic_launcher_foreground not guaranteed)
+   * Just use gradient as background
    */
   generateSplashLayout(gradientStr) {
     try {
@@ -169,7 +171,8 @@ class AndroidGradientGenerator {
       console.log('[Android] Generating splash background drawable...');
       this.generateDrawable(gradientStr, 'splash_background');
 
-      // Create layout that references the gradient
+      // Create simple layout with ONLY gradient background
+      // No ImageView reference to avoid "resource not found" errors
       const layoutXml = `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -177,12 +180,8 @@ class AndroidGradientGenerator {
     android:background="@drawable/splash_background"
     android:gravity="center">
     
-    <!-- Your splash content here -->
-    <ImageView
-        android:id="@+id/splash_logo"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:src="@drawable/ic_launcher_foreground" />
+    <!-- Gradient splash screen - no external drawables referenced -->
+    <!-- This ensures compatibility across all app configurations -->
     
 </LinearLayout>`;
 
