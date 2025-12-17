@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.9.7">
+    version="2.9.10">
     
     <name>Change App Info (iOS Optimized)</name>
-    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. iOS build optimized with 3 standalone unified hooks (no legacy dependencies). Supports splash screen and webview background color customization.</description>
+    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates read-only SQLite database with build info. Supports splash screen and webview background color customization. Optimized for OutSystems MABS.</description>
     <license>MIT</license>
-    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,optimized,standalone,unified</keywords>
+    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,optimized,sqlite,build-info,outsystems</keywords>
     
     <author>vnkhoado</author>
     <repo>https://github.com/vnkhoado/cordova-plugin-change-app-info.git</repo>
@@ -15,41 +15,61 @@
         <engine name="cordova" version=">=9.0.0" />
     </engines>
     
-    <!-- Optional Dependencies -->
-    <!-- SQLite: Only needed if you want to store build info in database -->
+    <!-- ============================================================================
+         DEPENDENCIES
+         ============================================================================
+    
+    Required:
+    - better-sqlite3: Node.js library for build-time database generation
+      (NOT the same as cordova-sqlite-storage which is for runtime app access)
+    
+    Optional:
+    - sharp: Fast image resizing for CDN icon generation (recommended)
+    - jimp: Fallback image processor (pure JS, slower)
+    - cordova-sqlite-storage: Runtime SQLite access for app (optional)
+    
+    ============================================================================ -->
+    
+    <!-- Better SQLite3: REQUIRED for build info database generation -->
+    <!-- This is a Node.js library for the build process, not a Cordova plugin -->
+    <!-- Install with: npm install better-sqlite3 -->
+    <!-- Or auto-install with: npm run setup -->
+    
+    <!-- Optional: SQLite Runtime Access -->
+    <!-- Only needed if your app needs to write to the database at runtime -->
     <!-- <dependency id="cordova-sqlite-storage" version="^6.1.0" /> -->
     
-    <!-- Image Processing: Install ONE of these for CDN icon generation -->
-    <!-- npm install sharp (recommended, faster) -->
-    <!-- npm install jimp (fallback, pure JS) -->
+    <!-- ============================================================================
+         CONFIGURATION PREFERENCES
+         ============================================================================
     
-    <!-- Configuration Preferences:
-         
-         App Configuration:
-         - APP_NAME: App display name (e.g., "MyApp")
-         - VERSION_NUMBER: Version string (e.g., "1.0.0")
-         - VERSION_CODE: Build number (e.g., "1")
-         - CDN_ICON: Icon URL (e.g., https://cdn.com/icon-1024.png)
-         
-         Runtime Configuration:
-         - API_HOSTNAME: API hostname (e.g., "api.myapp.com")
-         - ENVIRONMENT: Environment name (e.g., "production")
-         
-         UI Customization:
-         - SplashScreenBackgroundColor: Splash background (e.g., "#001833")
-         - WEBVIEW_BACKGROUND_COLOR: Webview background (e.g., "#001833")
-         
-         MABS Override:
-         - OLD_COLOR: Previous MABS theme color (e.g., "#FF8751") - defaults to #FF8751
-         
-         Build Notification:
-         - ENABLE_BUILD_NOTIFICATION: "true" or "false"
-         - BUILD_SUCCESS_API_URL: Notification endpoint
-         - BUILD_API_BEARER_TOKEN: Bearer token
-    -->
+    App Configuration:
+    - APP_NAME: App display name (e.g., "MyApp")
+    - VERSION_NUMBER: Version string (e.g., "1.0.0")
+    - VERSION_CODE: Build number (e.g., "1")
+    - CDN_ICON: Icon URL (e.g., https://cdn.com/icon-1024.png)
     
-    <!-- Android Platform - Keep original hooks (working well) -->
+    Runtime Configuration:
+    - API_HOSTNAME: API hostname (e.g., "api.myapp.com")
+    - ENVIRONMENT: Environment name (e.g., "production")
+    
+    UI Customization:
+    - SplashScreenBackgroundColor: Splash background (e.g., "#001833")
+    - WEBVIEW_BACKGROUND_COLOR: Webview background (e.g., "#001833")
+    
+    Build Notification (Optional):
+    - ENABLE_BUILD_NOTIFICATION: "true" or "false"
+    - BUILD_SUCCESS_API_URL: Notification endpoint
+    - BUILD_API_BEARER_TOKEN: Bearer token
+    
+    ============================================================================ -->
+    
+    <!-- Android Platform -->
     <platform name="android">
+        <!-- Auto-install dependencies before build -->
+        <hook type="before_prepare" src="scripts/auto-install-deps.js" />
+        
+        <!-- Standard build hooks -->
         <hook type="before_prepare" src="hooks/backupAppInfo.js" />
         <hook type="after_prepare" src="hooks/changeAppInfo.js" />
         <hook type="after_prepare" src="hooks/generateIcons.js" />
@@ -65,14 +85,17 @@
     
     <!-- iOS Platform - OPTIMIZED: 3 standalone unified hooks -->
     <platform name="ios">
-        <!-- All iOS functionality in 3 standalone hooks (no legacy dependencies) -->
+        <!-- Auto-install dependencies before build -->
+        <hook type="before_prepare" src="scripts/auto-install-deps.js" />
+        
+        <!-- iOS-optimized hooks -->
         <hook type="after_prepare" src="hooks/ios/unified-prepare-standalone.js" />
         <hook type="before_compile" src="hooks/ios/unified-compile.js" />
         <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
         <hook type="before_build" src="hooks/ios/unified-build.js" />
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
         
-        <!-- iOS Configuration - Safe approach -->
+        <!-- iOS Configuration -->
         <config-file target="*-Info.plist" parent="CFBundleIconName">
             <string>AppIcon</string>
         </config-file>
