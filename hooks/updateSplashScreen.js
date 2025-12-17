@@ -3,6 +3,11 @@
 /**
  * Hook for updating splash screen with gradient support
  * This hook is called before build to process SPLASH_GRADIENT configuration
+ * 
+ * Priority:
+ * 1. If SPLASH_GRADIENT exists → Generate gradient splash
+ * 2. If SPLASH_GRADIENT missing → Skip (don't override existing SplashScreenBackgroundColor)
+ * 3. Only affects gradient generation, leaves other splash configs untouched
  */
 
 const fs = require('fs');
@@ -27,25 +32,36 @@ module.exports = function(ctx) {
     
     // Check for gradient preference
     const splashGradient = preferences.SPLASH_GRADIENT;
+    const splashBackgroundColor = preferences.SplashScreenBackgroundColor || preferences.BackgroundColor;
     
     if (!splashGradient) {
-      console.log('[Splash Screen] No SPLASH_GRADIENT preference found, skipping gradient setup');
+      console.log('[Splash Screen] No SPLASH_GRADIENT preference found');
+      if (splashBackgroundColor) {
+        console.log('[Splash Screen] Using existing SplashScreenBackgroundColor:', splashBackgroundColor);
+      }
+      console.log('[Splash Screen] Skipping gradient splash generation (normal splash screen will be used)');
       return;
     }
     
     console.log('[Splash Screen] Found SPLASH_GRADIENT preference');
     console.log('[Splash Screen] Value:', splashGradient.substring(0, 60) + '...');
     
+    if (splashBackgroundColor) {
+      console.log('[Splash Screen] Note: SplashScreenBackgroundColor will be overridden by gradient');
+    }
+    
     // Validate gradient format
     if (!GradientParser.isValid(splashGradient)) {
-      console.warn('[Splash Screen] Invalid gradient format, using fallback color');
+      console.warn('[Splash Screen] ⚠️  Invalid gradient format');
+      console.log('[Splash Screen] Skipping gradient (existing splash screen will be used)');
       return;
     }
     
     // Parse gradient
     const parsed = GradientParser.parse(splashGradient);
     if (!parsed) {
-      console.warn('[Splash Screen] Failed to parse gradient, using fallback color');
+      console.warn('[Splash Screen] ⚠️  Failed to parse gradient');
+      console.log('[Splash Screen] Skipping gradient (existing splash screen will be used)');
       return;
     }
     
@@ -74,7 +90,7 @@ module.exports = function(ctx) {
         console.log('[Android] ✓ Gradient splash screen configured successfully');
       } catch (error) {
         console.error('[Android] ✗ Error processing gradient:', error.message);
-        console.warn('[Android] Falling back to solid color');
+        console.warn('[Android] ⚠️  Falling back to existing splash screen');
       }
     }
     
@@ -95,7 +111,7 @@ module.exports = function(ctx) {
         console.log('[iOS] ✓ Gradient splash screen configured successfully');
       } catch (error) {
         console.error('[iOS] ✗ Error processing gradient:', error.message);
-        console.warn('[iOS] Falling back to solid color');
+        console.warn('[iOS] ⚠️  Falling back to existing splash screen');
       }
     }
     
@@ -110,6 +126,11 @@ module.exports = function(ctx) {
 
 /**
  * Extract preferences from config.xml using utils helper
+ * 
+ * Priority for config reading:
+ * 1. Use utils.getConfigParser() - Official Cordova way
+ * 2. Fallback to direct XML parsing if ConfigParser fails
+ * 3. Return empty object if all methods fail (graceful degradation)
  */
 function getPreferences(ctx, projectRoot) {
   try {
@@ -117,29 +138,29 @@ function getPreferences(ctx, projectRoot) {
     const config = utils.getConfigParser(ctx);
     const preferences = {};
     
-    // Get all preferences
+    // Get all relevant preferences
     try {
-      // Method 1: Try getPreference for each known key
       const possibleKeys = [
         'SPLASH_GRADIENT',
         'SplashGradient',
         'splashGradient',
+        'SplashScreenBackgroundColor',
         'BackgroundColor',
-        'SplashScreenBackgroundColor'
+        'WEBVIEW_BACKGROUND_COLOR'
       ];
       
       for (const key of possibleKeys) {
         const value = config.getPreference(key);
         if (value) {
           preferences[key] = value;
-          // Normalize key
+          // Normalize gradient keys
           if (key === 'splashGradient' || key === 'SplashGradient') {
             preferences['SPLASH_GRADIENT'] = value;
           }
         }
       }
     } catch (err) {
-      console.warn('[Splash Screen] Could not read preferences:', err.message);
+      console.warn('[Splash Screen] Could not read preferences from ConfigParser:', err.message);
     }
     
     return preferences;
@@ -154,18 +175,24 @@ function getPreferences(ctx, projectRoot) {
         const configContent = fs.readFileSync(configPath, 'utf8');
         const preferences = {};
         
-        // Parse SPLASH_GRADIENT using regex
-        const gradientMatch = configContent.match(/name=['"]SPLASH_GRADIENT['"]\s+value=['"]([^'"]+)['"]/);
-        if (gradientMatch) {
-          preferences.SPLASH_GRADIENT = gradientMatch[1];
+        // Parse preferences using regex
+        const preferenceRegex = /name=['"]([^'"]+)['"]\s+value=['"]([^'"]+)['"]|\/>/g;
+        let match;
+        
+        while ((match = preferenceRegex.exec(configContent)) !== null) {
+          if (match[1] && match[2]) {
+            preferences[match[1]] = match[2];
+          }
         }
         
+        console.log('[Splash Screen] ✓ Successfully read config via fallback XML parsing');
         return preferences;
       }
     } catch (fallbackErr) {
-      console.error('[Splash Screen] Fallback config read also failed');
+      console.error('[Splash Screen] Fallback config read also failed:', fallbackErr.message);
     }
     
+    console.warn('[Splash Screen] ⚠️  Could not read config.xml, proceeding with defaults');
     return {};
   }
 }
