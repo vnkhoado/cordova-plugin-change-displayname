@@ -4,6 +4,7 @@
  * iOS Unified Prepare Hook - STANDALONE VERSION
  * Fixed: App name, splash screen color (including native pre-splash), and CDN icon generation
  * MABS 12 FIX: Assets.xcassets detection + UIImageName in UILaunchScreen
+ * STORYBOARD FIX: Force override ALL background colors (including MABS defaults)
  */
 
 const fs = require('fs');
@@ -428,27 +429,34 @@ async function customizeUI(context, iosPath) {
       
       const colorXML = `<color key="backgroundColor" red="${r}" green="${g}" blue="${b}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
       
-      // 1. Update LaunchScreen.storyboard
+      // 1. Update LaunchScreen.storyboard (CRITICAL - Native pre-splash)
       const storyboardPath = path.join(iosPath, projectName, 'LaunchScreen.storyboard');
       
       if (fs.existsSync(storyboardPath)) {
         let storyboard = fs.readFileSync(storyboardPath, 'utf8');
+        const originalLength = storyboard.length;
         
+        // AGGRESSIVE REPLACE: Remove ALL color definitions and replace with ours
+        // This catches: systemColor="systemPurpleColor", custom colors, etc.
         storyboard = storyboard.replace(
           /<color key="backgroundColor"[^>]*\/>/g,
           colorXML
         );
         
+        // Also catch multiline color tags
         storyboard = storyboard.replace(
-          /<color key="backgroundColor" systemColor="[^"]*"\s*\/>/g,
+          /<color key="backgroundColor"[^>]*>[\s\S]*?<\/color>/g,
           colorXML
         );
         
+        const changed = storyboard.length !== originalLength;
         fs.writeFileSync(storyboardPath, storyboard, 'utf8');
-        console.log('   ✅ Updated LaunchScreen.storyboard');
+        console.log(`   ✅ Updated LaunchScreen.storyboard${changed ? ' (FORCED OVERRIDE)' : ''}`);
+      } else {
+        console.log('   ⚠️  LaunchScreen.storyboard not found');
       }
       
-      // 2. Update CDVLaunchScreen.storyboard
+      // 2. Update CDVLaunchScreen.storyboard (Cordova splash)
       const cdvStoryboardPath = path.join(iosPath, projectName, 'CDVLaunchScreen.storyboard');
       if (fs.existsSync(cdvStoryboardPath)) {
         let cdvStoryboard = fs.readFileSync(cdvStoryboardPath, 'utf8');
@@ -458,11 +466,16 @@ async function customizeUI(context, iosPath) {
           colorXML
         );
         
+        cdvStoryboard = cdvStoryboard.replace(
+          /<color key="backgroundColor"[^>]*>[\s\S]*?<\/color>/g,
+          colorXML
+        );
+        
         fs.writeFileSync(cdvStoryboardPath, cdvStoryboard, 'utf8');
         console.log('   ✅ Updated CDVLaunchScreen.storyboard');
       }
       
-      // 3. Create Color Asset (NEW - for native splash)
+      // 3. Create Color Asset (for UILaunchScreen)
       const appPath = path.join(iosPath, projectName);
       const xcassetsFolders = fs.readdirSync(appPath)
         .filter(f => {
@@ -515,7 +528,7 @@ async function customizeUI(context, iosPath) {
         console.log('   ✅ Created SplashBackgroundColor.colorset');
       }
       
-      // 4. Update Info.plist with UILaunchScreen - CRITICAL: Include UIImageName
+      // 4. Update Info.plist with UILaunchScreen
       const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
       if (fs.existsSync(plistPath)) {
         let plistContent = fs.readFileSync(plistPath, 'utf8');
@@ -527,7 +540,6 @@ async function customizeUI(context, iosPath) {
         );
         
         // Add new UILaunchScreen with BOTH UIColorName AND UIImageName
-        // UIImageName is CRITICAL for iOS to load the color asset properly
         const uiLaunchScreen = `  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageName</key>\n    <string></string>\n    <key>UIImageRespectsSafeAreaInsets</key>\n    <false/>\n  </dict>`;
         
         plistContent = plistContent.replace(
