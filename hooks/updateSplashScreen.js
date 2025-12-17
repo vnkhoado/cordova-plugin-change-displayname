@@ -10,6 +10,7 @@ const path = require('path');
 const GradientParser = require('./gradient-parser');
 const AndroidGradientGenerator = require('./android/gradient-generator');
 const IOSGradientGenerator = require('./ios/gradient-generator');
+const utils = require('./utils');
 
 module.exports = function(ctx) {
   console.log('\n[Splash Screen] Starting splash screen configuration...');
@@ -19,7 +20,7 @@ module.exports = function(ctx) {
     const platforms = ctx.opts.cordova.platforms;
     
     // Get preferences from config.xml
-    const preferences = getPreferences(ctx);
+    const preferences = getPreferences(ctx, projectRoot);
     
     console.log('[Splash Screen] Detected platforms:', platforms.join(', '));
     console.log('[Splash Screen] Configuration loaded');
@@ -108,25 +109,63 @@ module.exports = function(ctx) {
 };
 
 /**
- * Extract preferences from config.xml
+ * Extract preferences from config.xml using utils helper
  */
-function getPreferences(ctx) {
+function getPreferences(ctx, projectRoot) {
   try {
-    const ConfigParser = ctx.requireCordovaModule('cordova-lib').configparser.ConfigParser;
-    const configPath = path.join(ctx.opts.projectRoot, 'config.xml');
-    
-    const cfgFile = new ConfigParser(configPath);
+    // Use utils.getConfigParser which handles ConfigParser correctly
+    const config = utils.getConfigParser(ctx);
     const preferences = {};
     
-    // Get global preferences
-    const globalPrefs = cfgFile.getGlobalPreferences();
-    for (const key in globalPrefs) {
-      preferences[key] = globalPrefs[key];
+    // Get all preferences
+    try {
+      // Method 1: Try getPreference for each known key
+      const possibleKeys = [
+        'SPLASH_GRADIENT',
+        'SplashGradient',
+        'splashGradient',
+        'BackgroundColor',
+        'SplashScreenBackgroundColor'
+      ];
+      
+      for (const key of possibleKeys) {
+        const value = config.getPreference(key);
+        if (value) {
+          preferences[key] = value;
+          // Normalize key
+          if (key === 'splashGradient' || key === 'SplashGradient') {
+            preferences['SPLASH_GRADIENT'] = value;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Splash Screen] Could not read preferences:', err.message);
     }
     
     return preferences;
   } catch (error) {
     console.error('[Splash Screen] Error reading config.xml:', error.message);
+    console.warn('[Splash Screen] Attempting fallback config read...');
+    
+    // Fallback: Read config.xml directly
+    try {
+      const configPath = path.join(projectRoot, 'config.xml');
+      if (fs.existsSync(configPath)) {
+        const configContent = fs.readFileSync(configPath, 'utf8');
+        const preferences = {};
+        
+        // Parse SPLASH_GRADIENT using regex
+        const gradientMatch = configContent.match(/name=['"]SPLASH_GRADIENT['"]\s+value=['"]([^'"]+)['"]/);
+        if (gradientMatch) {
+          preferences.SPLASH_GRADIENT = gradientMatch[1];
+        }
+        
+        return preferences;
+      }
+    } catch (fallbackErr) {
+      console.error('[Splash Screen] Fallback config read also failed');
+    }
+    
     return {};
   }
 }
