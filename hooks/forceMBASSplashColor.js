@@ -3,22 +3,20 @@
 /**
  * Force MABS Splash Color Override (Post-Compile)
  * 
- * This hook runs at the VERY END (post_compile stage) to ensure
- * all MABS theme overrides are completely replaced.
+ * FIX: Delete old storyboard files to prevent color cache
  * 
- * Problem: MABS injects theme colors that may override config.xml
- * Solution: Do final color replacement AFTER MABS completes
+ * Problem: MABS optimizes by reusing existing files
+ * - Build 1: Creates storyboard with #FF8751
+ * - Build 2: Config changed to #001833
+ * - But storyboard file still exists
+ * - MABS: "File exists? Reuse it!" (ignores new color)
+ * - Result: Orange still shows
  * 
- * Strategy:
- * 1. Gets target color from config (SplashScreenBackgroundColor)
- * 2. Gets old MABS color (default: #FF8751 - OutSystems theme)
- * 3. Deep scans ALL platform files
- * 4. Replaces EVERY reference:
- *    - Hex values (#FF8751 → #001833)
- *    - RGB decimals (0.906, 0.506, 0.376 → 0.0, 0.094, 0.2)
- *    - Named color references
- *    - Drawable colors
- * 5. Ensures user color ALWAYS wins
+ * Solution: DELETE old files → Force fresh generation
+ * - Remove old storyboard
+ * - Remove old color assets
+ * - Let generateIcons.js recreate with NEW color
+ * - Scan & replace final colors
  */
 
 const fs = require('fs');
@@ -31,6 +29,109 @@ function hexToRgb(hex) {
   const g = parseInt(hex.substring(2, 4), 16) / 255.0;
   const b = parseInt(hex.substring(4, 6), 16) / 255.0;
   return { r, g, b };
+}
+
+function deleteFileOrDir(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return false; // File doesn't exist
+    }
+    
+    const stat = fs.statSync(filePath);
+    
+    if (stat.isDirectory()) {
+      // Recursive delete
+      const files = fs.readdirSync(filePath);
+      for (const file of files) {
+        deleteFileOrDir(path.join(filePath, file));
+      }
+      fs.rmdirSync(filePath);
+    } else {
+      fs.unlinkSync(filePath);
+    }
+    
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function deleteOldStoryboardFilesIOS(iosPath) {
+  console.log('\n   🗑️  Deleting old storyboard files to force fresh generation...');
+  
+  // Find app folder
+  const appFolders = fs.readdirSync(iosPath).filter(f => {
+    const fullPath = path.join(iosPath, f);
+    return fs.statSync(fullPath).isDirectory() && 
+           f !== "CordovaLib" && 
+           f !== "www" && 
+           f !== "cordova" &&
+           f !== "build" &&
+           f !== "Pods";
+  });
+  
+  if (appFolders.length === 0) {
+    console.log('   ⚠️  No app folder found');
+    return 0;
+  }
+  
+  const appPath = path.join(iosPath, appFolders[0]);
+  let deletedCount = 0;
+  
+  // Paths to delete
+  const pathsToDelete = [
+    path.join(appPath, 'LaunchScreen.storyboard'),
+    path.join(appPath, 'CDVLaunchScreen.storyboard'),
+    path.join(appPath, 'Base.lproj', 'LaunchScreen.storyboard'),
+    path.join(appPath, 'Base.lproj', 'LaunchScreen.storyboardc'),
+    path.join(appPath, 'Assets.xcassets'),  // Delete ALL color assets
+  ];
+  
+  for (const filePath of pathsToDelete) {
+    if (deleteFileOrDir(filePath)) {
+      const relPath = path.relative(iosPath, filePath);
+      console.log(`   ✓ Deleted: ${relPath}`);
+      deletedCount++;
+    }
+  }
+  
+  if (deletedCount > 0) {
+    console.log(`   ✅ Deleted ${deletedCount} old file(s) - will force fresh generation`);
+  }
+  
+  return deletedCount;
+}
+
+function deleteOldSplashFilesAndroid(androidPath) {
+  console.log('\n   🗑️  Deleting old splash files to force fresh generation...');
+  
+  const resPath = path.join(androidPath, 'app/src/main/res') || 
+                 path.join(androidPath, 'res');
+  
+  if (!fs.existsSync(resPath)) {
+    return 0;
+  }
+  
+  let deletedCount = 0;
+  
+  // Delete splash drawables
+  const drawableFolders = fs.readdirSync(resPath)
+    .filter(f => f.startsWith('drawable'))
+    .map(f => path.join(resPath, f));
+  
+  for (const folder of drawableFolders) {
+    const splashPath = path.join(folder, 'splash.xml');
+    if (deleteFileOrDir(splashPath)) {
+      console.log(`   ✓ Deleted: ${path.basename(folder)}/splash.xml`);
+      deletedCount++;
+    }
+  }
+  
+  if (deletedCount > 0) {
+    console.log(`   ✅ Deleted ${deletedCount} old file(s) - will force fresh generation`);
+  }
+  
+  return deletedCount;
 }
 
 function findAllFilesRecursive(dir, maxDepth = 5, currentDepth = 0) {
@@ -50,17 +151,16 @@ function findAllFilesRecursive(dir, maxDepth = 5, currentDepth = 0) {
         if (stat.isFile()) {
           results.push(fullPath);
         } else if (stat.isDirectory()) {
-          // Skip common exclusions
           if (!['node_modules', 'build', 'Pods', '.git', 'DerivedData'].includes(item)) {
             results.push(...findAllFilesRecursive(fullPath, maxDepth, currentDepth + 1));
           }
         }
       } catch (e) {
-        // Skip inaccessible items
+        // Skip
       }
     }
   } catch (e) {
-    // Skip inaccessible directories
+    // Skip
   }
   
   return results;
@@ -72,7 +172,7 @@ function replaceColorInFile(filePath, oldColor, newColor, oldRgb, newRgb) {
     const originalContent = content;
     let replacementCount = 0;
     
-    // Strategy 1: Replace hex values (uppercase)
+    // Strategy 1: Replace hex values
     const oldHexUpper = oldColor.toUpperCase();
     const newHexUpper = newColor.toUpperCase();
     const hexRegexUpper = new RegExp(oldHexUpper.replace('#', ''), 'g');
@@ -91,9 +191,7 @@ function replaceColorInFile(filePath, oldColor, newColor, oldRgb, newRgb) {
       replacementCount++;
     }
     
-    // Strategy 3: Replace RGB decimal values (MABS theme format)
-    // Old: red="0.906" green="0.506" blue="0.376" (for #FF8751)
-    // New: red="0.0" green="0.094" blue="0.2" (for #001833)
+    // Strategy 3: Replace RGB decimal values
     const oldRgbPattern = new RegExp(
       `red=["']${oldRgb.r.toFixed(3)}["']\\s+green=["']${oldRgb.g.toFixed(3)}["']\\s+blue=["']${oldRgb.b.toFixed(3)}["']`,
       'g'
@@ -114,7 +212,7 @@ function replaceColorInFile(filePath, oldColor, newColor, oldRgb, newRgb) {
       replacementCount++;
     }
     
-    // Strategy 5: Replace in CSS/SVG fill/stroke
+    // Strategy 5: Replace in CSS/SVG
     const cssColorRegex = new RegExp(`['\"]${oldColor}['\"]`, 'gi');
     const cssReplacements = (content.match(cssColorRegex) || []).length;
     if (cssReplacements > 0) {
@@ -122,7 +220,6 @@ function replaceColorInFile(filePath, oldColor, newColor, oldRgb, newRgb) {
       replacementCount++;
     }
     
-    // Write if changes made
     if (content !== originalContent) {
       fs.writeFileSync(filePath, content, 'utf8');
       return replacementCount;
@@ -130,25 +227,23 @@ function replaceColorInFile(filePath, oldColor, newColor, oldRgb, newRgb) {
     
     return 0;
   } catch (error) {
-    // Skip files that can't be read
     return 0;
   }
 }
 
 function deepScanAndReplace(platformPath, oldColor, newColor, oldRgb, newRgb, filePattern) {
-  console.log(`\n   🔍 Deep scanning for ${oldColor}...`);
+  console.log(`\n   🔍 Scanning for ${oldColor} to replace with ${newColor}...`);
   
   const allFiles = findAllFilesRecursive(platformPath);
   let totalReplacements = 0;
   let filesModified = 0;
   
-  // Filter by pattern if provided
   let filesToProcess = allFiles;
   if (filePattern) {
     filesToProcess = allFiles.filter(f => filePattern.test(f));
   }
   
-  console.log(`   📂 Found ${filesToProcess.length} file(s) to scan`);
+  console.log(`   📄 Scanning ${filesToProcess.length} file(s)...`);
   
   for (const filePath of filesToProcess) {
     const replacements = replaceColorInFile(filePath, oldColor, newColor, oldRgb, newRgb);
@@ -156,14 +251,14 @@ function deepScanAndReplace(platformPath, oldColor, newColor, oldRgb, newRgb, fi
       totalReplacements += replacements;
       filesModified++;
       const relPath = path.relative(platformPath, filePath);
-      console.log(`   ✓ ${relPath} (${replacements} replacement)`);
+      console.log(`   ✓ ${relPath}`);
     }
   }
   
   if (filesModified > 0) {
-    console.log(`   ✅ Scanned ${filesToProcess.length} files, modified ${filesModified}`);
+    console.log(`   ✅ Modified ${filesModified} file(s) with ${totalReplacements} replacement(s)`);
   } else {
-    console.log(`   ℹ️  No color references found to replace`);
+    console.log(`   ℹ️  No color references found`);
   }
   
   return { filesModified, totalReplacements };
@@ -171,21 +266,24 @@ function deepScanAndReplace(platformPath, oldColor, newColor, oldRgb, newRgb, fi
 
 function forceMBASColorsIOS(iosPath, oldColor, newColor, oldRgb, newRgb) {
   console.log(`\n📱 iOS: Force MABS Color Override`);
-  console.log(`   Old: ${oldColor} (RGB: ${oldRgb.r.toFixed(3)}, ${oldRgb.g.toFixed(3)}, ${oldRgb.b.toFixed(3)})`);
-  console.log(`   New: ${newColor} (RGB: ${newRgb.r.toFixed(3)}, ${newRgb.g.toFixed(3)}, ${newRgb.b.toFixed(3)})`);
+  console.log(`   Old: ${oldColor}`);
+  console.log(`   New: ${newColor}`);
   
-  // Deep scan all files
+  // CRITICAL: Delete old storyboard files FIRST!
+  deleteOldStoryboardFilesIOS(iosPath);
+  
+  // Then scan & replace any remaining references
   const results = deepScanAndReplace(
     iosPath,
     oldColor,
     newColor,
     oldRgb,
     newRgb,
-    /\.(storyboard|plist|xcconfig|swift|m|h|json)$/ // Common iOS files
+    /\.(storyboard|plist|xcconfig|swift|m|h|json)$/
   );
   
-  if (results.filesModified > 0) {
-    console.log(`   ✅ iOS color replacement complete (${results.filesModified} files modified)`);
+  if (results.filesModified > 0 || deleteOldStoryboardFilesIOS.called) {
+    console.log(`   ✅ iOS color override complete`);
   }
 }
 
@@ -194,18 +292,21 @@ function forceMBASColorsAndroid(androidPath, oldColor, newColor, oldRgb, newRgb)
   console.log(`   Old: ${oldColor}`);
   console.log(`   New: ${newColor}`);
   
-  // Deep scan all files
+  // CRITICAL: Delete old splash files FIRST!
+  deleteOldSplashFilesAndroid(androidPath);
+  
+  // Then scan & replace any remaining references
   const results = deepScanAndReplace(
     androidPath,
     oldColor,
     newColor,
     oldRgb,
     newRgb,
-    /\.(xml|gradle|properties)$/ // Common Android files
+    /\.(xml|gradle|properties)$/
   );
   
   if (results.filesModified > 0) {
-    console.log(`   ✅ Android color replacement complete (${results.filesModified} files modified)`);
+    console.log(`   ✅ Android color override complete`);
   }
 }
 
@@ -216,29 +317,25 @@ module.exports = function(context) {
   try {
     const config = getConfigParser(context, path.join(root, 'config.xml'));
     
-    // Get target color
     const newColor = config.getPreference("SplashScreenBackgroundColor") ||
                      config.getPreference("BackgroundColor");
     
     if (!newColor) {
-      console.log('\n⏭️  No splash color configured, skipping MABS override');
+      console.log('\n⏭️  No splash color configured, skipping');
       return;
     }
     
-    // Ensure # prefix
     const targetColor = newColor.startsWith('#') ? newColor : '#' + newColor;
-    
-    // Get old color (default to MABS theme orange)
     const oldColorPref = config.getPreference("OLD_COLOR") || "#FF8751";
     const oldColor = oldColorPref.startsWith('#') ? oldColorPref : '#' + oldColorPref;
     
-    console.log('\n══════════════════════════════════════════════');
-    console.log('  🔒 FORCE MABS SPLASH COLOR OVERRIDE');
-    console.log('══════════════════════════════════════════════');
+    console.log('\n' + '═'.repeat(60));
+    console.log('  🔒 FORCE MABS SPLASH COLOR OVERRIDE (WITH FILE DELETE)');
+    console.log('═'.repeat(60));
     console.log(`Stage: post_compile (FINAL - after all processing)`);
     console.log(`Target Color: ${targetColor}`);
-    console.log(`Old MABS Color: ${oldColor}`);
-    console.log(`Purpose: Override MABS theme completely\n`);
+    console.log(`Old Color: ${oldColor}`);
+    console.log(`Strategy: DELETE old files → Force fresh generation\n`);
     
     const newRgb = hexToRgb(targetColor);
     const oldRgb = hexToRgb(oldColor);
@@ -257,13 +354,12 @@ module.exports = function(context) {
       }
     }
     
-    console.log('\n══════════════════════════════════════════════');
+    console.log('\n' + '═'.repeat(60));
     console.log('✅ MABS color override completed!');
-    console.log('   Your color now overrides MABS theme');
-    console.log('══════════════════════════════════════════════\n');
+    console.log('   Old files deleted, new colors applied');
+    console.log('═'.repeat(60) + '\n');
     
   } catch (error) {
     console.error('\n❌ Error in forceMBASSplashColor hook:', error.message);
-    console.error(error.stack);
   }
 };
