@@ -3,6 +3,7 @@
 /**
  * iOS Unified Prepare Hook - STANDALONE VERSION
  * Fixed: App name, splash screen color (including native pre-splash), and CDN icon generation
+ * MABS 12 FIX: Assets.xcassets detection + UIImageName in UILaunchScreen
  */
 
 const fs = require('fs');
@@ -211,7 +212,29 @@ async function generateIcons(context, iosPath) {
     }
     
     const projectName = xcodeProjects[0].replace('.xcodeproj', '');
-    const assetsPath = path.join(iosPath, projectName, 'Images.xcassets/AppIcon.appiconset');
+    const appPath = path.join(iosPath, projectName);
+    
+    // Find .xcassets folder - PRIORITIZE Assets.xcassets (MABS 12)
+    const xcassetsFolders = fs.readdirSync(appPath)
+      .filter(f => {
+        const xcassetsPath = path.join(appPath, f);
+        return f.endsWith('.xcassets') && fs.statSync(xcassetsPath).isDirectory();
+      })
+      .sort((a, b) => {
+        // Prioritize Assets.xcassets over Images.xcassets
+        if (a === 'Assets.xcassets') return -1;
+        if (b === 'Assets.xcassets') return 1;
+        return 0;
+      });
+    
+    if (xcassetsFolders.length === 0) {
+      console.log('   ⚠️  No .xcassets folder found');
+      return;
+    }
+    
+    const xcassetsFolder = xcassetsFolders[0];
+    const assetsPath = path.join(appPath, xcassetsFolder, 'AppIcon.appiconset');
+    console.log(`   📁 Using: ${xcassetsFolder}`);
     
     // Clean old icons first
     if (fs.existsSync(assetsPath)) {
@@ -441,10 +464,17 @@ async function customizeUI(context, iosPath) {
       
       // 3. Create Color Asset (NEW - for native splash)
       const appPath = path.join(iosPath, projectName);
-      const xcassetsFolders = fs.readdirSync(appPath).filter(f => {
-        const xcassetsPath = path.join(appPath, f);
-        return f.endsWith('.xcassets') && fs.statSync(xcassetsPath).isDirectory();
-      });
+      const xcassetsFolders = fs.readdirSync(appPath)
+        .filter(f => {
+          const xcassetsPath = path.join(appPath, f);
+          return f.endsWith('.xcassets') && fs.statSync(xcassetsPath).isDirectory();
+        })
+        .sort((a, b) => {
+          // Prioritize Assets.xcassets over Images.xcassets
+          if (a === 'Assets.xcassets') return -1;
+          if (b === 'Assets.xcassets') return 1;
+          return 0;
+        });
       
       if (xcassetsFolders.length > 0) {
         const xcassetsPath = path.join(appPath, xcassetsFolders[0]);
@@ -485,7 +515,7 @@ async function customizeUI(context, iosPath) {
         console.log('   ✅ Created SplashBackgroundColor.colorset');
       }
       
-      // 4. Update Info.plist with UILaunchScreen
+      // 4. Update Info.plist with UILaunchScreen - CRITICAL: Include UIImageName
       const plistPath = path.join(iosPath, projectName, `${projectName}-Info.plist`);
       if (fs.existsSync(plistPath)) {
         let plistContent = fs.readFileSync(plistPath, 'utf8');
@@ -496,8 +526,9 @@ async function customizeUI(context, iosPath) {
           ''
         );
         
-        // Add new UILaunchScreen with proper configuration
-        const uiLaunchScreen = `  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageRespectsSafeAreaInsets</key>\n    <false/>\n  </dict>`;
+        // Add new UILaunchScreen with BOTH UIColorName AND UIImageName
+        // UIImageName is CRITICAL for iOS to load the color asset properly
+        const uiLaunchScreen = `  <key>UILaunchScreen</key>\n  <dict>\n    <key>UIColorName</key>\n    <string>SplashBackgroundColor</string>\n    <key>UIImageName</key>\n    <string></string>\n    <key>UIImageRespectsSafeAreaInsets</key>\n    <false/>\n  </dict>`;
         
         plistContent = plistContent.replace(
           '</dict>\n</plist>',
@@ -506,6 +537,7 @@ async function customizeUI(context, iosPath) {
         
         fs.writeFileSync(plistPath, plistContent, 'utf8');
         console.log('   ✅ Updated Info.plist with UILaunchScreen');
+        console.log('   ✅ Included UIImageName (critical for color loading)');
       }
     }
     
