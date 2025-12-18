@@ -14,12 +14,37 @@ const { getConfigParser } = require('./utils');
  * Copies config-loader-mobile.js to www/js/
  * Injects script tag into index.html
  * 
- * FIXES:
- *   - Added file verification after write
- *   - Create files in multiple locations (backup)
- *   - Improved HTML injection with better parsing
- *   - Added detailed error logging
+ * ENHANCED:
+ *   - Read API_HOSTNAME from environment variables (MABS)
+ *   - Read from Cordova preferences (fallback)
+ *   - Support multiple config sources
  */
+
+/**
+ * Get config value from multiple sources (priority order)
+ */
+function getConfigValue(envName, prefName, config, defaultValue = '') {
+  // 1. Try environment variable (MABS builds)
+  if (process.env[envName]) {
+    console.log(`   ฿ Found ${prefName} from env: ${process.env[envName]}`);
+    return process.env[envName];
+  }
+  
+  // 2. Try Cordova preference
+  const prefValue = config.getPreference(prefName);
+  if (prefValue) {
+    console.log(`   ฿ Found ${prefName} from preference: ${prefValue}`);
+    return prefValue;
+  }
+  
+  // 3. Default value
+  if (defaultValue) {
+    console.log(`   ⚠️  ${prefName} not found, using default: ${defaultValue}`);
+  } else {
+    console.log(`   ⚠️  ${prefName} not found, using empty string`);
+  }
+  return defaultValue;
+}
 
 /**
  * Write JSON file with verification
@@ -217,8 +242,8 @@ function injectScriptTag(wwwPath) {
     console.log(`   📝 Read index.html: ${originalLength} bytes`);
     
     // Remove old script tags (if any from previous versions)
-    html = html.replace(/<script[^>]*src=['"]build-info\.js['"][^>]*><\/script>\s*/g, '');
-    html = html.replace(/<script[^>]*src=['"]app_build_info\.js['"][^>]*><\/script>\s*/g, '');
+    html = html.replace(/<script[^>]*src=['"build-info\.js['"[^>]*><\/script>\s*/g, '');
+    html = html.replace(/<script[^>]*src=['"app_build_info\.js['"[^>]*><\/script>\s*/g, '');
     
     // Check if already injected
     if (html.includes('config-loader-mobile.js')) {
@@ -242,7 +267,7 @@ function injectScriptTag(wwwPath) {
     // Strategy 2: Insert before cordova.js
     else if (html.includes('cordova.js')) {
       html = html.replace(
-        /<script[^>]*src=['"]cordova\.js['"][^>]*><\/script>/,
+        /<script[^>]*src=['"cordova\.js['"[^>]*><\/script>/,
         scriptTag + '\n    $&'
       );
       inserted = true;
@@ -309,21 +334,34 @@ function injectBuildInfo(context, platform) {
   
   console.log(`   📂 Project root: ${root}`);
   
-  // Prepare build info
+  // Log all environment variables starting with API, APP, or MABS
+  console.log('\n   🔍 Environment variables:');
+  Object.keys(process.env)
+    .filter(key => key.startsWith('API_') || key.startsWith('APP_') || key.startsWith('MABS_'))
+    .forEach(key => {
+      console.log(`   - ${key}: ${process.env[key]}`);
+    });
+  
+  // Prepare build info with fallback chain
   const buildInfo = {
-    appName: config.getPreference('APP_NAME') || config.name() || 'Unknown',
-    versionNumber: config.getPreference('VERSION_NUMBER') || config.version() || '0.0.0',
-    versionCode: config.getPreference('VERSION_CODE') || '0',
+    appName: getConfigValue('APP_NAME', 'APP_NAME', config, config.name() || 'Unknown'),
+    versionNumber: getConfigValue('VERSION_NUMBER', 'VERSION_NUMBER', config, config.version() || '0.0.0'),
+    versionCode: getConfigValue('VERSION_CODE', 'VERSION_CODE', config, '0'),
     packageName: config.packageName() || 'unknown',
-    appDescription: config.getPreference('APP_DESCRIPTION') || '',
-    author: config.getPreference('AUTHOR') || '',
+    appDescription: getConfigValue('APP_DESCRIPTION', 'APP_DESCRIPTION', config),
+    author: getConfigValue('AUTHOR', 'AUTHOR', config),
     platform: platform,
     buildTime: new Date().toISOString(),
     buildTimestamp: Date.now(),
-    apiHostname: config.getPreference('API_HOSTNAME') || '',
-    environment: config.getPreference('ENVIRONMENT') || 'production',
-    cdnIcon: config.getPreference('CDN_ICON') || ''
+    apiHostname: getConfigValue('API_HOSTNAME', 'API_HOSTNAME', config),
+    environment: getConfigValue('ENVIRONMENT', 'ENVIRONMENT', config, 'production'),
+    cdnIcon: getConfigValue('CDN_ICON', 'CDN_ICON', config)
   };
+  
+  console.log('\n   📦 Build Info:');
+  console.log(`   - appName: ${buildInfo.appName}`);
+  console.log(`   - apiHostname: ${buildInfo.apiHostname || '(empty)'}`);
+  console.log(`   - environment: ${buildInfo.environment}`);
   
   // Determine www path
   let wwwPath;
