@@ -2,13 +2,19 @@ import Foundation
 import WebKit
 
 @objc(CSSInjector)
-class CSSInjector: CDVPlugin {
+class CSSInjector: CDVPlugin, WKNavigationDelegate {
     
     private static let CSS_FILE_PATH = "www/assets/cdn-styles.css"
+    private var cachedCSS: String?
     
     override func pluginInitialize() {
         super.pluginInitialize()
-        injectCSSIntoWebView()
+        
+        // Pre-load CSS content
+        cachedCSS = readCSSFromBundle()
+        
+        // Set up navigation delegate for WKWebView
+        setupWebViewDelegate()
     }
     
     @objc(injectCSS:)
@@ -23,11 +29,53 @@ class CSSInjector: CDVPlugin {
     }
     
     /**
+     * Setup WKNavigationDelegate to inject CSS on page load
+     */
+    private func setupWebViewDelegate() {
+        DispatchQueue.main.async {
+            if let wkWebView = self.webView as? WKWebView {
+                wkWebView.navigationDelegate = self
+                print("[CSSInjector] WKNavigationDelegate configured")
+            } else if let uiWebView = self.webView as? UIWebView {
+                // UIWebView doesn't have navigation delegate
+                // Inject immediately for UIWebView
+                self.injectCSSIntoWebView()
+                print("[CSSInjector] UIWebView detected, CSS injected immediately")
+            }
+        }
+    }
+    
+    // MARK: - WKNavigationDelegate
+    
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // Inject CSS when page finishes loading
+        injectCSSIntoWebView()
+        print("[CSSInjector] CSS injected on page finished")
+    }
+    
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        print("[CSSInjector] Page started loading")
+    }
+    
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        print("[CSSInjector] Page load failed: \(error.localizedDescription)")
+    }
+    
+    // MARK: - CSS Injection
+    
+    /**
      * Read CSS from file and inject into WebView
      */
     private func injectCSSIntoWebView() {
         DispatchQueue.main.async {
-            guard let cssContent = self.readCSSFromBundle() else {
+            // Use cached CSS or read from bundle
+            var cssContent = self.cachedCSS
+            if cssContent == nil || cssContent!.isEmpty {
+                cssContent = self.readCSSFromBundle()
+                self.cachedCSS = cssContent
+            }
+            
+            guard let css = cssContent, !css.isEmpty else {
                 print("[CSSInjector] CSS file not found or empty")
                 return
             }
@@ -37,7 +85,7 @@ class CSSInjector: CDVPlugin {
                 return
             }
             
-            let javascript = self.buildCSSInjectionScript(cssContent: cssContent)
+            let javascript = self.buildCSSInjectionScript(cssContent: css)
             
             if let wkWebView = webView as? WKWebView {
                 // WKWebView
@@ -45,13 +93,13 @@ class CSSInjector: CDVPlugin {
                     if let error = error {
                         print("[CSSInjector] Failed to inject CSS: \(error.localizedDescription)")
                     } else {
-                        print("[CSSInjector] CSS injected successfully (\(cssContent.count) bytes)")
+                        print("[CSSInjector] CSS injected successfully (\(css.count) bytes)")
                     }
                 }
             } else if let uiWebView = webView as? UIWebView {
                 // UIWebView (deprecated but still supported)
                 uiWebView.stringByEvaluatingJavaScript(from: javascript)
-                print("[CSSInjector] CSS injected successfully (\(cssContent.count) bytes)")
+                print("[CSSInjector] CSS injected successfully (\(css.count) bytes)")
             }
         }
     }
@@ -92,7 +140,7 @@ class CSSInjector: CDVPlugin {
                         var style = document.createElement('style');
                         style.id = 'cdn-injected-styles';
                         style.textContent = decodedCSS;
-                        document.head.appendChild(style);
+                        (document.head || document.documentElement).appendChild(style);
                         console.log('CSS injected by native code (Base64)');
                     }
                 } catch(e) {
@@ -139,7 +187,7 @@ class CSSInjector: CDVPlugin {
                     var style = document.createElement('style');
                     style.id = 'cdn-injected-styles';
                     style.textContent = '\(escapedCSS)';
-                    document.head.appendChild(style);
+                    (document.head || document.documentElement).appendChild(style);
                     console.log('CSS injected by native code (escaped)');
                 }
             } catch(e) {
