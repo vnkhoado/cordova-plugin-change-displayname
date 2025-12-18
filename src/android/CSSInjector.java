@@ -36,17 +36,17 @@ public class CSSInjector extends CordovaPlugin {
     }
 
     @Override
-    public void onResume(boolean multitasking) {
-        super.onResume(multitasking);
+    public void onStart() {
+        super.onStart();
         
         // Inject CSS after a short delay to ensure DOM is ready
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 injectCSSIntoWebView();
-                android.util.Log.d(TAG, "CSS injected on resume");
+                android.util.Log.d(TAG, "CSS injected on start");
             }
-        }, 500); // 500ms delay
+        }, 300); // 300ms delay - shorter than onResume since onStart is earlier
     }
 
     @Override
