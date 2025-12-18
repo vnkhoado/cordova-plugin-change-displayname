@@ -44,13 +44,8 @@ async function downloadCDNResourcesAsync(context) {
       resourceUrl = new url.URL(cdnResource);
     } catch (urlError) {
       console.log(`❌ Invalid CDN URL format: ${urlError.message}`);
-      console.log(`📋 Using CDN URL directly (invalid format detected)`);
-      injectCDNLink(indexHtmlPath, cdnResource);
       return;
     }
-
-    const fileName = path.basename(resourceUrl.pathname) || 'styles.css';
-    const cssFileName = fileName.endsWith('.css') ? fileName : fileName + '.css';
 
     // Create assets directory
     if (!fs.existsSync(assetsDir)) {
@@ -58,72 +53,79 @@ async function downloadCDNResourcesAsync(context) {
       console.log(`✅ Created: www/assets/`);
     }
 
+    const fileName = path.basename(resourceUrl.pathname) || 'styles.css';
+    const cssFileName = fileName.endsWith('.css') ? fileName : fileName + '.css';
     const tempFilePath = path.join(assetsDir, fileName);
     const cssFilePath = path.join(assetsDir, cssFileName);
 
-    // Wait for download to complete
+    let cssContent = '';
+    let downloadSuccess = false;
+
+    // Try to download from CDN
     try {
       const downloadResult = await downloadFilePromise(cdnResource, tempFilePath);
       
-      console.log(`✅ Downloaded: www/assets/${fileName}`);
+      console.log(`✅ Downloaded from CDN: www/assets/${fileName}`);
       console.log(`   File size: ${downloadResult.size} bytes`);
       console.log(`   Status: ${downloadResult.statusCode}`);
       console.log(`   Content-Type: ${downloadResult.contentType || 'unknown'}`);
 
-      let cssContent = fs.readFileSync(tempFilePath, 'utf8');
+      cssContent = fs.readFileSync(tempFilePath, 'utf8');
+      downloadSuccess = true;
 
       // Check if MIME type is not CSS
       if (downloadResult.contentType && !downloadResult.contentType.includes('text/css')) {
         console.log(`\n⚠️  WARNING: Downloaded file has MIME type '${downloadResult.contentType}'`);
-        console.log(`   Expected 'text/css' for CSS files`);
         
         if (downloadResult.contentType.includes('text/html')) {
-          console.log(`\n🔄 Converting HTML to CSS...`);
+          console.log(`🔄 Attempting to extract CSS from HTML...`);
           
           // Extract CSS from HTML
           const extractedCSS = extractCSSFromHTML(cssContent);
           
-          // If CSS found in HTML, use it; otherwise use original content
           if (extractedCSS.trim()) {
             cssContent = extractedCSS;
             console.log(`✅ Extracted CSS from HTML`);
           } else {
-            console.log(`   No <style> tags found, using HTML content as CSS`);
+            console.log(`   No <style> tags found in HTML`);
           }
         }
       } else if (downloadResult.contentType && downloadResult.contentType.includes('text/css')) {
-        console.log(`✅ Correct MIME type detected (text/css)`);
+        console.log(`✅ Correct MIME type (text/css)`);
       }
 
-      // Save CSS file
+      // Save CSS file locally
       fs.writeFileSync(cssFilePath, cssContent, 'utf8');
-      console.log(`✅ Saved CSS file: www/assets/${cssFileName}`);
-      console.log(`   CSS file size: ${cssContent.length} bytes`);
+      console.log(`✅ Cached locally: www/assets/${cssFileName} (${cssContent.length} bytes)`);
       
       // Delete temp file if different
       if (tempFilePath !== cssFilePath) {
         try {
           fs.unlinkSync(tempFilePath);
         } catch (e) {
-          // Ignore if deletion fails
+          // Ignore
         }
       }
 
-      // Inject CSS INLINE into index.html (not as external link)
-      injectCSSInline(indexHtmlPath, cssContent);
-      console.log(`\n✅ Injected CSS inline into <head>\n`);
-
     } catch (downloadError) {
-      console.log(`\n❌ ERROR: Failed to download from CDN`);
+      console.log(`\n⚠️  Failed to download from CDN: ${downloadError.message}`);
       console.log(`   URL: ${cdnResource}`);
-      console.log(`   Error: ${downloadError.message}`);
-      console.log(`\n🧰 TROUBLESHOOTING:`);
-      console.log(`   1. Check if CDN URL is accessible: curl -i "${cdnResource}"`);
-      console.log(`   2. Check if Content-Type is text/css (not text/html)`);
-      console.log(`   3. Check if 404 error - file may not exist on CDN`);
-      console.log(`   4. Verify CDN URL in config.xml CDN_RESOURCE preference\n`);
-      console.log(`📋 Skipping CSS injection...\n`);
+      console.log(`📋 Will create fallback CSS file\n`);
+      downloadSuccess = false;
     }
+
+    // Inject into index.html
+    if (cssContent.trim()) {
+      // Strategy 1: Use CDN link as primary, with inline fallback
+      injectCSSWithFallback(indexHtmlPath, cdnResource, cssContent);
+      console.log(`✅ Injected: CDN link with fallback`);
+    } else {
+      // Strategy 2: If no content, just use CDN link
+      injectCDNLinkOnly(indexHtmlPath, cdnResource);
+      console.log(`✅ Injected: CDN link only`);
+    }
+
+    console.log('');
 
   } catch (error) {
     console.log(`❌ Error: ${error.message}`);
@@ -148,40 +150,123 @@ function extractCSSFromHTML(htmlContent) {
 }
 
 /**
- * Inject CSS content INLINE into index.html
- * This avoids 404 errors when loading from external URLs
+ * Inject CSS with strategy:
+ * 1. Primary: Load from CDN (lightweight)
+ * 2. Fallback: Inline CSS if CDN fails to load
+ * 
+ * This uses JavaScript to check if CDN CSS loaded, and inject inline as fallback
  */
-function injectCSSInline(indexHtmlPath, cssContent) {
+function injectCSSWithFallback(indexHtmlPath, cdnUrl, cssContent) {
   if (!fs.existsSync(indexHtmlPath)) {
     console.log(`⚠️  index.html not found at ${indexHtmlPath}`);
     return;
   }
 
-  if (!cssContent || !cssContent.trim()) {
-    console.log(`⚠️  CSS content is empty, skipping injection`);
+  let content = fs.readFileSync(indexHtmlPath, 'utf8');
+
+  // Check if already injected
+  if (content.includes('<!-- CDN CSS with Fallback -->')) {
+    console.log('ℹ️  CSS already injected in index.html');
+    return;
+  }
+
+  // Remove old external CDN links
+  const cdnLinkRegex = /<link[^>]*href=['"]https?:\/\/[^'"]*['"][^>]*>/g;
+  content = content.replace(cdnLinkRegex, '');
+
+  // Escape CSS content for use in JavaScript string
+  const escapedCSS = cssContent
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\'")
+    .replace(/\n/g, '\\n');
+
+  // Create injection with fallback mechanism
+  const injection = `    <!-- CDN CSS with Fallback -->
+    <link id="cdn-style" rel="stylesheet" href="${cdnUrl}">
+    <style id="css-fallback" style="display:none;">
+${cssContent}
+    </style>
+    <script>
+    // Fallback: If CDN CSS fails to load, use inline fallback
+    (function() {
+      var cdnLink = document.getElementById('cdn-style');
+      var fallback = document.getElementById('css-fallback');
+      
+      // Check if CDN link loaded successfully
+      var timeout = setTimeout(function() {
+        if (!isCSSLoaded(cdnLink)) {
+          console.warn('CDN CSS failed to load, using fallback');
+          fallback.style.display = 'block';
+          var style = document.createElement('style');
+          style.textContent = fallback.textContent;
+          document.head.appendChild(style);
+        }
+      }, 2000); // Wait 2 seconds for CDN to load
+      
+      // Listen for load/error events
+      cdnLink.onload = function() {
+        clearTimeout(timeout);
+        console.log('CDN CSS loaded successfully');
+        fallback.style.display = 'none';
+      };
+      cdnLink.onerror = function() {
+        clearTimeout(timeout);
+        console.warn('CDN CSS load error, using fallback');
+        fallback.style.display = 'block';
+        var style = document.createElement('style');
+        style.textContent = fallback.textContent;
+        document.head.appendChild(style);
+      };
+    })();
+    
+    function isCSSLoaded(link) {
+      try {
+        var sheet = link.sheet;
+        return sheet && sheet.cssRules !== undefined;
+      } catch (e) {
+        return false;
+      }
+    }
+    </script>`;
+
+  // Inject before </head>
+  if (content.includes('</head>')) {
+    content = content.replace('</head>', `${injection}\n</head>`);
+  } else if (content.includes('<head>')) {
+    content = content.replace('<head>', `<head>\n${injection}`);
+  }
+
+  fs.writeFileSync(indexHtmlPath, content);
+}
+
+/**
+ * Inject CDN link only (without fallback)
+ * Used when CSS content is not available
+ */
+function injectCDNLinkOnly(indexHtmlPath, cdnUrl) {
+  if (!fs.existsSync(indexHtmlPath)) {
+    console.log(`⚠️  index.html not found at ${indexHtmlPath}`);
     return;
   }
 
   let content = fs.readFileSync(indexHtmlPath, 'utf8');
 
-  // Check if CSS already injected
-  if (content.includes('<!-- CDN Styles Injected -->')) {
-    console.log('ℹ️  CSS already injected in index.html');
+  // Check if already injected
+  if (content.includes(cdnUrl)) {
+    console.log('ℹ️  CDN CSS link already in index.html');
     return;
   }
 
-  // Create style tag with CSS content
-  const styleTag = `    <!-- CDN Styles Injected -->
-    <style>
-${cssContent}
-    </style>`;
+  // Remove old CDN links
+  const cdnLinkRegex = /<link[^>]*href=['"]https?:\/\/[^'"]*['"][^>]*>/g;
+  content = content.replace(cdnLinkRegex, '');
 
-  // Inject before </head>
+  const linkTag = `    <link rel="stylesheet" href="${cdnUrl}">`;
+  
   if (content.includes('</head>')) {
-    content = content.replace('</head>', `${styleTag}\n</head>`);
+    content = content.replace('</head>', `${linkTag}\n</head>`);
   } else if (content.includes('<head>')) {
-    // If no </head>, add after <head>
-    content = content.replace('<head>', `<head>\n${styleTag}`);
+    content = content.replace('<head>', `<head>\n${linkTag}`);
   }
 
   fs.writeFileSync(indexHtmlPath, content);
@@ -193,7 +278,7 @@ ${cssContent}
 function downloadFilePromise(urlString, filePath) {
   return new Promise((resolve, reject) => {
     const protocol = urlString.startsWith('https') ? https : http;
-    const timeoutMs = 30000; // 30 second timeout
+    const timeoutMs = 30000;
     let fileStream = null;
     let isResolved = false;
     let contentType = null;
@@ -204,12 +289,9 @@ function downloadFilePromise(urlString, filePath) {
       const request = protocol.get(urlString, { timeout: timeoutMs }, (response) => {
         statusCode = response.statusCode;
         contentType = response.headers['content-type'];
-        
-        console.log(`   Downloading...`);
 
         // Handle redirects
         if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          console.log(`   Redirecting to: ${response.headers.location}`);
           if (fileStream) fileStream.destroy();
           return downloadFilePromise(response.headers.location, filePath)
             .then(resolve)
@@ -220,7 +302,7 @@ function downloadFilePromise(urlString, filePath) {
         if (response.statusCode !== 200) {
           if (fileStream) fileStream.destroy();
           fs.unlink(filePath, () => {});
-          const err = new Error(`HTTP ${response.statusCode} - ${http.STATUS_CODES[response.statusCode] || 'Unknown error'}`);
+          const err = new Error(`HTTP ${response.statusCode}`);
           if (!isResolved) {
             isResolved = true;
             reject(err);
@@ -235,7 +317,7 @@ function downloadFilePromise(urlString, filePath) {
           fs.unlink(filePath, () => {});
           if (!isResolved) {
             isResolved = true;
-            reject(new Error(`Response error: ${err.message}`));
+            reject(err);
           }
         });
 
@@ -244,7 +326,7 @@ function downloadFilePromise(urlString, filePath) {
           fs.unlink(filePath, () => {});
           if (!isResolved) {
             isResolved = true;
-            reject(new Error(`File write error: ${err.message}`));
+            reject(err);
           }
         });
 
@@ -269,7 +351,7 @@ function downloadFilePromise(urlString, filePath) {
         fs.unlink(filePath, () => {});
         if (!isResolved) {
           isResolved = true;
-          reject(new Error(`Request error: ${err.message}`));
+          reject(err);
         }
       });
 
@@ -279,7 +361,7 @@ function downloadFilePromise(urlString, filePath) {
         fs.unlink(filePath, () => {});
         if (!isResolved) {
           isResolved = true;
-          reject(new Error('Download timeout (30s) - CDN server may be slow or unreachable'));
+          reject(new Error('Download timeout'));
         }
       });
 
@@ -292,32 +374,4 @@ function downloadFilePromise(urlString, filePath) {
       }
     }
   });
-}
-
-/**
- * Inject link tag for CDN URL (fallback - not used, prefer inline)
- */
-function injectCDNLink(indexHtmlPath, cdnUrl) {
-  if (!fs.existsSync(indexHtmlPath)) {
-    console.log(`⚠️  index.html not found at ${indexHtmlPath}`);
-    return;
-  }
-
-  let content = fs.readFileSync(indexHtmlPath, 'utf8');
-
-  // Check if already injected
-  if (content.includes(cdnUrl)) {
-    console.log('ℹ️  CDN resource link already in index.html');
-    return;
-  }
-
-  // Add link tag before </head>
-  const linkTag = `    <link rel="stylesheet" href="${cdnUrl}">`;
-  if (content.includes('</head>')) {
-    content = content.replace('</head>', `${linkTag}\n</head>`);
-  } else if (content.includes('<head>')) {
-    content = content.replace('<head>', `<head>\n${linkTag}`);
-  }
-
-  fs.writeFileSync(indexHtmlPath, content);
 }
