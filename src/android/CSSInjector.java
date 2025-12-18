@@ -1,5 +1,6 @@
 package com.vnkhoado.cordova.changeappinfo;
 
+import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
@@ -26,11 +27,44 @@ public class CSSInjector extends CordovaPlugin {
     public void pluginInitialize() {
         super.pluginInitialize();
         
+        // Read WEBVIEW_BACKGROUND_COLOR from preferences
+        String bgColor = preferences.getString("WEBVIEW_BACKGROUND_COLOR", null);
+        
+        // Set WebView background color immediately to prevent white flash
+        cordova.getActivity().runOnUiThread(() -> {
+            if (webView != null && webView.getView() != null) {
+                if (bgColor != null && !bgColor.isEmpty()) {
+                    try {
+                        // Parse hex color and set background
+                        int color = Color.parseColor(bgColor);
+                        webView.getView().setBackgroundColor(color);
+                        android.util.Log.d(TAG, "WebView background set to: " + bgColor);
+                    } catch (IllegalArgumentException e) {
+                        android.util.Log.e(TAG, "Invalid color format: " + bgColor + ", using transparent", e);
+                        // Fallback to transparent
+                        webView.getView().setBackgroundColor(Color.TRANSPARENT);
+                    }
+                } else {
+                    // No config, use transparent
+                    webView.getView().setBackgroundColor(Color.TRANSPARENT);
+                    android.util.Log.d(TAG, "No WEBVIEW_BACKGROUND_COLOR configured, using transparent");
+                }
+            }
+        });
+        
         // Pre-load CSS content
         cachedCSS = readCSSFromAssets();
         
         // Create handler for delayed execution
         handler = new Handler(Looper.getMainLooper());
+        
+        // Inject CSS early with short delay
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                injectCSSIntoWebView();
+            }
+        }, 100); // Reduced from 300ms to 100ms for faster injection
         
         android.util.Log.d(TAG, "CSSInjector plugin initialized");
     }
@@ -39,14 +73,9 @@ public class CSSInjector extends CordovaPlugin {
     public void onStart() {
         super.onStart();
         
-        // Inject CSS after a short delay to ensure DOM is ready
-        handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                injectCSSIntoWebView();
-                android.util.Log.d(TAG, "CSS injected on start");
-            }
-        }, 300); // 300ms delay - shorter than onResume since onStart is earlier
+        // Inject CSS immediately when app starts (no delay needed)
+        injectCSSIntoWebView();
+        android.util.Log.d(TAG, "CSS injected on start");
     }
 
     @Override
