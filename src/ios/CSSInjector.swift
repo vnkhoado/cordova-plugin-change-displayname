@@ -19,23 +19,12 @@ class CSSInjector: CDVPlugin {
         // Pre-load CSS content
         cachedCSS = readCSSFromBundle()
         
-        // Inject CSS after a short delay
+        // Inject CSS after a short delay to ensure WebView is ready
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             self.injectCSSIntoWebView()
         }
         
         print("[CSSInjector] Plugin initialized")
-    }
-    
-    // MARK: - Cordova Plugin Lifecycle
-    
-    override func onAppDidBecomeActive() {
-        // Called when app becomes active
-        super.onAppDidBecomeActive()
-        
-        // Re-inject CSS when app resumes
-        injectCSSIntoWebView()
-        print("[CSSInjector] CSS injected on app active")
     }
     
     @objc(injectCSS:)
@@ -228,7 +217,7 @@ class CSSInjector: CDVPlugin {
                     style.id = 'cdn-injected-styles';
                     style.textContent = '\(escapedCSS)';
                     (document.head || document.documentElement).appendChild(style);
-                    console.log('CSS injected by native code (escaped)');
+                    console.log('CSS injected by native code (escaped)');  
                 }
             } catch(e) {
                 console.error('CSS injection failed:', e);
