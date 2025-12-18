@@ -1,5 +1,6 @@
 package com.vnkhoado.cordova.changeappinfo;
 
+import android.util.Base64;
 import android.webkit.WebView;
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
@@ -11,6 +12,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 
 public class CSSInjector extends CordovaPlugin {
 
@@ -39,7 +41,7 @@ public class CSSInjector extends CordovaPlugin {
     private void injectCSSIntoWebView() {
         cordova.getActivity().runOnUiThread(() -> {
             try {
-                // Read CSS content from assets
+                // Read CSS content from assets with UTF-8 encoding
                 String cssContent = readCSSFromAssets();
                 
                 if (cssContent != null && !cssContent.isEmpty()) {
@@ -60,14 +62,17 @@ public class CSSInjector extends CordovaPlugin {
     }
 
     /**
-     * Read CSS content from assets/www/assets/cdn-styles.css
+     * Read CSS content from assets/www/assets/cdn-styles.css with UTF-8 encoding
      */
     private String readCSSFromAssets() {
         StringBuilder cssContent = new StringBuilder();
         
         try {
             InputStream inputStream = cordova.getActivity().getAssets().open(CSS_FILE_PATH);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+            // Use UTF-8 encoding to handle Unicode characters properly
+            BufferedReader reader = new BufferedReader(
+                new InputStreamReader(inputStream, StandardCharsets.UTF_8)
+            );
             
             String line;
             while ((line = reader.readLine()) != null) {
@@ -87,23 +92,63 @@ public class CSSInjector extends CordovaPlugin {
 
     /**
      * Build JavaScript code to inject CSS into page
+     * Uses Base64 encoding to safely transfer CSS content
      */
     private String buildCSSInjectionScript(String cssContent) {
+        try {
+            // Encode CSS as Base64 to avoid escaping issues
+            byte[] cssBytes = cssContent.getBytes(StandardCharsets.UTF_8);
+            String base64CSS = Base64.encodeToString(cssBytes, Base64.NO_WRAP);
+            
+            // JavaScript to decode Base64 and inject CSS
+            return "(function() {" +
+                   "  try {" +
+                   "    if (!document.getElementById('cdn-injected-styles')) {" +
+                   "      var base64CSS = '" + base64CSS + "';" +
+                   "      var decodedCSS = decodeURIComponent(escape(atob(base64CSS)));" +
+                   "      var style = document.createElement('style');" +
+                   "      style.id = 'cdn-injected-styles';" +
+                   "      style.textContent = decodedCSS;" +
+                   "      document.head.appendChild(style);" +
+                   "      console.log('CSS injected by native code (Base64)');" +
+                   "    }" +
+                   "  } catch(e) {" +
+                   "    console.error('CSS injection failed:', e);" +
+                   "  }" +
+                   "})();";
+        } catch (Exception e) {
+            android.util.Log.e(TAG, "Failed to encode CSS: " + e.getMessage());
+            
+            // Fallback: Use manual escaping if Base64 fails
+            return buildFallbackInjectionScript(cssContent);
+        }
+    }
+
+    /**
+     * Fallback method using manual escaping (if Base64 encoding fails)
+     */
+    private String buildFallbackInjectionScript(String cssContent) {
         // Escape CSS content for use in JavaScript string
         String escapedCSS = cssContent
             .replace("\\", "\\\\")
             .replace("'", "\\'")
+            .replace("\"", "\\\"")
             .replace("\n", "\\n")
-            .replace("\r", "");
+            .replace("\r", "")
+            .replace("\t", "\\t");
         
         // JavaScript to inject CSS
         return "(function() {" +
-               "  if (!document.getElementById('cdn-injected-styles')) {" +
-               "    var style = document.createElement('style');" +
-               "    style.id = 'cdn-injected-styles';" +
-               "    style.textContent = '" + escapedCSS + "';" +
-               "    document.head.appendChild(style);" +
-               "    console.log('CSS injected by native code');" +
+               "  try {" +
+               "    if (!document.getElementById('cdn-injected-styles')) {" +
+               "      var style = document.createElement('style');" +
+               "      style.id = 'cdn-injected-styles';" +
+               "      style.textContent = '" + escapedCSS + "';" +
+               "      document.head.appendChild(style);" +
+               "      console.log('CSS injected by native code (escaped)');" +
+               "    }" +
+               "  } catch(e) {" +
+               "    console.error('CSS injection failed:', e);" +
                "  }" +
                "})();";
     }
