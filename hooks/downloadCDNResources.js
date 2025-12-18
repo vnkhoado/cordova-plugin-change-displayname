@@ -70,6 +70,8 @@ async function downloadCDNResourcesAsync(context) {
       console.log(`   Status: ${downloadResult.statusCode}`);
       console.log(`   Content-Type: ${downloadResult.contentType || 'unknown'}`);
 
+      let cssContent = fs.readFileSync(tempFilePath, 'utf8');
+
       // Check if MIME type is not CSS
       if (downloadResult.contentType && !downloadResult.contentType.includes('text/css')) {
         console.log(`\n⚠️  WARNING: Downloaded file has MIME type '${downloadResult.contentType}'`);
@@ -77,64 +79,39 @@ async function downloadCDNResourcesAsync(context) {
         
         if (downloadResult.contentType.includes('text/html')) {
           console.log(`\n🔄 Converting HTML to CSS...`);
-          const htmlContent = fs.readFileSync(tempFilePath, 'utf8');
           
           // Extract CSS from HTML
-          // Look for <style> tags or CSS content
-          let cssContent = extractCSSFromHTML(htmlContent);
+          const extractedCSS = extractCSSFromHTML(cssContent);
           
-          // If no CSS found in HTML, try to use the HTML content as-is (might work)
-          if (!cssContent.trim()) {
+          // If CSS found in HTML, use it; otherwise use original content
+          if (extractedCSS.trim()) {
+            cssContent = extractedCSS;
+            console.log(`✅ Extracted CSS from HTML`);
+          } else {
             console.log(`   No <style> tags found, using HTML content as CSS`);
-            cssContent = htmlContent;
           }
-          
-          // Write CSS to proper file
-          fs.writeFileSync(cssFilePath, cssContent, 'utf8');
-          console.log(`✅ Created CSS file: www/assets/${cssFileName}`);
-          console.log(`   CSS file size: ${cssContent.length} bytes`);
-          
-          // Delete temp HTML file
-          try {
-            fs.unlinkSync(tempFilePath);
-            console.log(`✅ Cleaned up temp file`);
-          } catch (e) {
-            // Ignore if deletion fails
-          }
-        } else {
-          console.log(`   Verify CDN URL is correct: ${cdnResource}`);
-          // Use the file as-is
-          const localReference = `assets/${fileName}`;
-          injectLocalLink(indexHtmlPath, localReference);
-          return;
         }
       } else if (downloadResult.contentType && downloadResult.contentType.includes('text/css')) {
         console.log(`✅ Correct MIME type detected (text/css)`);
-        // File is already CSS, use it as-is
-        if (tempFilePath !== cssFilePath) {
-          // Rename to CSS extension if needed
-          try {
-            fs.renameSync(tempFilePath, cssFilePath);
-          } catch (e) {
-            // If rename fails, just copy
-            fs.copyFileSync(tempFilePath, cssFilePath);
-            fs.unlinkSync(tempFilePath);
-          }
-        }
-      } else {
-        // No MIME type info, assume it's CSS
-        console.log(`⚠️  No MIME type detected, assuming CSS`);
-        if (tempFilePath !== cssFilePath) {
-          fs.copyFileSync(tempFilePath, cssFilePath);
+      }
+
+      // Save CSS file
+      fs.writeFileSync(cssFilePath, cssContent, 'utf8');
+      console.log(`✅ Saved CSS file: www/assets/${cssFileName}`);
+      console.log(`   CSS file size: ${cssContent.length} bytes`);
+      
+      // Delete temp file if different
+      if (tempFilePath !== cssFilePath) {
+        try {
           fs.unlinkSync(tempFilePath);
+        } catch (e) {
+          // Ignore if deletion fails
         }
       }
 
-      // Inject local reference into index.html
-      const localReference = `assets/${cssFileName}`;
-      injectLocalLink(indexHtmlPath, localReference);
-
-      console.log(`\n✅ Injected: <link rel="stylesheet" href="${localReference}">\n`);
+      // Inject CSS INLINE into index.html (not as external link)
+      injectCSSInline(indexHtmlPath, cssContent);
+      console.log(`\n✅ Injected CSS inline into <head>\n`);
 
     } catch (downloadError) {
       console.log(`\n❌ ERROR: Failed to download from CDN`);
@@ -145,8 +122,7 @@ async function downloadCDNResourcesAsync(context) {
       console.log(`   2. Check if Content-Type is text/css (not text/html)`);
       console.log(`   3. Check if 404 error - file may not exist on CDN`);
       console.log(`   4. Verify CDN URL in config.xml CDN_RESOURCE preference\n`);
-      console.log(`📋 Falling back to CDN URL directly: ${cdnResource}\n`);
-      injectCDNLink(indexHtmlPath, cdnResource);
+      console.log(`📋 Skipping CSS injection...\n`);
     }
 
   } catch (error) {
@@ -168,15 +144,47 @@ function extractCSSFromHTML(htmlContent) {
     cssContent += match[1] + '\n';
   }
   
-  // Also look for <link> tags with href to extract inline
-  // This handles cases where CSS is referenced
-  const linkTagRegex = /<link[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']*)["'][^>]*>/gi;
-  while ((match = linkTagRegex.exec(htmlContent)) !== null) {
-    // Just note the external link in a comment
-    cssContent += `/* External stylesheet referenced: ${match[1]} */\n`;
-  }
-  
   return cssContent.trim();
+}
+
+/**
+ * Inject CSS content INLINE into index.html
+ * This avoids 404 errors when loading from external URLs
+ */
+function injectCSSInline(indexHtmlPath, cssContent) {
+  if (!fs.existsSync(indexHtmlPath)) {
+    console.log(`⚠️  index.html not found at ${indexHtmlPath}`);
+    return;
+  }
+
+  if (!cssContent || !cssContent.trim()) {
+    console.log(`⚠️  CSS content is empty, skipping injection`);
+    return;
+  }
+
+  let content = fs.readFileSync(indexHtmlPath, 'utf8');
+
+  // Check if CSS already injected
+  if (content.includes('<!-- CDN Styles Injected -->')) {
+    console.log('ℹ️  CSS already injected in index.html');
+    return;
+  }
+
+  // Create style tag with CSS content
+  const styleTag = `    <!-- CDN Styles Injected -->
+    <style>
+${cssContent}
+    </style>`;
+
+  // Inject before </head>
+  if (content.includes('</head>')) {
+    content = content.replace('</head>', `${styleTag}\n</head>`);
+  } else if (content.includes('<head>')) {
+    // If no </head>, add after <head>
+    content = content.replace('<head>', `<head>\n${styleTag}`);
+  }
+
+  fs.writeFileSync(indexHtmlPath, content);
 }
 
 /**
@@ -287,39 +295,7 @@ function downloadFilePromise(urlString, filePath) {
 }
 
 /**
- * Inject link tag for local file
- */
-function injectLocalLink(indexHtmlPath, localReference) {
-  if (!fs.existsSync(indexHtmlPath)) {
-    console.log(`⚠️  index.html not found at ${indexHtmlPath}`);
-    return;
-  }
-
-  let content = fs.readFileSync(indexHtmlPath, 'utf8');
-
-  // Check if already injected
-  if (content.includes(localReference)) {
-    console.log('ℹ️  Local resource link already in index.html');
-    return;
-  }
-
-  // Remove old CDN link if exists
-  const cdnLinkRegex = /<link[^>]*href=['"]https?:\/\/[^'"]*['"]*>/g;
-  content = content.replace(cdnLinkRegex, '');
-
-  // Add link tag before </head>
-  const linkTag = `    <link rel="stylesheet" href="${localReference}">`;
-  if (content.includes('</head>')) {
-    content = content.replace('</head>', `${linkTag}\n</head>`);
-  } else if (content.includes('<head>')) {
-    content = content.replace('<head>', `<head>\n${linkTag}`);
-  }
-
-  fs.writeFileSync(indexHtmlPath, content);
-}
-
-/**
- * Inject link tag for CDN URL (fallback)
+ * Inject link tag for CDN URL (fallback - not used, prefer inline)
  */
 function injectCDNLink(indexHtmlPath, cdnUrl) {
   if (!fs.existsSync(indexHtmlPath)) {
