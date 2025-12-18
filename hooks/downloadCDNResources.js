@@ -17,7 +17,7 @@ module.exports = function(context) {
   try {
     // Read config.xml to get CDN_RESOURCE
     if (!fs.existsSync(configXmlPath)) {
-      console.log('⚠️  config.xml not found, skipping CDN download');
+      console.log('\u26a0\ufe0f  config.xml not found, skipping CDN download');
       return;
     }
 
@@ -26,12 +26,12 @@ module.exports = function(context) {
     // Extract CDN_RESOURCE preference
     const cdnMatch = configContent.match(/<preference name="CDN_RESOURCE" value="([^"]+)" \/>/i);
     if (!cdnMatch || !cdnMatch[1]) {
-      console.log('⚠️  CDN_RESOURCE not configured in config.xml, skipping download');
+      console.log('\u26a0\ufe0f  CDN_RESOURCE not configured in config.xml, skipping download');
       return;
     }
 
     const cdnResource = cdnMatch[1];
-    console.log(`✅ Found CDN_RESOURCE: ${cdnResource}`);
+    console.log(`\u2705 Found CDN_RESOURCE: ${cdnResource}`);
 
     // Parse CDN URL
     const resourceUrl = new url.URL(cdnResource);
@@ -40,7 +40,7 @@ module.exports = function(context) {
     // Create assets directory
     if (!fs.existsSync(assetsDir)) {
       fs.mkdirSync(assetsDir, { recursive: true });
-      console.log(`✅ Created: www/assets/`);
+      console.log(`\u2705 Created: www/assets/`);
     }
 
     const localFilePath = path.join(assetsDir, fileName);
@@ -48,23 +48,23 @@ module.exports = function(context) {
     // Download file
     downloadFile(cdnResource, localFilePath, (error) => {
       if (error) {
-        console.log(`⚠️  Failed to download from CDN: ${error.message}`);
-        console.log(`📌 Will use CDN URL directly: ${cdnResource}`);
+        console.log(`\u26a0\ufe0f  Failed to download from CDN: ${error.message}`);
+        console.log(`\ud83d\udccb Will use CDN URL directly: ${cdnResource}`);
         injectCDNLink(indexHtmlPath, cdnResource);
         return;
       }
 
-      console.log(`✅ Downloaded: www/assets/${fileName}`);
+      console.log(`\u2705 Downloaded: www/assets/${fileName}`);
 
       // Inject local reference into index.html
       const localReference = `assets/${fileName}`;
       injectLocalLink(indexHtmlPath, localReference);
 
-      console.log(`✅ Injected: <link rel="stylesheet" href="${localReference}">`);
+      console.log(`\u2705 Injected: <link rel="stylesheet" href="${localReference}">`);
     });
 
   } catch (error) {
-    console.log(`❌ Error: ${error.message}`);
+    console.log(`\u274c Error: ${error.message}`);
   }
 };
 
@@ -121,7 +121,7 @@ function downloadFile(urlString, filePath, callback) {
  */
 function injectLocalLink(indexHtmlPath, localReference) {
   if (!fs.existsSync(indexHtmlPath)) {
-    console.log(`⚠️  index.html not found at ${indexHtmlPath}`);
+    console.log(`\u26a0\ufe0f  index.html not found at ${indexHtmlPath}`);
     return;
   }
 
@@ -129,13 +129,13 @@ function injectLocalLink(indexHtmlPath, localReference) {
 
   // Check if already injected
   if (content.includes(localReference)) {
-    console.log('ℹ️  Local resource link already in index.html');
+    console.log('\u2139\ufe0f  Local resource link already in index.html');
     return;
   }
 
-  // Remove old CDN link if exists
-  content = content.replace(/<link[^>]*href=['"]https?:\/\/[^'"]*['"][^>]*>
-/g, '');
+  // Remove old CDN link if exists (regex on single line)
+  const cdnLinkRegex = /<link[^>]*href=['"]https?:\/\/[^'"]*['"][^>]*>/g;
+  content = content.replace(cdnLinkRegex, '');
 
   // Add link tag before </head>
   const linkTag = `    <link rel="stylesheet" href="${localReference}">`;
@@ -154,7 +154,7 @@ function injectLocalLink(indexHtmlPath, localReference) {
  */
 function injectCDNLink(indexHtmlPath, cdnUrl) {
   if (!fs.existsSync(indexHtmlPath)) {
-    console.log(`⚠️  index.html not found at ${indexHtmlPath}`);
+    console.log(`\u26a0\ufe0f  index.html not found at ${indexHtmlPath}`);
     return;
   }
 
@@ -162,7 +162,7 @@ function injectCDNLink(indexHtmlPath, cdnUrl) {
 
   // Check if already injected
   if (content.includes(cdnUrl)) {
-    console.log('ℹ️  CDN resource link already in index.html');
+    console.log('\u2139\ufe0f  CDN resource link already in index.html');
     return;
   }
 
