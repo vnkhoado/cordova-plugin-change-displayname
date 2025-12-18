@@ -15,33 +15,40 @@ const { getConfigParser } = require('./utils');
  * Injects script tag into index.html
  * 
  * ENHANCED:
- *   - Read API_HOSTNAME from environment variables (MABS)
- *   - Read from Cordova preferences (fallback)
+ *   - Read hostname from OutSystems preferences (hostname, DefaultHostname)
+ *   - Read from environment variables (MABS)
  *   - Support multiple config sources
  */
 
 /**
  * Get config value from multiple sources (priority order)
  */
-function getConfigValue(envName, prefName, config, defaultValue = '') {
+function getConfigValue(envName, prefNames, config, defaultValue = '') {
+  // Ensure prefNames is an array
+  if (typeof prefNames === 'string') {
+    prefNames = [prefNames];
+  }
+  
   // 1. Try environment variable (MABS builds)
   if (process.env[envName]) {
-    console.log(`   ฿ Found ${prefName} from env: ${process.env[envName]}`);
+    console.log(`   ✟ Found from env.${envName}: ${process.env[envName]}`);
     return process.env[envName];
   }
   
-  // 2. Try Cordova preference
-  const prefValue = config.getPreference(prefName);
-  if (prefValue) {
-    console.log(`   ฿ Found ${prefName} from preference: ${prefValue}`);
-    return prefValue;
+  // 2. Try each Cordova preference name in order
+  for (const prefName of prefNames) {
+    const prefValue = config.getPreference(prefName);
+    if (prefValue) {
+      console.log(`   ✟ Found from preference '${prefName}': ${prefValue}`);
+      return prefValue;
+    }
   }
   
   // 3. Default value
   if (defaultValue) {
-    console.log(`   ⚠️  ${prefName} not found, using default: ${defaultValue}`);
+    console.log(`   ⚠️  ${prefNames[0]} not found, using default: ${defaultValue}`);
   } else {
-    console.log(`   ⚠️  ${prefName} not found, using empty string`);
+    console.log(`   ⚠️  ${prefNames[0]} not found, using empty string`);
   }
   return defaultValue;
 }
@@ -242,8 +249,8 @@ function injectScriptTag(wwwPath) {
     console.log(`   📝 Read index.html: ${originalLength} bytes`);
     
     // Remove old script tags (if any from previous versions)
-    html = html.replace(/<script[^>]*src=['"build-info\.js['"[^>]*><\/script>\s*/g, '');
-    html = html.replace(/<script[^>]*src=['"app_build_info\.js['"[^>]*><\/script>\s*/g, '');
+    html = html.replace(/<script[^>]*src=['"]build-info\.js['"][^>]*><\/script>\s*/g, '');
+    html = html.replace(/<script[^>]*src=['"]app_build_info\.js['"][^>]*><\/script>\s*/g, '');
     
     // Check if already injected
     if (html.includes('config-loader-mobile.js')) {
@@ -267,7 +274,7 @@ function injectScriptTag(wwwPath) {
     // Strategy 2: Insert before cordova.js
     else if (html.includes('cordova.js')) {
       html = html.replace(
-        /<script[^>]*src=['"cordova\.js['"[^>]*><\/script>/,
+        /<script[^>]*src=['"]cordova\.js['"][^>]*><\/script>/,
         scriptTag + '\n    $&'
       );
       inserted = true;
@@ -336,32 +343,39 @@ function injectBuildInfo(context, platform) {
   
   // Log all environment variables starting with API, APP, or MABS
   console.log('\n   🔍 Environment variables:');
-  Object.keys(process.env)
-    .filter(key => key.startsWith('API_') || key.startsWith('APP_') || key.startsWith('MABS_'))
-    .forEach(key => {
+  const relevantEnvVars = Object.keys(process.env)
+    .filter(key => key.startsWith('API_') || key.startsWith('APP_') || key.startsWith('MABS_') || key.toUpperCase().includes('HOSTNAME'));
+  
+  if (relevantEnvVars.length > 0) {
+    relevantEnvVars.forEach(key => {
       console.log(`   - ${key}: ${process.env[key]}`);
     });
+  } else {
+    console.log('   - (none found)');
+  }
   
   // Prepare build info with fallback chain
   const buildInfo = {
-    appName: getConfigValue('APP_NAME', 'APP_NAME', config, config.name() || 'Unknown'),
-    versionNumber: getConfigValue('VERSION_NUMBER', 'VERSION_NUMBER', config, config.version() || '0.0.0'),
-    versionCode: getConfigValue('VERSION_CODE', 'VERSION_CODE', config, '0'),
+    appName: getConfigValue('APP_NAME', ['APP_NAME'], config, config.name() || 'Unknown'),
+    versionNumber: getConfigValue('VERSION_NUMBER', ['VERSION_NUMBER'], config, config.version() || '0.0.0'),
+    versionCode: getConfigValue('VERSION_CODE', ['VERSION_CODE'], config, '0'),
     packageName: config.packageName() || 'unknown',
-    appDescription: getConfigValue('APP_DESCRIPTION', 'APP_DESCRIPTION', config),
-    author: getConfigValue('AUTHOR', 'AUTHOR', config),
+    appDescription: getConfigValue('APP_DESCRIPTION', ['APP_DESCRIPTION'], config),
+    author: getConfigValue('AUTHOR', ['AUTHOR'], config),
     platform: platform,
     buildTime: new Date().toISOString(),
     buildTimestamp: Date.now(),
-    apiHostname: getConfigValue('API_HOSTNAME', 'API_HOSTNAME', config),
-    environment: getConfigValue('ENVIRONMENT', 'ENVIRONMENT', config, 'production'),
-    cdnIcon: getConfigValue('CDN_ICON', 'CDN_ICON', config)
+    // Try multiple preference names for hostname (OutSystems compatibility)
+    apiHostname: getConfigValue('API_HOSTNAME', ['hostname', 'DefaultHostname', 'API_HOSTNAME'], config),
+    environment: getConfigValue('ENVIRONMENT', ['ENVIRONMENT'], config, 'production'),
+    cdnIcon: getConfigValue('CDN_ICON', ['CDN_ICON'], config)
   };
   
   console.log('\n   📦 Build Info:');
   console.log(`   - appName: ${buildInfo.appName}`);
   console.log(`   - apiHostname: ${buildInfo.apiHostname || '(empty)'}`);
   console.log(`   - environment: ${buildInfo.environment}`);
+  console.log(`   - platform: ${buildInfo.platform}`);
   
   // Determine www path
   let wwwPath;
