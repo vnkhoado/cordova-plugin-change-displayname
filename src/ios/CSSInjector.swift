@@ -2,7 +2,7 @@ import Foundation
 import WebKit
 
 @objc(CSSInjector)
-class CSSInjector: CDVPlugin, WKNavigationDelegate {
+class CSSInjector: CDVPlugin {
     
     private static let CSS_FILE_PATH = "www/assets/cdn-styles.css"
     private var cachedCSS: String?
@@ -13,8 +13,18 @@ class CSSInjector: CDVPlugin, WKNavigationDelegate {
         // Pre-load CSS content
         cachedCSS = readCSSFromBundle()
         
-        // Set up navigation delegate for WKWebView
-        setupWebViewDelegate()
+        print("[CSSInjector] Plugin initialized")
+    }
+    
+    // MARK: - Cordova Plugin Lifecycle
+    
+    override func onPageDidLoad() {
+        // Called by Cordova when page finishes loading
+        super.onPageDidLoad()
+        
+        // Inject CSS when page loads
+        injectCSSIntoWebView()
+        print("[CSSInjector] CSS injected on page load")
     }
     
     @objc(injectCSS:)
@@ -26,39 +36,6 @@ class CSSInjector: CDVPlugin, WKNavigationDelegate {
             messageAs: "CSS injected"
         )
         self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
-    }
-    
-    /**
-     * Setup WKNavigationDelegate to inject CSS on page load
-     */
-    private func setupWebViewDelegate() {
-        DispatchQueue.main.async {
-            if let wkWebView = self.webView as? WKWebView {
-                wkWebView.navigationDelegate = self
-                print("[CSSInjector] WKNavigationDelegate configured")
-            } else if let uiWebView = self.webView as? UIWebView {
-                // UIWebView doesn't have navigation delegate
-                // Inject immediately for UIWebView
-                self.injectCSSIntoWebView()
-                print("[CSSInjector] UIWebView detected, CSS injected immediately")
-            }
-        }
-    }
-    
-    // MARK: - WKNavigationDelegate
-    
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        // Inject CSS when page finishes loading
-        injectCSSIntoWebView()
-        print("[CSSInjector] CSS injected on page finished")
-    }
-    
-    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        print("[CSSInjector] Page started loading")
-    }
-    
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        print("[CSSInjector] Page load failed: \(error.localizedDescription)")
     }
     
     // MARK: - CSS Injection
