@@ -13,12 +13,14 @@ module.exports = function(context) {
 
 /**
  * Main async function
+ * Downloads CSS from CDN and saves to file for runtime injection by native code
  */
 async function downloadCDNResourcesAsync(context) {
   const projectRoot = context.opts.projectRoot;
-  const indexHtmlPath = path.join(projectRoot, 'www', 'index.html');
+  const assetsDir = path.join(projectRoot, 'www', 'assets');
+  const cssFilePath = path.join(assetsDir, 'cdn-styles.css');
 
-  console.log('\n📥 [CDN-DOWNLOAD] Downloading CSS from CDN...\n');
+  console.log('\n📥 [CDN-DOWNLOAD] Downloading CSS from CDN for runtime injection...\n');
 
   try {
     // Get config parser from utils
@@ -45,15 +47,23 @@ async function downloadCDNResourcesAsync(context) {
       return;
     }
 
+    // Create assets directory
+    if (!fs.existsSync(assetsDir)) {
+      fs.mkdirSync(assetsDir, { recursive: true });
+      console.log(`✅ Created: www/assets/`);
+    }
+
     // Download CSS content
     try {
       console.log('   Downloading CSS...');
       const cssContent = await downloadFileAsString(cdnResource);
       console.log(`✅ Downloaded: ${cssContent.length} bytes`);
 
-      // Inject CSS inline into index.html
-      injectCSSInline(indexHtmlPath, cssContent);
-      console.log(`✅ Injected CSS inline into <head>\n`);
+      // Save CSS to file
+      fs.writeFileSync(cssFilePath, cssContent, 'utf8');
+      console.log(`✅ Saved to: www/assets/cdn-styles.css`);
+      console.log(`\n📱 Native code will inject this CSS at runtime`);
+      console.log(`   ✅ Won't be overwritten by OTA updates\n`);
 
     } catch (downloadError) {
       console.log(`❌ ERROR: Failed to download from CDN`);
@@ -63,6 +73,10 @@ async function downloadCDNResourcesAsync(context) {
       console.log(`   1. Verify CDN URL is correct`);
       console.log(`   2. Check if file exists on server`);
       console.log(`   3. Verify server is accessible\n`);
+      
+      // Create empty fallback file
+      fs.writeFileSync(cssFilePath, '/* CDN download failed - add fallback CSS here */', 'utf8');
+      console.log(`✅ Created empty fallback file\n`);
     }
 
   } catch (error) {
@@ -142,43 +156,4 @@ function downloadFileAsString(urlString) {
       }
     }
   });
-}
-
-/**
- * Inject CSS content INLINE into index.html
- */
-function injectCSSInline(indexHtmlPath, cssContent) {
-  if (!fs.existsSync(indexHtmlPath)) {
-    console.log(`⚠️  index.html not found at ${indexHtmlPath}`);
-    return;
-  }
-
-  if (!cssContent || !cssContent.trim()) {
-    console.log(`⚠️  CSS content is empty, skipping injection`);
-    return;
-  }
-
-  let content = fs.readFileSync(indexHtmlPath, 'utf8');
-
-  // Check if CSS already injected
-  if (content.includes('<!-- CDN Styles -->')) {
-    console.log('ℹ️  CSS already injected in index.html');
-    return;
-  }
-
-  // Create style tag with CSS content
-  const styleTag = `    <!-- CDN Styles -->
-    <style>
-${cssContent}
-    </style>`;
-
-  // Inject before </head>
-  if (content.includes('</head>')) {
-    content = content.replace('</head>', `${styleTag}\n</head>`);
-  } else if (content.includes('<head>')) {
-    // If no </head>, add after <head>
-    content = content.replace('<head>', `<head>\n${styleTag}`);
-  }
-
-  fs.writeFileSync(indexHtmlPath, content);
 }
