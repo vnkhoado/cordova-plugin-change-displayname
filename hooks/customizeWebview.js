@@ -45,17 +45,26 @@ function customizeAndroidWebview(context, backgroundColor) {
     );
   }
   
+  // Normalize hex color (remove alpha if 8 digits)
+  let normalizedColor = backgroundColor.replace('#', '');
+  if (normalizedColor.length === 8) {
+    // Remove alpha channel (first 2 digits) for UI color
+    normalizedColor = '#' + normalizedColor.substring(2);
+  } else {
+    normalizedColor = '#' + normalizedColor;
+  }
+  
   // Tìm onCreate method và thêm code
   const onCreateRegex = /(@Override\s+public void onCreate\(Bundle savedInstanceState\)\s*{[^}]*super\.onCreate\(savedInstanceState\);)/;
   
   if (onCreateRegex.test(content)) {
     content = content.replace(
       onCreateRegex,
-      `$1\n\n        // CUSTOM_WEBVIEW_BACKGROUND\n        // Set webview background color\n        getWindow().getDecorView().setBackgroundColor(Color.parseColor("${backgroundColor}"));`
+      `$1\n\n        // CUSTOM_WEBVIEW_BACKGROUND\n        // Set window and webview background color to prevent white flash\n        try {\n            int bgColor = Color.parseColor("${normalizedColor}");\n            getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(bgColor));\n            getWindow().getDecorView().setBackgroundColor(bgColor);\n        } catch (Exception e) {\n            android.util.Log.e("WebviewCustomize", "Failed to set background color: " + e.getMessage());\n        }`
     );
     
     fs.writeFileSync(activityPath, content, 'utf8');
-    console.log(`   ✓ Android webview background set to ${backgroundColor}`);
+    console.log(`   ✓ Android window background set to ${normalizedColor}`);
   } else {
     console.log('   ⚠️  onCreate method not found in MainActivity');
   }
@@ -85,8 +94,16 @@ function customizeIOSWebview(context, backgroundColor) {
     return;
   }
   
+  // Normalize hex color (remove alpha if 8 digits)
+  let normalizedColor = backgroundColor.replace('#', '');
+  if (normalizedColor.length === 8) {
+    normalizedColor = '#' + normalizedColor.substring(2);
+  } else {
+    normalizedColor = '#' + normalizedColor;
+  }
+  
   // Convert hex color to UIColor
-  const uiColor = hexToUIColor(backgroundColor);
+  const uiColor = hexToUIColor(normalizedColor);
   
   // Tìm application:didFinishLaunchingWithOptions và thêm code
   const didFinishRegex = /(- \(BOOL\)application:\(UIApplication\*\)application didFinishLaunchingWithOptions:[^{]*{[^}]*self\.window = \[\[UIWindow alloc\] initWithFrame:\[UIScreen mainScreen\]\.bounds\];)/;
@@ -98,7 +115,7 @@ function customizeIOSWebview(context, backgroundColor) {
     );
     
     fs.writeFileSync(appDelegatePath, content, 'utf8');
-    console.log(`   ✓ iOS webview background set to ${backgroundColor}`);
+    console.log(`   ✓ iOS webview background set to ${normalizedColor}`);
   } else {
     console.log('   ⚠️  didFinishLaunchingWithOptions method not found');
   }
@@ -127,7 +144,7 @@ function hexToUIColor(hex) {
   // Remove # if present
   hex = hex.replace('#', '');
   
-  // Parse RGB values
+  // Parse RGB values (assuming 6 digits after normalization)
   const r = parseInt(hex.substring(0, 2), 16) / 255.0;
   const g = parseInt(hex.substring(2, 4), 16) / 255.0;
   const b = parseInt(hex.substring(4, 6), 16) / 255.0;
@@ -136,7 +153,8 @@ function hexToUIColor(hex) {
 }
 
 function validateHexColor(color) {
-  const hexRegex = /^#?([A-Fa-f0-9]{6})$/;
+  // Support both 6 and 8 digit hex colors
+  const hexRegex = /^#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/;
   return hexRegex.test(color);
 }
 
@@ -155,7 +173,7 @@ module.exports = function(context) {
   
   // Validate color format
   if (!validateHexColor(backgroundColor)) {
-    console.error('\n❌ Invalid WEBVIEW_BACKGROUND_COLOR format. Use hex color (e.g., #FFFFFF)');
+    console.error('\n❌ Invalid WEBVIEW_BACKGROUND_COLOR format. Use hex color (e.g., #FFFFFF or #FFFFFFFF)');
     return;
   }
   
