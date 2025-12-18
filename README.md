@@ -23,6 +23,12 @@ Cordova plugin to change app info (package name, display name, version, icon) fr
 - Smooth color transitions, no white flash
 - Set via `SPLASH_GRADIENT` preference
 
+✅ **Auto-Copy Build Config** (NEW in v2.9.12)
+- Automatically copies config files to `www/` directory
+- Prevents Cordova from deleting essential files during prepare
+- Runs before all other hooks in build pipeline
+- Works seamlessly - no configuration needed!
+
 ✅ **UI Customization**
 - **Webview background color**: Eliminate white flash on app launch
 - **Native splash screen**: Auto-override OutSystems theme colors
@@ -92,6 +98,78 @@ npm install jimp    # Pure JavaScript processor
 
 # 3. Build
 cordova build android ios
+```
+
+## How Auto-Copy Hook Works
+
+### Problem Solved
+
+Cordova's `prepare` step automatically deletes all files from `platforms/www/` that don't exist in the project's `www/` directory. This caused `build-config.json` to be deleted BEFORE the `injectBuildInfo` hook could update it.
+
+**Build Flow (Before Fix)**:
+```
+cordova build
+├─ Merge www/ files to platforms/www/
+├─ Delete files not in www/ ← build-config.json deleted here ✗
+├─ Run after_prepare hooks
+│  └─ injectBuildInfo tries to update it ✗ (already deleted)
+```
+
+### Solution
+
+The new `auto-copy-config-files.js` hook runs in the `before_prepare` phase and copies essential files into `www/`. This makes them "source files" so Cordova won't delete them.
+
+**Build Flow (After Fix)**:
+```
+cordova build
+├─ Run before_prepare hooks
+│  └─ auto-copy-config-files copies templates to www/ ✓
+├─ Merge www/ files to platforms/www/
+├─ Delete files not in www/ (build-config.json stays since it's in www/) ✓
+├─ Run after_prepare hooks
+│  └─ injectBuildInfo updates build-config.json ✓ (file exists)
+```
+
+### What The Hook Does
+
+✅ Creates `www/.cordova-app-data/` directory
+✅ Creates `www/.cordova-app-data/build-config.json` template
+✅ Creates `www/.cordova-app-data/build-history.json` template
+✅ Copies `config-loader.js` to `www/js/`
+✅ Copies `config-loader-mobile.js` to `www/js/`
+✅ Warns if script tag missing from index.html
+
+### Build Log Output
+
+You'll see output like this during `cordova build`:
+
+```
+════════════════════════════════════════════════════════════════
+  AUTO-COPY CONFIG FILES - Preserving source files
+════════════════════════════════════════════════════════════════
+
+✅ Created directory: www/.cordova-app-data
+✅ Created directory: www/js
+✅ Created: www/.cordova-app-data/build-config.json
+✅ Created: www/.cordova-app-data/build-history.json
+✅ Copied: www/js/config-loader.js
+✅ Copied: www/js/config-loader-mobile.js
+✅ Script tag found in index.html
+
+════════════════════════════════════════════════════════════════
+✅ Auto-copy completed! Files preserved for injectBuildInfo
+════════════════════════════════════════════════════════════════
+```
+
+### No Configuration Needed
+
+The hook is **automatically registered** for both Android and iOS platforms. It runs with every `cordova build` and `cordova prepare` automatically.
+
+No additional setup required! Just build as usual:
+
+```bash
+cordova build android
+# Hook runs automatically ✓
 ```
 
 ## Configuration
@@ -325,6 +403,27 @@ await mobileConfigLoader.displayTable();
 
 ## Troubleshooting
 
+### Build Config Not Created
+
+**Symptom**: `build-config.json` file not found in app
+
+**Solution**: This is now fixed by the auto-copy hook! If still having issues:
+
+```bash
+# 1. Check files in www/
+ls -la www/.cordova-app-data/
+ls -la www/js/config-loader*.js
+
+# 2. Check build log for auto-copy messages
+cordova build android --verbose 2>&1 | grep -i "auto-copy"
+
+# 3. Clean and rebuild
+cordova clean
+cordova platform remove android
+cordova platform add android
+cordova build android --verbose
+```
+
 ### Gradient Splash Not Showing
 
 **Android**:
@@ -382,6 +481,13 @@ document.addEventListener('deviceready', async () => {
 - Verify drawable XML generated
 
 ## Changelog
+
+### v2.9.12 (2025-12-18) ✨ AUTO-COPY HOOK
+- **NEW**: Auto-copy hook - prevents build config deletion during prepare
+- **FEATURE**: Runs before_prepare - copies files before Cordova deletes them
+- **FIXED**: build-config.json no longer deleted
+- **IMPROVED**: No user setup needed - automatic!
+- **DOCS**: Added troubleshooting and how-it-works section
 
 ### v2.9.11 (2025-12-17) ✨ JSON CONFIG + GRADIENT SPLASH
 - **NEW**: JSON config storage - replaces sqlite (works everywhere!)
