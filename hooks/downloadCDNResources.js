@@ -8,6 +8,13 @@ const url = require('url');
 const utils = require('./utils');
 
 module.exports = function(context) {
+  return downloadCDNResourcesAsync(context);
+};
+
+/**
+ * Main async function
+ */
+async function downloadCDNResourcesAsync(context) {
   const projectRoot = context.opts.projectRoot;
   const assetsDir = path.join(projectRoot, 'www', 'assets');
   const indexHtmlPath = path.join(projectRoot, 'www', 'index.html');
@@ -43,15 +50,9 @@ module.exports = function(context) {
 
     const localFilePath = path.join(assetsDir, fileName);
 
-    // Download file
-    downloadFile(cdnResource, localFilePath, (error) => {
-      if (error) {
-        console.log(`⚠️  Failed to download from CDN: ${error.message}`);
-        console.log(`📋 Will use CDN URL directly: ${cdnResource}`);
-        injectCDNLink(indexHtmlPath, cdnResource);
-        return;
-      }
-
+    // Wait for download to complete
+    try {
+      await downloadFilePromise(cdnResource, localFilePath);
       console.log(`✅ Downloaded: www/assets/${fileName}`);
 
       // Inject local reference into index.html
@@ -59,59 +60,108 @@ module.exports = function(context) {
       injectLocalLink(indexHtmlPath, localReference);
 
       console.log(`✅ Injected: <link rel="stylesheet" href="${localReference}">`);
-    });
+    } catch (downloadError) {
+      console.log(`⚠️  Failed to download from CDN: ${downloadError.message}`);
+      console.log(`📋 Will use CDN URL directly: ${cdnResource}`);
+      injectCDNLink(indexHtmlPath, cdnResource);
+    }
 
   } catch (error) {
     console.log(`❌ Error: ${error.message}`);
+    throw error;
   }
-};
+}
 
 /**
- * Download file from URL
+ * Download file from URL - Promise version
  */
-function downloadFile(urlString, filePath, callback) {
-  const protocol = urlString.startsWith('https') ? https : http;
-  const timeoutMs = 10000; // 10 second timeout
-  let fileStream = null;
+function downloadFilePromise(urlString, filePath) {
+  return new Promise((resolve, reject) => {
+    const protocol = urlString.startsWith('https') ? https : http;
+    const timeoutMs = 30000; // 30 second timeout
+    let fileStream = null;
+    let isResolved = false;
 
-  try {
-    const request = protocol.get(urlString, { timeout: timeoutMs }, (response) => {
-      // Handle redirects
-      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-        return downloadFile(response.headers.location, filePath, callback);
-      }
+    try {
+      const request = protocol.get(urlString, { timeout: timeoutMs }, (response) => {
+        // Handle redirects
+        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+          if (fileStream) fileStream.destroy();
+          return downloadFilePromise(response.headers.location, filePath)
+            .then(resolve)
+            .catch(reject);
+        }
 
-      if (response.statusCode !== 200) {
-        throw new Error(`HTTP ${response.statusCode}`);
-      }
+        if (response.statusCode !== 200) {
+          if (fileStream) fileStream.destroy();
+          fs.unlink(filePath, () => {});
+          const err = new Error(`HTTP ${response.statusCode} - Failed to download from CDN`);
+          if (!isResolved) {
+            isResolved = true;
+            reject(err);
+          }
+          return;
+        }
 
-      fileStream = fs.createWriteStream(filePath);
-      response.pipe(fileStream);
+        fileStream = fs.createWriteStream(filePath);
 
-      fileStream.on('finish', () => {
-        fileStream.close();
-        callback(null);
+        response.on('error', (err) => {
+          if (fileStream) fileStream.destroy();
+          fs.unlink(filePath, () => {});
+          if (!isResolved) {
+            isResolved = true;
+            reject(err);
+          }
+        });
+
+        fileStream.on('error', (err) => {
+          if (fileStream) fileStream.destroy();
+          fs.unlink(filePath, () => {});
+          if (!isResolved) {
+            isResolved = true;
+            reject(err);
+          }
+        });
+
+        fileStream.on('finish', () => {
+          fileStream.close();
+          if (!isResolved) {
+            isResolved = true;
+            resolve();
+          }
+        });
+
+        response.pipe(fileStream);
       });
-    });
 
-    request.on('error', (error) => {
-      if (fileStream) fileStream.destroy();
-      fs.unlink(filePath, () => {}); // Delete partial file
-      callback(error);
-    });
+      request.on('error', (err) => {
+        if (fileStream) fileStream.destroy();
+        fs.unlink(filePath, () => {});
+        if (!isResolved) {
+          isResolved = true;
+          reject(err);
+        }
+      });
 
-    request.on('timeout', () => {
-      request.destroy();
+      request.on('timeout', () => {
+        request.destroy();
+        if (fileStream) fileStream.destroy();
+        fs.unlink(filePath, () => {});
+        if (!isResolved) {
+          isResolved = true;
+          reject(new Error('Download timeout (30s)'));
+        }
+      });
+
+    } catch (error) {
       if (fileStream) fileStream.destroy();
       fs.unlink(filePath, () => {});
-      callback(new Error('Download timeout'));
-    });
-
-  } catch (error) {
-    if (fileStream) fileStream.destroy();
-    fs.unlink(filePath, () => {});
-    callback(error);
-  }
+      if (!isResolved) {
+        isResolved = true;
+        reject(error);
+      }
+    }
+  });
 }
 
 /**
@@ -132,7 +182,7 @@ function injectLocalLink(indexHtmlPath, localReference) {
   }
 
   // Remove old CDN link if exists (regex on single line)
-  const cdnLinkRegex = /<link[^>]*href=['"]https?:\/\/[^'"]*['"][^>]*>/g;
+  const cdnLinkRegex = /<link[^>]*href=['"]https?:\/\/[^'"]*['"]*>/g;
   content = content.replace(cdnLinkRegex, '');
 
   // Add link tag before </head>
