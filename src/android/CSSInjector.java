@@ -2,6 +2,7 @@ package com.vnkhoado.cordova.changeappinfo;
 
 import android.util.Base64;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.CordovaWebView;
@@ -18,11 +19,17 @@ public class CSSInjector extends CordovaPlugin {
 
     private static final String TAG = "CSSInjector";
     private static final String CSS_FILE_PATH = "www/assets/cdn-styles.css";
+    private String cachedCSS = null;
 
     @Override
     public void pluginInitialize() {
         super.pluginInitialize();
-        injectCSSIntoWebView();
+        
+        // Pre-load CSS content
+        cachedCSS = readCSSFromAssets();
+        
+        // Set up WebView client to inject CSS on page load
+        setupWebViewClient();
     }
 
     @Override
@@ -36,13 +43,49 @@ public class CSSInjector extends CordovaPlugin {
     }
 
     /**
+     * Setup WebViewClient to inject CSS on every page load
+     */
+    private void setupWebViewClient() {
+        cordova.getActivity().runOnUiThread(() -> {
+            CordovaWebView cordovaWebView = this.webView;
+            if (cordovaWebView != null && cordovaWebView.getView() instanceof WebView) {
+                WebView webView = (WebView) cordovaWebView.getView();
+                
+                // Get current WebViewClient
+                WebViewClient currentClient = new WebViewClient() {
+                    @Override
+                    public void onPageFinished(WebView view, String url) {
+                        super.onPageFinished(view, url);
+                        // Inject CSS when page finishes loading
+                        injectCSSIntoWebView();
+                        android.util.Log.d(TAG, "CSS injected on page finished: " + url);
+                    }
+                    
+                    @Override
+                    public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                        super.onPageStarted(view, url, favicon);
+                        android.util.Log.d(TAG, "Page started: " + url);
+                    }
+                };
+                
+                webView.setWebViewClient(currentClient);
+                android.util.Log.d(TAG, "WebViewClient configured for CSS injection");
+            }
+        });
+    }
+
+    /**
      * Read CSS from file and inject into WebView
      */
     private void injectCSSIntoWebView() {
         cordova.getActivity().runOnUiThread(() -> {
             try {
-                // Read CSS content from assets with UTF-8 encoding
-                String cssContent = readCSSFromAssets();
+                // Use cached CSS or read from file
+                String cssContent = cachedCSS;
+                if (cssContent == null || cssContent.isEmpty()) {
+                    cssContent = readCSSFromAssets();
+                    cachedCSS = cssContent;
+                }
                 
                 if (cssContent != null && !cssContent.isEmpty()) {
                     // Inject CSS into WebView
@@ -109,7 +152,7 @@ public class CSSInjector extends CordovaPlugin {
                    "      var style = document.createElement('style');" +
                    "      style.id = 'cdn-injected-styles';" +
                    "      style.textContent = decodedCSS;" +
-                   "      document.head.appendChild(style);" +
+                   "      (document.head || document.documentElement).appendChild(style);" +
                    "      console.log('CSS injected by native code (Base64)');" +
                    "    }" +
                    "  } catch(e) {" +
@@ -144,7 +187,7 @@ public class CSSInjector extends CordovaPlugin {
                "      var style = document.createElement('style');" +
                "      style.id = 'cdn-injected-styles';" +
                "      style.textContent = '" + escapedCSS + "';" +
-               "      document.head.appendChild(style);" +
+               "      (document.head || document.documentElement).appendChild(style);" +
                "      console.log('CSS injected by native code (escaped)');" +
                "    }" +
                "  } catch(e) {" +
