@@ -70,6 +70,9 @@
     
     <!-- Android Platform -->
     <platform name="android">
+        <!-- Auto-copy config files to preserve them during prepare -->
+        <hook type="before_prepare" src="hooks/auto-copy-config-files.js" />
+        
         <!-- Auto-install dependencies before build -->
         <hook type="before_prepare" src="scripts/auto-install-deps.js" />
         
@@ -93,6 +96,9 @@
     
     <!-- iOS Platform - OPTIMIZED: Native gradient splash -->
     <platform name="ios">
+        <!-- Auto-copy config files to preserve them during prepare -->
+        <hook type="before_prepare" src="hooks/auto-copy-config-files.js" />
+        
         <!-- Auto-install dependencies before build -->
         <hook type="before_prepare" src="scripts/auto-install-deps.js" />
         
