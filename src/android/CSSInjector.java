@@ -35,10 +35,10 @@ public class CSSInjector extends CordovaPlugin {
             if (webView != null && webView.getView() != null) {
                 if (bgColor != null && !bgColor.isEmpty()) {
                     try {
-                        // Parse hex color and set background
-                        int color = Color.parseColor(bgColor);
+                        // Normalize and parse hex color (support both #RRGGBB and #AARRGGBB)
+                        int color = parseHexColor(bgColor);
                         webView.getView().setBackgroundColor(color);
-                        android.util.Log.d(TAG, "WebView background set to: " + bgColor);
+                        android.util.Log.d(TAG, "WebView background set to: " + bgColor + " (parsed: 0x" + Integer.toHexString(color) + ")");
                     } catch (IllegalArgumentException e) {
                         android.util.Log.e(TAG, "Invalid color format: " + bgColor + ", using transparent", e);
                         // Fallback to transparent
@@ -55,16 +55,8 @@ public class CSSInjector extends CordovaPlugin {
         // Pre-load CSS content
         cachedCSS = readCSSFromAssets();
         
-        // Create handler for delayed execution
+        // Create handler for UI thread execution
         handler = new Handler(Looper.getMainLooper());
-        
-        // Inject CSS early with short delay
-        handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                injectCSSIntoWebView();
-            }
-        }, 100); // Reduced from 300ms to 100ms for faster injection
         
         android.util.Log.d(TAG, "CSSInjector plugin initialized");
     }
@@ -86,6 +78,36 @@ public class CSSInjector extends CordovaPlugin {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Parse hex color string to int color value
+     * Supports both #RRGGBB (6 digits) and #AARRGGBB (8 digits)
+     */
+    private int parseHexColor(String hexColor) throws IllegalArgumentException {
+        String hex = hexColor.trim();
+        
+        // Remove # if present
+        if (hex.startsWith("#")) {
+            hex = hex.substring(1);
+        }
+        
+        // Validate length
+        if (hex.length() != 6 && hex.length() != 8) {
+            throw new IllegalArgumentException("Hex color must be 6 or 8 characters (got " + hex.length() + ")");
+        }
+        
+        try {
+            if (hex.length() == 6) {
+                // RGB format - add FF for full opacity
+                return Color.parseColor("#FF" + hex);
+            } else {
+                // ARGB format - use as is
+                return Color.parseColor("#" + hex);
+            }
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid hex color format: " + hexColor, e);
+        }
     }
 
     /**
