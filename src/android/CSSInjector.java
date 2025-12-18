@@ -2,10 +2,10 @@ package com.vnkhoado.cordova.changeappinfo;
 
 import android.util.Base64;
 import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.CordovaWebView;
+import org.apache.cordova.engine.SystemWebViewEngine;
 import org.json.JSONArray;
 import org.json.JSONException;
 
@@ -20,6 +20,7 @@ public class CSSInjector extends CordovaPlugin {
     private static final String TAG = "CSSInjector";
     private static final String CSS_FILE_PATH = "www/assets/cdn-styles.css";
     private String cachedCSS = null;
+    private boolean isSetup = false;
 
     @Override
     public void pluginInitialize() {
@@ -28,8 +29,16 @@ public class CSSInjector extends CordovaPlugin {
         // Pre-load CSS content
         cachedCSS = readCSSFromAssets();
         
-        // Set up WebView client to inject CSS on page load
-        setupWebViewClient();
+        android.util.Log.d(TAG, "CSSInjector plugin initialized");
+    }
+
+    @Override
+    public void onPageFinished(String url) {
+        super.onPageFinished(url);
+        
+        // Inject CSS when page finishes loading
+        injectCSSIntoWebView();
+        android.util.Log.d(TAG, "CSS injected on page finished: " + url);
     }
 
     @Override
@@ -40,38 +49,6 @@ public class CSSInjector extends CordovaPlugin {
             return true;
         }
         return false;
-    }
-
-    /**
-     * Setup WebViewClient to inject CSS on every page load
-     */
-    private void setupWebViewClient() {
-        cordova.getActivity().runOnUiThread(() -> {
-            CordovaWebView cordovaWebView = this.webView;
-            if (cordovaWebView != null && cordovaWebView.getView() instanceof WebView) {
-                WebView webView = (WebView) cordovaWebView.getView();
-                
-                // Get current WebViewClient
-                WebViewClient currentClient = new WebViewClient() {
-                    @Override
-                    public void onPageFinished(WebView view, String url) {
-                        super.onPageFinished(view, url);
-                        // Inject CSS when page finishes loading
-                        injectCSSIntoWebView();
-                        android.util.Log.d(TAG, "CSS injected on page finished: " + url);
-                    }
-                    
-                    @Override
-                    public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                        super.onPageStarted(view, url, favicon);
-                        android.util.Log.d(TAG, "Page started: " + url);
-                    }
-                };
-                
-                webView.setWebViewClient(currentClient);
-                android.util.Log.d(TAG, "WebViewClient configured for CSS injection");
-            }
-        });
     }
 
     /**
@@ -89,10 +66,10 @@ public class CSSInjector extends CordovaPlugin {
                 
                 if (cssContent != null && !cssContent.isEmpty()) {
                     // Inject CSS into WebView
-                    CordovaWebView webView = this.webView;
-                    if (webView != null) {
+                    CordovaWebView cordovaWebView = this.webView;
+                    if (cordovaWebView != null) {
                         String javascript = buildCSSInjectionScript(cssContent);
-                        webView.loadUrl("javascript:" + javascript);
+                        cordovaWebView.loadUrl("javascript:" + javascript);
                         android.util.Log.d(TAG, "CSS injected successfully (" + cssContent.length() + " bytes)");
                     }
                 } else {
