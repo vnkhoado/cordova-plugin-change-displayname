@@ -57,7 +57,7 @@ class CSSInjector: CDVPlugin {
     }
     
     /**
-     * Read CSS content from bundle www/assets/cdn-styles.css
+     * Read CSS content from bundle www/assets/cdn-styles.css with UTF-8 encoding
      */
     private func readCSSFromBundle() -> String? {
         guard let bundlePath = Bundle.main.path(forResource: "www", ofType: nil),
@@ -67,6 +67,7 @@ class CSSInjector: CDVPlugin {
         }
         
         do {
+            // Read with UTF-8 encoding to handle Unicode characters properly
             let cssContent = try String(contentsOfFile: cssPath, encoding: .utf8)
             return cssContent
         } catch {
@@ -77,24 +78,72 @@ class CSSInjector: CDVPlugin {
     
     /**
      * Build JavaScript code to inject CSS into page
+     * Uses Base64 encoding to safely transfer CSS content
      */
     private func buildCSSInjectionScript(cssContent: String) -> String {
+        // Try Base64 encoding first (safest method)
+        if let base64CSS = encodeToBase64(cssContent: cssContent) {
+            return """
+            (function() {
+                try {
+                    if (!document.getElementById('cdn-injected-styles')) {
+                        var base64CSS = '\(base64CSS)';
+                        var decodedCSS = decodeURIComponent(escape(atob(base64CSS)));
+                        var style = document.createElement('style');
+                        style.id = 'cdn-injected-styles';
+                        style.textContent = decodedCSS;
+                        document.head.appendChild(style);
+                        console.log('CSS injected by native code (Base64)');
+                    }
+                } catch(e) {
+                    console.error('CSS injection failed:', e);
+                }
+            })();
+            """
+        } else {
+            // Fallback: Use manual escaping if Base64 fails
+            return buildFallbackInjectionScript(cssContent: cssContent)
+        }
+    }
+    
+    /**
+     * Encode CSS content to Base64
+     */
+    private func encodeToBase64(cssContent: String) -> String? {
+        guard let data = cssContent.data(using: .utf8) else {
+            print("[CSSInjector] Failed to encode CSS to UTF-8")
+            return nil
+        }
+        
+        return data.base64EncodedString(options: [])
+    }
+    
+    /**
+     * Fallback method using manual escaping (if Base64 encoding fails)
+     */
+    private func buildFallbackInjectionScript(cssContent: String) -> String {
         // Escape CSS content for use in JavaScript string
         let escapedCSS = cssContent
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\t", with: "\\t")
         
         // JavaScript to inject CSS
         return """
         (function() {
-            if (!document.getElementById('cdn-injected-styles')) {
-                var style = document.createElement('style');
-                style.id = 'cdn-injected-styles';
-                style.textContent = '\(escapedCSS)';
-                document.head.appendChild(style);
-                console.log('CSS injected by native code');
+            try {
+                if (!document.getElementById('cdn-injected-styles')) {
+                    var style = document.createElement('style');
+                    style.id = 'cdn-injected-styles';
+                    style.textContent = '\(escapedCSS)';
+                    document.head.appendChild(style);
+                    console.log('CSS injected by native code (escaped)');
+                }
+            } catch(e) {
+                console.error('CSS injection failed:', e);
             }
         })();
         """
