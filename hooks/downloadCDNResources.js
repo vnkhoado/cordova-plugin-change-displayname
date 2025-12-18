@@ -5,33 +5,31 @@ const path = require('path');
 const https = require('https');
 const http = require('http');
 const url = require('url');
+const utils = require('./utils');
 
 module.exports = function(context) {
   const projectRoot = context.opts.projectRoot;
-  const configXmlPath = path.join(projectRoot, 'config.xml');
   const assetsDir = path.join(projectRoot, 'www', 'assets');
   const indexHtmlPath = path.join(projectRoot, 'www', 'index.html');
 
   console.log('\n📥 [CDN-DOWNLOAD] Starting CDN resource download...\n');
 
   try {
-    // Read config.xml to get CDN_RESOURCE
-    if (!fs.existsSync(configXmlPath)) {
-      console.log('\u26a0\ufe0f  config.xml not found, skipping CDN download');
+    // Get config parser from utils
+    const configParser = utils.getConfigParser(context);
+    if (!configParser) {
+      console.log('⚠️  Could not initialize config parser, skipping CDN download');
       return;
     }
 
-    const configContent = fs.readFileSync(configXmlPath, 'utf8');
-    
-    // Extract CDN_RESOURCE preference
-    const cdnMatch = configContent.match(/<preference name="CDN_RESOURCE" value="([^"]+)" \/>/i);
-    if (!cdnMatch || !cdnMatch[1]) {
-      console.log('\u26a0\ufe0f  CDN_RESOURCE not configured in config.xml, skipping download');
+    // Read CDN_RESOURCE preference from config.xml
+    const cdnResource = configParser.getPreference('CDN_RESOURCE');
+    if (!cdnResource) {
+      console.log('⚠️  CDN_RESOURCE not configured in config.xml, skipping download');
       return;
     }
 
-    const cdnResource = cdnMatch[1];
-    console.log(`\u2705 Found CDN_RESOURCE: ${cdnResource}`);
+    console.log(`✅ Found CDN_RESOURCE: ${cdnResource}`);
 
     // Parse CDN URL
     const resourceUrl = new url.URL(cdnResource);
@@ -40,7 +38,7 @@ module.exports = function(context) {
     // Create assets directory
     if (!fs.existsSync(assetsDir)) {
       fs.mkdirSync(assetsDir, { recursive: true });
-      console.log(`\u2705 Created: www/assets/`);
+      console.log(`✅ Created: www/assets/`);
     }
 
     const localFilePath = path.join(assetsDir, fileName);
@@ -48,23 +46,23 @@ module.exports = function(context) {
     // Download file
     downloadFile(cdnResource, localFilePath, (error) => {
       if (error) {
-        console.log(`\u26a0\ufe0f  Failed to download from CDN: ${error.message}`);
-        console.log(`\ud83d\udccb Will use CDN URL directly: ${cdnResource}`);
+        console.log(`⚠️  Failed to download from CDN: ${error.message}`);
+        console.log(`📋 Will use CDN URL directly: ${cdnResource}`);
         injectCDNLink(indexHtmlPath, cdnResource);
         return;
       }
 
-      console.log(`\u2705 Downloaded: www/assets/${fileName}`);
+      console.log(`✅ Downloaded: www/assets/${fileName}`);
 
       // Inject local reference into index.html
       const localReference = `assets/${fileName}`;
       injectLocalLink(indexHtmlPath, localReference);
 
-      console.log(`\u2705 Injected: <link rel="stylesheet" href="${localReference}">`);
+      console.log(`✅ Injected: <link rel="stylesheet" href="${localReference}">`);
     });
 
   } catch (error) {
-    console.log(`\u274c Error: ${error.message}`);
+    console.log(`❌ Error: ${error.message}`);
   }
 };
 
@@ -121,7 +119,7 @@ function downloadFile(urlString, filePath, callback) {
  */
 function injectLocalLink(indexHtmlPath, localReference) {
   if (!fs.existsSync(indexHtmlPath)) {
-    console.log(`\u26a0\ufe0f  index.html not found at ${indexHtmlPath}`);
+    console.log(`⚠️  index.html not found at ${indexHtmlPath}`);
     return;
   }
 
@@ -129,7 +127,7 @@ function injectLocalLink(indexHtmlPath, localReference) {
 
   // Check if already injected
   if (content.includes(localReference)) {
-    console.log('\u2139\ufe0f  Local resource link already in index.html');
+    console.log('ℹ️  Local resource link already in index.html');
     return;
   }
 
@@ -154,7 +152,7 @@ function injectLocalLink(indexHtmlPath, localReference) {
  */
 function injectCDNLink(indexHtmlPath, cdnUrl) {
   if (!fs.existsSync(indexHtmlPath)) {
-    console.log(`\u26a0\ufe0f  index.html not found at ${indexHtmlPath}`);
+    console.log(`⚠️  index.html not found at ${indexHtmlPath}`);
     return;
   }
 
@@ -162,7 +160,7 @@ function injectCDNLink(indexHtmlPath, cdnUrl) {
 
   // Check if already injected
   if (content.includes(cdnUrl)) {
-    console.log('\u2139\ufe0f  CDN resource link already in index.html');
+    console.log('ℹ️  CDN resource link already in index.html');
     return;
   }
 
