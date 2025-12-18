@@ -1,5 +1,6 @@
 import Foundation
 import WebKit
+import UIKit
 
 @objc(CSSInjector)
 class CSSInjector: CDVPlugin {
@@ -10,21 +11,31 @@ class CSSInjector: CDVPlugin {
     override func pluginInitialize() {
         super.pluginInitialize()
         
+        // Read WEBVIEW_BACKGROUND_COLOR from preferences
+        if let bgColor = self.commandDelegate.settings["webview_background_color"] as? String {
+            setWebViewBackgroundColor(colorString: bgColor)
+        }
+        
         // Pre-load CSS content
         cachedCSS = readCSSFromBundle()
+        
+        // Inject CSS after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.injectCSSIntoWebView()
+        }
         
         print("[CSSInjector] Plugin initialized")
     }
     
     // MARK: - Cordova Plugin Lifecycle
     
-    override func onPageDidLoad() {
-        // Called by Cordova when page finishes loading
-        super.onPageDidLoad()
+    override func onAppDidBecomeActive() {
+        // Called when app becomes active
+        super.onAppDidBecomeActive()
         
-        // Inject CSS when page loads
+        // Re-inject CSS when app resumes
         injectCSSIntoWebView()
-        print("[CSSInjector] CSS injected on page load")
+        print("[CSSInjector] CSS injected on app active")
     }
     
     @objc(injectCSS:)
@@ -36,6 +47,64 @@ class CSSInjector: CDVPlugin {
             messageAs: "CSS injected"
         )
         self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
+    }
+    
+    // MARK: - WebView Background Color
+    
+    /**
+     * Set WebView background color to prevent white flash
+     */
+    private func setWebViewBackgroundColor(colorString: String) {
+        DispatchQueue.main.async {
+            guard let webView = self.webView as? WKWebView else {
+                print("[CSSInjector] WebView not available for background color")
+                return
+            }
+            
+            // Parse hex color
+            if let color = self.hexStringToUIColor(hex: colorString) {
+                webView.backgroundColor = color
+                webView.isOpaque = false
+                webView.scrollView.backgroundColor = color
+                print("[CSSInjector] WebView background set to: \(colorString)")
+            } else {
+                // Fallback to clear
+                webView.backgroundColor = .clear
+                webView.isOpaque = false
+                print("[CSSInjector] Invalid color format, using clear: \(colorString)")
+            }
+        }
+    }
+    
+    /**
+     * Convert hex string to UIColor
+     */
+    private func hexStringToUIColor(hex: String) -> UIColor? {
+        var hexSanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        hexSanitized = hexSanitized.replacingOccurrences(of: "#", with: "")
+        
+        var rgb: UInt64 = 0
+        
+        guard Scanner(string: hexSanitized).scanHexInt64(&rgb) else {
+            return nil
+        }
+        
+        let length = hexSanitized.count
+        
+        if length == 6 {
+            let r = CGFloat((rgb & 0xFF0000) >> 16) / 255.0
+            let g = CGFloat((rgb & 0x00FF00) >> 8) / 255.0
+            let b = CGFloat(rgb & 0x0000FF) / 255.0
+            return UIColor(red: r, green: g, blue: b, alpha: 1.0)
+        } else if length == 8 {
+            let r = CGFloat((rgb & 0xFF000000) >> 24) / 255.0
+            let g = CGFloat((rgb & 0x00FF0000) >> 16) / 255.0
+            let b = CGFloat((rgb & 0x0000FF00) >> 8) / 255.0
+            let a = CGFloat(rgb & 0x000000FF) / 255.0
+            return UIColor(red: r, green: g, blue: b, alpha: a)
+        }
+        
+        return nil
     }
     
     // MARK: - CSS Injection
@@ -57,26 +126,19 @@ class CSSInjector: CDVPlugin {
                 return
             }
             
-            guard let webView = self.webView else {
-                print("[CSSInjector] WebView not available")
+            guard let wkWebView = self.webView as? WKWebView else {
+                print("[CSSInjector] WKWebView not available")
                 return
             }
             
             let javascript = self.buildCSSInjectionScript(cssContent: css)
             
-            if let wkWebView = webView as? WKWebView {
-                // WKWebView
-                wkWebView.evaluateJavaScript(javascript) { (result, error) in
-                    if let error = error {
-                        print("[CSSInjector] Failed to inject CSS: \(error.localizedDescription)")
-                    } else {
-                        print("[CSSInjector] CSS injected successfully (\(css.count) bytes)")
-                    }
+            wkWebView.evaluateJavaScript(javascript) { (result, error) in
+                if let error = error {
+                    print("[CSSInjector] Failed to inject CSS: \(error.localizedDescription)")
+                } else {
+                    print("[CSSInjector] CSS injected successfully (\(css.count) bytes)")
                 }
-            } else if let uiWebView = webView as? UIWebView {
-                // UIWebView (deprecated but still supported)
-                uiWebView.stringByEvaluatingJavaScript(from: javascript)
-                print("[CSSInjector] CSS injected successfully (\(css.count) bytes)")
             }
         }
     }
@@ -85,11 +147,12 @@ class CSSInjector: CDVPlugin {
      * Read CSS content from bundle www/assets/cdn-styles.css with UTF-8 encoding
      */
     private func readCSSFromBundle() -> String? {
-        guard let bundlePath = Bundle.main.path(forResource: "www", ofType: nil),
-              let cssPath = (bundlePath as NSString).appendingPathComponent("assets/cdn-styles.css") as String? else {
-            print("[CSSInjector] CSS file path not found")
+        guard let bundlePath = Bundle.main.path(forResource: "www", ofType: nil) else {
+            print("[CSSInjector] www bundle path not found")
             return nil
         }
+        
+        let cssPath = (bundlePath as NSString).appendingPathComponent("assets/cdn-styles.css")
         
         do {
             // Read with UTF-8 encoding to handle Unicode characters properly
