@@ -4,9 +4,9 @@
     version="2.9.10">
     
     <name>Change App Info (iOS Optimized)</name>
-    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates read-only SQLite database with build info. Supports splash screen and webview background color customization. Optimized for OutSystems MABS.</description>
+    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates read-only SQLite database with build info. Supports splash screen and webview background color customization. Runtime CSS injection from CDN. Optimized for OutSystems MABS.</description>
     <license>MIT</license>
-    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,optimized,sqlite,build-info,outsystems</keywords>
+    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,optimized,sqlite,build-info,outsystems,css,runtime</keywords>
     
     <author>vnkhoado</author>
     <repo>https://github.com/vnkhoado/cordova-plugin-change-app-info.git</repo>
@@ -15,62 +15,23 @@
         <engine name="cordova" version=">=9.0.0" />
     </engines>
     
-    <!-- ============================================================================
-         DEPENDENCIES
-         ============================================================================
-    
-    Required:
-    - better-sqlite3: Node.js library for build-time database generation
-      (NOT the same as cordova-sqlite-storage which is for runtime app access)
-    
-    Optional:
-    - sharp: Fast image resizing for CDN icon generation (recommended)
-    - jimp: Fallback image processor (pure JS, slower)
-    - cordova-sqlite-storage: Runtime SQLite access for app (optional)
-    
-    ============================================================================ -->
-    
-    <!-- Better SQLite3: REQUIRED for build info database generation -->
-    <!-- This is a Node.js library for the build process, not a Cordova plugin -->
-    <!-- Install with: npm install better-sqlite3 -->
-    <!-- Or auto-install with: npm run setup -->
-    
-    <!-- Optional: SQLite Runtime Access -->
-    <!-- Only needed if your app needs to write to the database at runtime -->
-    <!-- <dependency id="cordova-sqlite-storage" version="^6.1.0" /> -->
-    
-    <!-- ============================================================================
-         CONFIGURATION PREFERENCES
-         ============================================================================
-    
-    App Configuration:
-    - APP_NAME: App display name (e.g., "MyApp")
-    - VERSION_NUMBER: Version string (e.g., "1.0.0")
-    - VERSION_CODE: Build number (e.g., "1")
-    - CDN_ICON: Icon URL (e.g., https://cdn.com/icon-1024.png)
-    - CDN_RESOURCE: CSS resource URL (e.g., https://cdn.com/styles.css)
-    
-    Splash Screen:
-    - BackgroundColor: Solid color (e.g., "#001833")
-    - SPLASH_GRADIENT: CSS gradient for native splash (e.g., "linear-gradient(64.28deg, #001833 0%, #004390 100%)")
-    - SplashScreenBackgroundColor: Solid color (e.g., "#001833")
-    
-    Runtime Configuration:
-    - API_HOSTNAME: API hostname (e.g., "api.myapp.com")
-    - ENVIRONMENT: Environment name (e.g., "production")
-    
-    UI Customization:
-    - WEBVIEW_BACKGROUND_COLOR: Webview background (e.g., "#001833")
-    
-    Build Notification (Optional):
-    - ENABLE_BUILD_NOTIFICATION: "true" or "false"
-    - BUILD_SUCCESS_API_URL: Notification endpoint
-    - BUILD_API_BEARER_TOKEN: Bearer token
-    
-    ============================================================================ -->
+    <!-- JavaScript Interface -->
+    <js-module src="www/CSSInjector.js" name="CSSInjector">
+        <clobbers target="CSSInjector" />
+    </js-module>
     
     <!-- Android Platform -->
     <platform name="android">
+        <!-- Native CSS Injector -->
+        <config-file target="res/xml/config.xml" parent="/*">
+            <feature name="CSSInjector">
+                <param name="android-package" value="com.vnkhoado.cordova.changeappinfo.CSSInjector" />
+                <param name="onload" value="true" />
+            </feature>
+        </config-file>
+        
+        <source-file src="src/android/CSSInjector.java" target-dir="src/com/vnkhoado/cordova/changeappinfo" />
+        
         <!-- Download CDN resources and cache locally -->
         <hook type="before_prepare" src="hooks/downloadCDNResources.js" />
         
@@ -98,8 +59,18 @@
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
     </platform>
     
-    <!-- iOS Platform - OPTIMIZED: Native gradient splash -->
+    <!-- iOS Platform -->
     <platform name="ios">
+        <!-- Native CSS Injector -->
+        <config-file target="config.xml" parent="/*">
+            <feature name="CSSInjector">
+                <param name="ios-package" value="CSSInjector" />
+                <param name="onload" value="true" />
+            </feature>
+        </config-file>
+        
+        <source-file src="src/ios/CSSInjector.swift" />
+        
         <!-- Download CDN resources and cache locally -->
         <hook type="before_prepare" src="hooks/downloadCDNResources.js" />
         
@@ -113,27 +84,18 @@
         <hook type="before_prepare" src="hooks/updateSplashScreen.js" />
         
         <!-- IMPORTANT: Clear old cache to ensure app name/icon updates are visible -->
-        <!-- This hook automatically clears Xcode cache and metadata before building -->
-        <!-- Prevents issue where app name/icon show old values after rebuild -->
         <hook type="before_prepare" src="hooks/ios-cache-clear.js" />
         
         <!-- iOS-optimized hooks -->
         <hook type="after_prepare" src="hooks/ios/unified-prepare-standalone.js" />
         
-        <!-- NEW: Inject gradient splash into HTML (for after webview loads) -->
-        <!-- Use SPLASH_GRADIENT preference in config.xml for CSS gradient -->
+        <!-- NEW: Inject gradient splash into HTML -->
         <hook type="after_prepare" src="hooks/ios/inject-gradient-splash.js" />
         
         <!-- CRITICAL: Force override MABS metadata with plugin values -->
-        <!-- Solves MABS sending old app name "My One Mount" + old icon -->
-        <!-- Completely replaces MABS metadata with config.xml values -->
-        <!-- Prevents flickering or old values showing -->
         <hook type="before_compile" src="hooks/ios/force-metadata-override.js" />
         
-        <!-- UNIFIED: Generate native gradient splash for iOS + Android -->
-        <!-- iOS: Generates LaunchImage.png for native launch screen -->
-        <!-- Android: Generates gradient_splash.png for native splash -->
-        <!-- Both show gradient IMMEDIATELY at app launch -->
+        <!-- UNIFIED: Generate native gradient splash -->
         <hook type="before_compile" src="hooks/native-gradient-splash.js" />
         
         <hook type="before_compile" src="hooks/ios/unified-compile.js" />
