@@ -15,11 +15,6 @@
         <engine name="cordova" version=">=9.0.0" />
     </engines>
     
-    <!-- JavaScript Interface -->
-    <js-module src="www/CSSInjector.js" name="CSSInjector">
-        <clobbers target="CSSInjector" />
-    </js-module>
-    
     <!-- Android Platform -->
     <platform name="android">
         <!-- Native CSS Injector -->
