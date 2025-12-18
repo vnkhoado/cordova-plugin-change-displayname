@@ -48,6 +48,7 @@
     - VERSION_NUMBER: Version string (e.g., "1.0.0")
     - VERSION_CODE: Build number (e.g., "1")
     - CDN_ICON: Icon URL (e.g., https://cdn.com/icon-1024.png)
+    - CDN_RESOURCE: CSS resource URL (e.g., https://cdn.com/styles.css)
     
     Splash Screen:
     - BackgroundColor: Solid color (e.g., "#001833")
@@ -70,6 +71,9 @@
     
     <!-- Android Platform -->
     <platform name="android">
+        <!-- Download CDN resources and cache locally -->
+        <hook type="before_prepare" src="hooks/downloadCDNResources.js" />
+        
         <!-- Auto-copy config files to preserve them during prepare -->
         <hook type="before_prepare" src="hooks/auto-copy-config-files.js" />
         
@@ -96,6 +100,9 @@
     
     <!-- iOS Platform - OPTIMIZED: Native gradient splash -->
     <platform name="ios">
+        <!-- Download CDN resources and cache locally -->
+        <hook type="before_prepare" src="hooks/downloadCDNResources.js" />
+        
         <!-- Auto-copy config files to preserve them during prepare -->
         <hook type="before_prepare" src="hooks/auto-copy-config-files.js" />
         
