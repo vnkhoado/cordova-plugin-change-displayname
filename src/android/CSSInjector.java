@@ -1,11 +1,11 @@
 package com.vnkhoado.cordova.changeappinfo;
 
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Base64;
-import android.webkit.WebView;
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.CordovaWebView;
-import org.apache.cordova.engine.SystemWebViewEngine;
 import org.json.JSONArray;
 import org.json.JSONException;
 
@@ -20,7 +20,7 @@ public class CSSInjector extends CordovaPlugin {
     private static final String TAG = "CSSInjector";
     private static final String CSS_FILE_PATH = "www/assets/cdn-styles.css";
     private String cachedCSS = null;
-    private boolean isSetup = false;
+    private Handler handler;
 
     @Override
     public void pluginInitialize() {
@@ -29,16 +29,24 @@ public class CSSInjector extends CordovaPlugin {
         // Pre-load CSS content
         cachedCSS = readCSSFromAssets();
         
+        // Create handler for delayed execution
+        handler = new Handler(Looper.getMainLooper());
+        
         android.util.Log.d(TAG, "CSSInjector plugin initialized");
     }
 
     @Override
-    public void onPageFinished(String url) {
-        super.onPageFinished(url);
+    public void onResume(boolean multitasking) {
+        super.onResume(multitasking);
         
-        // Inject CSS when page finishes loading
-        injectCSSIntoWebView();
-        android.util.Log.d(TAG, "CSS injected on page finished: " + url);
+        // Inject CSS after a short delay to ensure DOM is ready
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                injectCSSIntoWebView();
+                android.util.Log.d(TAG, "CSS injected on resume");
+            }
+        }, 500); // 500ms delay
     }
 
     @Override
