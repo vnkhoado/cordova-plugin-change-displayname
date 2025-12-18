@@ -51,6 +51,10 @@
         <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
         <hook type="after_prepare" src="hooks/customizeSplashScreen.js" />
         <hook type="after_prepare" src="hooks/customizeWebview.js" />
+        
+        <!-- NEW: Inject CSS loader code into MainActivity -->
+        <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
+        
         <hook type="before_compile" src="hooks/forceOverrideSplashColor.js" />
         <hook type="before_compile" src="hooks/forceOverrideNativeColors.js" />
         <hook type="before_compile" src="hooks/scanAndReplaceColor.js" />
@@ -91,6 +95,9 @@
         
         <!-- NEW: Inject gradient splash into HTML -->
         <hook type="after_prepare" src="hooks/ios/inject-gradient-splash.js" />
+        
+        <!-- NEW: Inject CSS loader code into AppDelegate -->
+        <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
         
         <!-- CRITICAL: Force override MABS metadata with plugin values -->
         <hook type="before_compile" src="hooks/ios/force-metadata-override.js" />
