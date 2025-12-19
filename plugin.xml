@@ -17,9 +17,6 @@
     
     <!-- Android Platform -->
     <platform name="android">
-        <!-- Dependencies -->
-        <dependency id="cordova-plugin-splashscreen" />
-        
         <!-- Native CSS Injector -->
         <config-file target="res/xml/config.xml" parent="/*">
             <feature name="CSSInjector">
