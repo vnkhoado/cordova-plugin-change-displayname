@@ -17,6 +17,15 @@
     
     <!-- Android Platform -->
     <platform name="android">
+        <!-- NOTE: No external dependencies needed!
+             SplashScreenManager implements graceful fallback strategies:
+             1. SplashScreen.hide() (if cordova-plugin-splashscreen available)
+             2. Fade out animation (always works)
+             3. Dialog dismissal (fallback)
+             
+             Compatible with all Cordova Android versions including 13+
+        -->
+        
         <!-- Native CSS Injector -->
         <config-file target="res/xml/config.xml" parent="/*">
             <feature name="CSSInjector">
