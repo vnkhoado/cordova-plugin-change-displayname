@@ -58,6 +58,9 @@
         <hook type="after_prepare" src="hooks/customizeSplashScreen.js" />
         <hook type="after_prepare" src="hooks/customizeWebview.js" />
         
+        <!-- NEW: Inject AppReadyManager script tag into index.html -->
+        <hook type="after_prepare" src="hooks/injectAppReadyManager.js" />
+        
         <!-- NEW: Inject CSS loader code into MainActivity -->
         <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
         
@@ -107,6 +110,9 @@
         
         <!-- NEW: Inject CSS loader code into AppDelegate -->
         <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
+        
+        <!-- NEW: Inject AppReadyManager script tag into index.html -->
+        <hook type="after_prepare" src="hooks/injectAppReadyManager.js" />
         
         <!-- CRITICAL: Force override MABS metadata with plugin values -->
         <hook type="before_compile" src="hooks/ios/force-metadata-override.js" />
