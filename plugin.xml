@@ -25,7 +25,18 @@
             </feature>
         </config-file>
         
+        <!-- Splash Screen Manager -->
+        <config-file target="res/xml/config.xml" parent="/*">
+            <feature name="SplashScreenManager">
+                <param name="android-package" value="io.outsystems.android.SplashScreenManager" />
+            </feature>
+        </config-file>
+        
         <source-file src="src/android/CSSInjector.java" target-dir="src/com/vnkhoado/cordova/changeappinfo" />
+        <source-file src="src/android/SplashScreenManager.java" target-dir="src/io/outsystems/android" />
+        
+        <!-- Copy AppReadyManager.js to www -->
+        <asset src="www/js/AppReadyManager.js" target="js/AppReadyManager.js" />
         
         <!-- Download CDN resources and cache locally -->
         <hook type="before_prepare" src="hooks/downloadCDNResources.js" />
@@ -69,6 +80,9 @@
         </config-file>
         
         <source-file src="src/ios/CSSInjector.swift" />
+        
+        <!-- Copy AppReadyManager.js to www -->
+        <asset src="www/js/AppReadyManager.js" target="js/AppReadyManager.js" />
         
         <!-- Download CDN resources and cache locally -->
         <hook type="before_prepare" src="hooks/downloadCDNResources.js" />
