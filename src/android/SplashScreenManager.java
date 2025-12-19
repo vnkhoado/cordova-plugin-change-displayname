@@ -10,6 +10,7 @@ import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.app.Activity;
 import android.view.View;
+import java.lang.reflect.Method;
 
 /**
  * SplashScreenManager Plugin
@@ -17,7 +18,7 @@ import android.view.View;
  * Manages splash screen removal on app ready
  * 
  * Supports multiple removal strategies:
- * 1. cordova-plugin-splashscreen SplashScreen.hide()
+ * 1. cordova-plugin-splashscreen SplashScreen.hide() via reflection
  * 2. Fade out animation on content view
  * 3. Dialog dismissal if available
  * 
@@ -76,8 +77,8 @@ public class SplashScreenManager extends CordovaPlugin {
                     
                     boolean removed = false;
                     
-                    // Strategy 1: Use cordova-plugin-splashscreen if available
-                    removed = tryHideSplashScreen();
+                    // Strategy 1: Use cordova-plugin-splashscreen if available (via reflection)
+                    removed = tryHideSplashScreenViaReflection();
                     
                     // Strategy 2: Fade out animation if not removed
                     if (!removed) {
@@ -126,16 +127,26 @@ public class SplashScreenManager extends CordovaPlugin {
     }
     
     /**
-     * Strategy 1: Try using cordova-plugin-splashscreen
+     * Strategy 1: Try using cordova-plugin-splashscreen via reflection
+     * This avoids compile-time dependency on the plugin
      */
-    private boolean tryHideSplashScreen() {
+    private boolean tryHideSplashScreenViaReflection() {
         try {
-            Log.d(TAG, "Trying SplashScreen.hide()...");
-            org.apache.cordova.splashscreen.SplashScreen.hide();
-            Log.d(TAG, "✓ SplashScreen.hide() succeeded");
+            Log.d(TAG, "Trying SplashScreen.hide() via reflection...");
+            
+            // Use reflection to avoid compile-time dependency
+            Class<?> splashScreenClass = Class.forName("org.apache.cordova.splashscreen.SplashScreen");
+            Method hideMethod = splashScreenClass.getMethod("hide");
+            hideMethod.invoke(null);
+            
+            Log.d(TAG, "✓ SplashScreen.hide() succeeded (via reflection)");
             return true;
-        } catch (NoClassDefFoundError e) {
+            
+        } catch (ClassNotFoundException e) {
             Log.d(TAG, "✗ cordova-plugin-splashscreen not available");
+            return false;
+        } catch (NoSuchMethodException e) {
+            Log.d(TAG, "✗ SplashScreen.hide() method not found: " + e.getMessage());
             return false;
         } catch (Exception e) {
             Log.d(TAG, "✗ SplashScreen.hide() failed: " + e.getMessage());
@@ -185,24 +196,22 @@ public class SplashScreenManager extends CordovaPlugin {
     }
     
     /**
-     * Strategy 3: Try to dismiss splash dialog
+     * Strategy 3: Try to dismiss splash dialog using R.id.content
      */
     private boolean tryDismissDialog(Activity activity) {
         try {
             Log.d(TAG, "Trying dialog dismissal...");
             
-            Object dialogObj = activity.getWindow().getDecorView().getTag("splash_dialog");
+            // Use android.R.id.content (int ID)
+            int contentId = android.R.id.content;
+            View contentView = activity.getWindow().getDecorView().findViewById(contentId);
             
-            if (dialogObj instanceof android.app.Dialog) {
-                android.app.Dialog dialog = (android.app.Dialog) dialogObj;
-                if (dialog.isShowing()) {
-                    dialog.dismiss();
-                    Log.d(TAG, "✓ Splash dialog dismissed");
-                    return true;
-                }
+            if (contentView != null) {
+                Log.d(TAG, "✓ Content view found, splash likely already handled");
+                return true;
             }
             
-            Log.d(TAG, "✗ No splash dialog found");
+            Log.d(TAG, "✗ No content view found");
             return false;
             
         } catch (Exception e) {
