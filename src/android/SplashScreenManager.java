@@ -9,13 +9,16 @@ import android.util.Log;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.app.Activity;
+import android.app.Dialog;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.FrameLayout;
 import java.lang.reflect.Method;
 import java.lang.reflect.Field;
+import android.os.Handler;
 
 /**
  * SplashScreenManager Plugin
@@ -28,6 +31,9 @@ import java.lang.reflect.Field;
  * 3. Set visibility to GONE after fade animation
  * 4. OutSystems-specific splash detection
  * 5. Dialog dismissal if available
+ * 6. Dismiss all active dialogs
+ * 7. Search and hide all window views
+ * 8. OutSystems splash class reflection
  * 
  * Called from JS via:
  *   cordova.exec(
@@ -108,6 +114,29 @@ public class SplashScreenManager extends CordovaPlugin {
                     if (tryDismissDialog(activity)) {
                         strategiesSucceeded++;
                     }
+                    
+                    // Strategy 6: NEW - Dismiss all dialogs
+                    if (tryDismissAllDialogs(activity)) {
+                        strategiesSucceeded++;
+                    }
+                    
+                    // Strategy 7: NEW - Search all window views
+                    if (tryHideAllWindowViews(activity)) {
+                        strategiesSucceeded++;
+                    }
+                    
+                    // Strategy 8: NEW - OutSystems splash class reflection
+                    if (tryOutSystemsSplashReflection()) {
+                        strategiesSucceeded++;
+                    }
+                    
+                    // Strategy 9: AGGRESSIVE - Hide DecorView completely
+                    if (tryAggressiveDecorViewHide(activity)) {
+                        strategiesSucceeded++;
+                    }
+                    
+                    // Strategy 10: LAST RESORT - Delayed forced removal
+                    scheduleDelayedRemoval(activity);
                     
                     splashRemoved = true;
                     
@@ -344,17 +373,19 @@ public class SplashScreenManager extends CordovaPlugin {
                 
                 @Override
                 public void onAnimationEnd(Animation animation) {
-                    Log.d(TAG, "  Fade animation completed - setting visibility to GONE");
-                    // IMPORTANT: Set visibility to GONE after fade completes
-                    decorView.setVisibility(View.GONE);
+                    Log.d(TAG, "  Fade animation completed - hiding views");
                     
-                    // Also try to remove any splash-related layers
+                    // Don't hide DecorView itself - hide children instead
                     if (decorView instanceof ViewGroup) {
                         ViewGroup group = (ViewGroup) decorView;
                         for (int i = group.getChildCount() - 1; i >= 0; i--) {
                             View child = group.getChildAt(i);
                             String childId = getViewIdName(child);
-                            if (childId.contains("splash") || childId.contains("loading")) {
+                            
+                            // Hide anything that looks like splash
+                            if (childId.contains("splash") || 
+                                childId.contains("loading") ||
+                                child instanceof ImageView) {
                                 child.setVisibility(View.GONE);
                                 Log.d(TAG, "  Hidden child view: " + childId);
                             }
@@ -388,6 +419,7 @@ public class SplashScreenManager extends CordovaPlugin {
             
             if (contentView != null) {
                 contentView.setVisibility(View.VISIBLE);
+                contentView.bringToFront();
                 Log.d(TAG, "✓ Strategy 5: Content view made visible");
                 return true;
             }
@@ -399,5 +431,238 @@ public class SplashScreenManager extends CordovaPlugin {
             Log.d(TAG, "✗ Strategy 5: Failed - " + e.getMessage());
             return false;
         }
+    }
+    
+    /**
+     * Strategy 6: NEW - Dismiss all active dialogs
+     */
+    private boolean tryDismissAllDialogs(Activity activity) {
+        try {
+            Log.d(TAG, "Strategy 6: Trying to dismiss all dialogs...");
+            
+            // Try to find dialog field in activity
+            Field[] fields = activity.getClass().getDeclaredFields();
+            boolean dismissed = false;
+            
+            for (Field field : fields) {
+                try {
+                    field.setAccessible(true);
+                    Object value = field.get(activity);
+                    
+                    if (value instanceof Dialog) {
+                        Dialog dialog = (Dialog) value;
+                        if (dialog.isShowing()) {
+                            dialog.dismiss();
+                            Log.d(TAG, "  ✓ Dismissed dialog: " + field.getName());
+                            dismissed = true;
+                        }
+                    }
+                } catch (Exception e) {
+                    // Skip this field
+                }
+            }
+            
+            if (dismissed) {
+                Log.d(TAG, "✓ Strategy 6: Dialogs dismissed");
+                return true;
+            } else {
+                Log.d(TAG, "✗ Strategy 6: No dialogs found");
+                return false;
+            }
+            
+        } catch (Exception e) {
+            Log.d(TAG, "✗ Strategy 6: Failed - " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Strategy 7: NEW - Search and hide all window views
+     */
+    private boolean tryHideAllWindowViews(Activity activity) {
+        try {
+            Log.d(TAG, "Strategy 7: Searching all window views...");
+            
+            Window window = activity.getWindow();
+            if (window == null) {
+                Log.d(TAG, "✗ Strategy 7: Window is null");
+                return false;
+            }
+            
+            View decorView = window.getDecorView();
+            boolean hidden = false;
+            
+            // Try to find and hide splash-related views
+            if (decorView instanceof ViewGroup) {
+                ViewGroup rootGroup = (ViewGroup) decorView;
+                for (int i = 0; i < rootGroup.getChildCount(); i++) {
+                    View child = rootGroup.getChildAt(i);
+                    
+                    // If it's a FrameLayout or LinearLayout at top level, might be splash container
+                    if (child instanceof FrameLayout || child instanceof LinearLayout) {
+                        // Check if it contains an ImageView (likely splash logo)
+                        if (child instanceof ViewGroup) {
+                            ViewGroup container = (ViewGroup) child;
+                            for (int j = 0; j < container.getChildCount(); j++) {
+                                View innerChild = container.getChildAt(j);
+                                if (innerChild instanceof ImageView) {
+                                    // This might be splash container
+                                    Log.d(TAG, "  Found potential splash container with ImageView");
+                                    child.setVisibility(View.GONE);
+                                    hidden = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (hidden) {
+                Log.d(TAG, "✓ Strategy 7: Window views hidden");
+                return true;
+            } else {
+                Log.d(TAG, "✗ Strategy 7: No window views hidden");
+                return false;
+            }
+            
+        } catch (Exception e) {
+            Log.d(TAG, "✗ Strategy 7: Failed - " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Strategy 8: NEW - Try OutSystems splash class via reflection
+     */
+    private boolean tryOutSystemsSplashReflection() {
+        try {
+            Log.d(TAG, "Strategy 8: Trying OutSystems splash class reflection...");
+            
+            // Try common OutSystems splash class names
+            String[] classNames = {
+                "com.outsystems.android.core.SplashScreen",
+                "com.outsystems.android.SplashScreen",
+                "io.outsystems.android.SplashScreen",
+                "com.outsystems.plugins.splashscreen.SplashScreen"
+            };
+            
+            for (String className : classNames) {
+                try {
+                    Class<?> splashClass = Class.forName(className);
+                    Method hideMethod = splashClass.getMethod("hide");
+                    hideMethod.invoke(null);
+                    Log.d(TAG, "✓ Strategy 8: OutSystems splash hidden via " + className);
+                    return true;
+                } catch (ClassNotFoundException e) {
+                    // Try next class
+                } catch (NoSuchMethodException e) {
+                    // Try removeSplash method instead
+                    try {
+                        Class<?> splashClass = Class.forName(className);
+                        Method removeMethod = splashClass.getMethod("removeSplash");
+                        removeMethod.invoke(null);
+                        Log.d(TAG, "✓ Strategy 8: OutSystems splash removed via " + className);
+                        return true;
+                    } catch (Exception ex) {
+                        // Skip
+                    }
+                }
+            }
+            
+            Log.d(TAG, "✗ Strategy 8: No OutSystems splash class found");
+            return false;
+            
+        } catch (Exception e) {
+            Log.d(TAG, "✗ Strategy 8: Failed - " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Strategy 9: AGGRESSIVE - Hide DecorView children aggressively
+     */
+    private boolean tryAggressiveDecorViewHide(Activity activity) {
+        try {
+            Log.d(TAG, "Strategy 9: Aggressive DecorView hiding...");
+            
+            View decorView = activity.getWindow().getDecorView();
+            if (decorView == null || !(decorView instanceof ViewGroup)) {
+                Log.d(TAG, "✗ Strategy 9: DecorView not accessible");
+                return false;
+            }
+            
+            ViewGroup decorGroup = (ViewGroup) decorView;
+            boolean hidden = false;
+            
+            // Hide all children except SystemWebView and ContentFrameLayout
+            for (int i = 0; i < decorGroup.getChildCount(); i++) {
+                View child = decorGroup.getChildAt(i);
+                String className = child.getClass().getSimpleName();
+                
+                // DON'T hide webview or content
+                if (!className.contains("WebView") && 
+                    !className.contains("ContentFrame") &&
+                    !className.contains("ActionBar")) {
+                    
+                    Log.d(TAG, "  Hiding: " + className);
+                    child.setVisibility(View.GONE);
+                    hidden = true;
+                }
+            }
+            
+            if (hidden) {
+                Log.d(TAG, "✓ Strategy 9: Aggressive hiding succeeded");
+                return true;
+            } else {
+                Log.d(TAG, "✗ Strategy 9: Nothing to hide");
+                return false;
+            }
+            
+        } catch (Exception e) {
+            Log.d(TAG, "✗ Strategy 9: Failed - " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Strategy 10: LAST RESORT - Delayed forced removal
+     */
+    private void scheduleDelayedRemoval(final Activity activity) {
+        Log.d(TAG, "Strategy 10: Scheduling delayed forced removal...");
+        
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Log.d(TAG, "Strategy 10: Executing delayed removal...");
+                    
+                    View decorView = activity.getWindow().getDecorView();
+                    if (decorView instanceof ViewGroup) {
+                        ViewGroup decorGroup = (ViewGroup) decorView;
+                        
+                        // Force hide everything except webview
+                        for (int i = 0; i < decorGroup.getChildCount(); i++) {
+                            View child = decorGroup.getChildAt(i);
+                            if (!child.getClass().getSimpleName().contains("WebView")) {
+                                child.setVisibility(View.GONE);
+                                child.setAlpha(0f);
+                            }
+                        }
+                    }
+                    
+                    // Make sure content is visible
+                    View content = activity.findViewById(android.R.id.content);
+                    if (content != null) {
+                        content.setVisibility(View.VISIBLE);
+                        content.bringToFront();
+                    }
+                    
+                    Log.d(TAG, "✓ Strategy 10: Delayed removal executed");
+                    
+                } catch (Exception e) {
+                    Log.e(TAG, "✗ Strategy 10: Failed - " + e.getMessage());
+                }
+            }
+        }, 500); // 500ms delay
     }
 }
