@@ -61,6 +61,10 @@
         
         <!-- Standard build hooks -->
         <hook type="before_prepare" src="hooks/backupAppInfo.js" />
+        
+        <!-- CRITICAL: Remove conflicting strings.xml BEFORE updating cdv_strings.xml -->
+        <hook type="after_prepare" src="hooks/removeConflictingStringsXml.js" />
+        
         <hook type="after_prepare" src="hooks/changeAppInfo.js" />
         <hook type="after_prepare" src="hooks/generateIcons.js" />
         <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
