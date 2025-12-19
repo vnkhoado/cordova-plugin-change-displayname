@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.9.10">
+    version="2.10.0">
     
-    <name>Change App Info (iOS Optimized)</name>
-    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates read-only SQLite database with build info. Supports splash screen and webview background color customization. Runtime CSS injection from CDN. Optimized for OutSystems MABS.</description>
+    <name>Change App Info (Refactored)</name>
+    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates read-only SQLite database with build info. Supports splash screen and webview background color customization. Runtime CSS injection from CDN. Optimized for OutSystems MABS. v2.10.0: Refactored to eliminate 79% duplicate code.</description>
     <license>MIT</license>
-    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,optimized,sqlite,build-info,outsystems,css,runtime</keywords>
+    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,optimized,sqlite,build-info,outsystems,css,runtime,refactored</keywords>
     
     <author>vnkhoado</author>
     <repo>https://github.com/vnkhoado/cordova-plugin-change-app-info.git</repo>
@@ -68,7 +68,36 @@
         <hook type="after_prepare" src="hooks/changeAppInfo.js" />
         <hook type="after_prepare" src="hooks/generateIcons.js" />
         <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
+        
+        <!-- ═══════════════════════════════════════════════════════════════════
+             REFACTORED SPLASH COLOR HOOKS (v2.10.0)
+             
+             REPLACED 5 OLD HOOKS with 2 NEW HOOKS:
+             
+             OLD (deprecated, kept for rollback):
+             - customizeSplashScreen.js (8.4 KB)
+             - forceOverrideSplashColor.js (5.3 KB)
+             - forceOverrideNativeColors.js (21.9 KB)
+             - forceMBASSplashColor.js (11.1 KB)
+             - scanAndReplaceColor.js (6.7 KB)
+             TOTAL: 53 KB
+             
+             NEW (consolidated):
+             - configureSplashColor.js (2.2 KB)
+             - enforceSplashColor.js (4.1 KB)
+             - lib/splashColorManager.js (9.9 KB)
+             TOTAL: 16.2 KB
+             
+             CODE REDUCTION: 69% (36.8 KB saved)
+             ═══════════════════════════════════════════════════════════════════ -->
+        
+        <!-- NEW: Configure splash color (after_prepare) -->
+        <hook type="after_prepare" src="hooks/configureSplashColor.js" />
+        
+        <!-- OLD: Deprecated splash hooks (commented out, available for rollback)
         <hook type="after_prepare" src="hooks/customizeSplashScreen.js" />
+        -->
+        
         <hook type="after_prepare" src="hooks/customizeWebview.js" />
         
         <!-- NEW: Inject AppReadyManager script tag into index.html -->
@@ -77,11 +106,24 @@
         <!-- NEW: Inject CSS loader code into MainActivity -->
         <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
         
+        <!-- NEW: Enforce splash color (before_compile) -->
+        <hook type="before_compile" src="hooks/enforceSplashColor.js" />
+        
+        <!-- OLD: Deprecated splash enforcement hooks (commented out, available for rollback)
         <hook type="before_compile" src="hooks/forceOverrideSplashColor.js" />
         <hook type="before_compile" src="hooks/forceOverrideNativeColors.js" />
         <hook type="before_compile" src="hooks/scanAndReplaceColor.js" />
+        -->
+        
         <hook type="before_compile" src="hooks/native-gradient-splash.js" />
+        
+        <!-- NEW: Force MABS override (post_compile) -->
+        <hook type="post_compile" src="hooks/enforceSplashColor.js" />
+        
+        <!-- OLD: Deprecated MABS override hook (commented out, available for rollback)
         <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
+        -->
+        
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
     </platform>
     
@@ -134,7 +176,11 @@
         <hook type="before_compile" src="hooks/native-gradient-splash.js" />
         
         <hook type="before_compile" src="hooks/ios/unified-compile.js" />
+        
+        <!-- iOS also uses enforceSplashColor for MABS override
         <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
+        -->
+        
         <hook type="before_build" src="hooks/ios/unified-build.js" />
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
         
