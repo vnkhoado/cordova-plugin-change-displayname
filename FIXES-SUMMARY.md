@@ -63,38 +63,25 @@ Strategy 9: ✓ Aggressive hiding succeeded
 
 ## 🏷️ Fix #2: App Name Not Changing (Duplicate Resources Error)
 
-### Problem #1: strings.xml Not Found
+### Problem Evolution
 
-App name vẫn hiển thị tên cũ "My One Mount" thay vì "NexTalent".
+**Issue 1**: strings.xml not found → app name không cập nhật  
+**Issue 2**: Tạo strings.xml mới → Duplicate resources error  
+**Issue 3**: strings.xml từ build cũ còn sót lại → Conflict với cdv_strings.xml
 
-**Log evidence**:
-```
-⚠ strings.xml not found: .../res/values/strings.xml
-```
-
-### Problem #2: Duplicate Resources Error
-
-Sau khi tạo `strings.xml` mới, xuất hiện lỗi build:
-
-```
-ERROR: [string/app_name] cdv_strings.xml [string/app_name] strings.xml: 
-Resource and asset merger: Duplicate resources
-```
-
-### Root Cause
+### Root Cause Analysis
 
 1. **Vấn đề 1**: OutSystems MABS không tạo `strings.xml` ban đầu
 2. **Vấn đề 2**: Cordova đã có `cdv_strings.xml` chứa `app_name`
-3. Plugin tạo thêm `strings.xml` → 2 files cùng define `app_name` → duplicate!
+3. **Vấn đề 3**: Build cũ tạo `strings.xml` → File vẫn còn trong platforms/ folder
+4. **Result**: 2 files cùng define `app_name` → **Gradle mergeDebugResources FAILED**
 
-### Solution
+### Solution (3-Step Fix)
+
+#### Step 1: Use cdv_strings.xml Instead of strings.xml
 
 **File**: `hooks/changeAppInfo.js`  
-**Commits**: 
-- [`c0610f5`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/c0610f5b538d6e5024784d7690a0ace1b3e67d5a) - Initial attempt (created strings.xml)
-- [`48cc845`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/48cc845da87e68cfb7441dfbd07ca1a2d3d9e56d) - **FINAL FIX** (use cdv_strings.xml)
-
-#### Key Solution: Use cdv_strings.xml
+**Commit**: [`48cc845`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/48cc845da87e68cfb7441dfbd07ca1a2d3d9e56d)
 
 ```javascript
 // Priority 1: Use Cordova's default cdv_strings.xml
@@ -103,53 +90,84 @@ const cdvStringsPath = path.join(
   "platforms/android/app/src/main/res/values/cdv_strings.xml"
 );
 
-// Priority 2: Fallback to strings.xml if exists
-const stringsPath = path.join(
-  root,
-  "platforms/android/app/src/main/res/values/strings.xml"
-);
-
 if (fs.existsSync(cdvStringsPath)) {
-  targetPath = cdvStringsPath;  // Use this!
-  console.log('🔍 Using Cordova default: cdv_strings.xml');
-} else if (fs.existsSync(stringsPath)) {
-  targetPath = stringsPath;  // Fallback
-}
-
-// Update app_name in the found file
-const hasAppName = /<string name="app_name">.*?<\/string>/.test(content);
-
-if (hasAppName) {
-  // UPDATE existing
+  // Update app_name in cdv_strings.xml
   content = content.replace(
     /<string name="app_name">.*?<\/string>/,
     `<string name="app_name">${appName}</string>`
   );
-} else {
-  // ADD new entry
-  content = content.replace(
-    "</resources>",
-    `    <string name="app_name">${appName}</string>\n</resources>`
-  );
 }
 ```
 
-### Why This Works
+#### Step 2: Remove Conflicting strings.xml
 
-✅ **NO duplicate files** - Chỉ update file có sẵn  
-✅ **Works with MABS** - cdv_strings.xml luôn tồn tại trong Cordova builds  
-✅ **Fallback safe** - Nếu không có cdv_strings.xml, dùng strings.xml  
-✅ **No build errors** - Không còn duplicate resource conflicts  
+**File**: `hooks/removeConflictingStringsXml.js` (NEW)  
+**Commit**: [`86c2ef5`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/86c2ef53d717a4d2538026b5803a7239b4df167c)
+
+```javascript
+// Check for conflict
+const hasStrings = fs.existsSync(stringsPath);
+const hasCdvStrings = fs.existsSync(cdvStringsPath);
+
+if (hasCdvStrings && hasStrings) {
+  // Both exist → Check if strings.xml has app_name
+  const stringsContent = fs.readFileSync(stringsPath, 'utf8');
+  const hasAppName = /<string name="app_name">/.test(stringsContent);
+
+  if (hasAppName) {
+    console.log('🚨 CONFLICT DETECTED');
+    console.log('🗑️  Deleting strings.xml...');
+    fs.unlinkSync(stringsPath);  // Remove duplicate file
+    console.log('✅ Conflict resolved');
+  }
+}
+```
+
+#### Step 3: Register Hook in plugin.xml
+
+**File**: `plugin.xml`  
+**Commit**: [`03579a3`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/03579a3581ab534f162f99760f5e9ef71d0ff72f)
+
+```xml
+<!-- CRITICAL: Remove conflicting strings.xml BEFORE updating cdv_strings.xml -->
+<hook type="after_prepare" src="hooks/removeConflictingStringsXml.js" />
+<hook type="after_prepare" src="hooks/changeAppInfo.js" />
+```
+
+**Order matters**: removeConflictingStringsXml.js runs FIRST to clean up, then changeAppInfo.js updates cdv_strings.xml.
+
+### Why This 3-Step Solution Works
+
+✅ **Step 1**: Prevent creating new duplicate files  
+✅ **Step 2**: Clean up old duplicate files from previous builds  
+✅ **Step 3**: Ensure hook execution order is correct  
 
 ### Expected Build Log
 
-**After Fix**:
+**After Complete Fix**:
 ```
-══════════════════════════════════
+══════════════════════════════════════════════
+  REMOVE CONFLICTING STRINGS.XML
+══════════════════════════════════════════════
+🎯 Purpose: Prevent duplicate app_name resource
+📋 Strategy: Use cdv_strings.xml only
+
+🤖 Processing Android...
+   📁 cdv_strings.xml: ✓ EXISTS
+   📁 strings.xml: ⚠️  EXISTS (will remove)
+   🚨 CONFLICT DETECTED: Both files define app_name
+   🗑️  Deleting strings.xml...
+   ✅ strings.xml removed successfully
+   ℹ️  Using cdv_strings.xml as single source of truth
+
+══════════════════════════════════════════════
+✅ Conflict check completed!
+══════════════════════════════════════════════
+
+══════════════════════════════════════════════
        CHANGE APP INFO HOOK        
-══════════════════════════════════
+══════════════════════════════════════════════
 🔧 FIX: Use cdv_strings.xml (no duplicate resources)
-✅ Works with OutSystems MABS
 
 📱 Processing platform: android
 📝 App Name: NexTalent
@@ -160,52 +178,46 @@ if (hasAppName) {
    ✅ Saved: cdv_strings.xml
    ✅ AndroidManifest.xml updated
 
-══════════════════════════════════
-✅ App info update completed!
+[No duplicate resources error]
+✅ BUILD SUCCESSFUL
 ```
 
 ---
 
-## 🚀 How to Use Fixes
+## 🚀 How to Use (FINAL VERSION)
 
 ### Step 1: Update Plugin
 
 ```bash
-# Remove old version
+# Remove old version completely
 cordova plugin remove cordova-plugin-change-app-info
+cordova clean
+rm -rf platforms/android
 
-# Add FIXED version (with cdv_strings.xml support)
+# Fresh install with ALL fixes
+cordova platform add android
 cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
 
-# Clean build
-cordova clean
+# Build
 cordova build android
 ```
 
-### Step 2: Verify Splash Fix
+### Step 2: Verify No Duplicate Error
 
 ```bash
-# Monitor logs
-adb logcat -s SplashScreenManager:D
+# Check build log for conflict resolution
+grep "CONFLICT DETECTED" build.log
+# Should show: "🗑️  Deleting strings.xml..." and "✅ Conflict resolved"
 
-# Expected: 5-7 strategies succeed
-# Splash disappears within 1 second
-```
+# Verify only cdv_strings.xml exists
+ls platforms/android/app/src/main/res/values/ | grep strings
+# Should show: cdv_strings.xml (NOT strings.xml)
 
-### Step 3: Verify App Name (No Duplicate Error)
-
-```bash
-# Check cdv_strings.xml was updated (not created new file)
+# Check app_name is correct
 cat platforms/android/app/src/main/res/values/cdv_strings.xml | grep app_name
+# Should show: <string name="app_name">NexTalent</string>
 
-# Should show:
-# <string name="app_name">NexTalent</string>
-
-# Verify NO duplicate strings.xml
-ls platforms/android/app/src/main/res/values/
-# Should see: cdv_strings.xml (NOT strings.xml)
-
-# Build should succeed without errors
+# Build succeeds without errors
 cordova build android
 # No "Duplicate resources" error!
 ```
@@ -222,8 +234,8 @@ cordova build android
 ### App Name
 - ❌ **Attempt 1**: strings.xml not found, old name persists
 - ❌ **Attempt 2**: Created strings.xml → Duplicate resources error
-- ✅ **Final Fix**: Update cdv_strings.xml → Works perfectly!
-- ✅ **OutSystems MABS**: No duplicate errors, correct name displayed
+- ❌ **Attempt 3**: Updated cdv_strings.xml but old strings.xml still exists → Duplicate error
+- ✅ **Final Fix**: Remove conflicting strings.xml + Update cdv_strings.xml → **WORKS!**
 
 ---
 
@@ -232,52 +244,55 @@ cordova build android
 | Fix | Commit | File | Status |
 |-----|--------|------|--------|
 | Splash Screen | [`303adcd`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/303adcd5808296697701dc47dae0a30be64364b2) | `SplashScreenManager.java` | ✅ Working |
-| App Name (v1) | [`c0610f5`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/c0610f5b538d6e5024784d7690a0ace1b3e67d5a) | `changeAppInfo.js` | ❌ Duplicate error |
-| App Name (v2) | [`48cc845`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/48cc845da87e68cfb7441dfbd07ca1a2d3d9e56d) | `changeAppInfo.js` | ✅ **FINAL FIX** |
+| App Name (v1) | [`c0610f5`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/c0610f5b538d6e5024784d7690a0ace1b3e67d5a) | `changeAppInfo.js` | ❌ Created duplicate |
+| App Name (v2) | [`48cc845`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/48cc845da87e68cfb7441dfbd07ca1a2d3d9e56d) | `changeAppInfo.js` | ❌ Old file remains |
+| Remove Conflict | [`86c2ef5`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/86c2ef53d717a4d2538026b5803a7239b4df167c) | `removeConflictingStringsXml.js` | ✅ New hook |
+| Register Hook | [`03579a3`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/03579a3581ab534f162f99760f5e9ef71d0ff72f) | `plugin.xml` | ✅ **COMPLETE FIX** |
 
 ---
 
 ## 🔍 Troubleshooting
 
-### Still Getting Duplicate Resources Error?
+### Still Getting Duplicate Error?
 
 ```bash
-# 1. Remove old plugin completely
+# 1. Completely clean
 cordova plugin remove cordova-plugin-change-app-info
-
-# 2. Clean everything
 cordova clean
 rm -rf platforms/android
+rm -rf plugins/cordova-plugin-change-app-info
 
-# 3. Reinstall fresh
+# 2. Fresh reinstall
 cordova platform add android
 cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
 
-# 4. Build
-cordova build android
+# 3. Verify hook exists
+ls plugins/cordova-plugin-change-app-info/hooks/ | grep removeConflicting
+# Should show: removeConflictingStringsXml.js
+
+# 4. Build with verbose logging
+cordova build android --verbose > build.log 2>&1
+grep -A 5 "REMOVE CONFLICTING" build.log
 ```
 
-### Verify cdv_strings.xml is Being Used
+### Hook Not Running?
 
 ```bash
-# Check build log for this line:
-grep "Using Cordova default: cdv_strings.xml" build.log
+# Check plugin.xml includes the hook
+grep "removeConflictingStringsXml" plugins/cordova-plugin-change-app-info/plugin.xml
 
-# If not found, check if cdv_strings.xml exists:
-find platforms/android -name "cdv_strings.xml" -o -name "strings.xml"
+# Should show:
+# <hook type="after_prepare" src="hooks/removeConflictingStringsXml.js" />
 ```
 
-### App Name Still Wrong?
+### Verify Hook Execution Order
 
 ```bash
-# Check what's in cdv_strings.xml
-cat platforms/android/app/src/main/res/values/cdv_strings.xml
+grep -E "(REMOVE CONFLICTING|CHANGE APP INFO HOOK)" build.log
 
-# Should contain:
-# <string name="app_name">NexTalent</string>
-
-# If not updated, check hook ran:
-grep "CHANGE APP INFO HOOK" build.log
+# Expected order:
+# 1. REMOVE CONFLICTING STRINGS.XML  (runs first)
+# 2. CHANGE APP INFO HOOK             (runs second)
 ```
 
 ---
@@ -287,29 +302,35 @@ grep "CHANGE APP INFO HOOK" build.log
 - ✅ **OutSystems MABS** (Primary target)
 - ✅ **Cordova 9.0+**
 - ✅ **Android 21+ (Lollipop)**
-- ✅ **Standard Cordova builds**
+- ✅ **Gradle 7.x - 8.x**
 - ✅ **No duplicate resource conflicts**
+- ✅ **Clean builds after previous duplicate errors**
 
 ---
 
 ## 📚 Key Learnings
 
-### Why cdv_strings.xml?
+### The Problem Was Multi-Layered
 
-1. **Cordova default**: Tất cả Cordova projects đều có file này
-2. **Already has app_name**: Chỉ cần update, không tạo mới
-3. **No conflicts**: Không bị duplicate với bất kỳ file nào
-4. **MABS compatible**: OutSystems MABS tạo file này tự động
+1. **Layer 1**: strings.xml not found → plugin tried to create it
+2. **Layer 2**: cdv_strings.xml already exists → duplicate definition
+3. **Layer 3**: Old strings.xml from previous build → persists across builds
+
+### The Solution Required 3 Fixes
+
+1. **Don't create new strings.xml** → Use existing cdv_strings.xml
+2. **Delete old strings.xml if exists** → New cleanup hook
+3. **Hook execution order** → Cleanup BEFORE update
 
 ### What NOT to Do
 
-❌ **DON'T**: Tạo `strings.xml` mới  
-❌ **DON'T**: Tạo duplicate `app_name` entries  
-❌ **DON'T**: Modify multiple string files cùng lúc  
+❌ **DON'T**: Create new strings.xml  
+❌ **DON'T**: Assume platforms/ folder is clean  
+❌ **DON'T**: Run update hooks before cleanup hooks  
 
-✅ **DO**: Update `cdv_strings.xml` only  
-✅ **DO**: Check if file exists first  
-✅ **DO**: Fallback to `strings.xml` if needed  
+✅ **DO**: Use cdv_strings.xml (Cordova default)  
+✅ **DO**: Clean up conflicting files first  
+✅ **DO**: Order hooks correctly (cleanup → update)  
 
 ---
 
@@ -317,13 +338,13 @@ grep "CHANGE APP INFO HOOK" build.log
 
 Nếu vẫn gặp vấn đề:
 
-1. **Check commits** - Đảm bảo dùng version [`48cc845`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/48cc845da87e68cfb7441dfbd07ca1a2d3d9e56d) hoặc mới hơn
-2. **Full clean rebuild** - Xóa platforms, reinstall plugin
-3. **Check logs** - Tìm "Using Cordova default: cdv_strings.xml"
+1. **Full clean rebuild** (xem Troubleshooting)
+2. **Check hook execution order** (grep build log)
+3. **Verify latest version** - Ensure commit [`03579a3`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/03579a3581ab534f162f99760f5e9ef71d0ff72f) or newer
 4. **Create issue**: [GitHub Issues](https://github.com/vnkhoado/cordova-plugin-change-app-info/issues)
 
 Provide:
-- Full build log
-- Content of `cdv_strings.xml`
-- List of files in `res/values/`
-- Cordova/Android versions
+- Full build log (with --verbose)
+- Output of: `ls platforms/android/app/src/main/res/values/`
+- Cordova/Android/Gradle versions
+- Whether you see "CONFLICT DETECTED" in logs
