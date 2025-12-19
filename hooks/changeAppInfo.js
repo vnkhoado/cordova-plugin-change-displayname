@@ -52,24 +52,48 @@ function getPreferences(context) {
 }
 
 /**
+ * Create strings.xml if it doesn't exist
+ */
+function ensureStringsXml(stringsPath, appName) {
+  const valuesDir = path.dirname(stringsPath);
+  
+  // Ensure values directory exists
+  if (!fs.existsSync(valuesDir)) {
+    console.log(`   📁 Creating values directory: ${valuesDir}`);
+    fs.mkdirSync(valuesDir, { recursive: true });
+  }
+  
+  // Create strings.xml with app_name
+  const stringsContent = `<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">${appName}</string>
+</resources>
+`;
+  
+  fs.writeFileSync(stringsPath, stringsContent, "utf8");
+  console.log(`   ✅ Created strings.xml with app_name: ${appName}`);
+}
+
+/**
  * Update Android app info
  */
 function updateAndroidAppInfo(root, prefs) {
   const { appName, versionNumber, versionCode } = prefs;
 
   console.log(`📝 App Name: ${appName || 'không thay đổi'}`);
-  console.log(`🔢 Version: ${versionNumber || 'không thay đổi'} (${versionCode || 'không thay đổi'})`);
-
-  // Update strings.xml - only if appName is set
+  console.log(`🔢 Version: ${versionNumber || 'không thay đổi'} (${versionCode || 'không thay đổi'})`);  // Update strings.xml - only if appName is set
   if (appName) {
     const stringsPath = path.join(
       root,
       "platforms/android/app/src/main/res/values/strings.xml"
     );
 
+    console.log(`   🔍 Checking strings.xml: ${stringsPath}`);
+    
     if (fs.existsSync(stringsPath)) {
       try {
         let content = fs.readFileSync(stringsPath, "utf8");
+        console.log(`   📄 Found existing strings.xml (${content.length} bytes)`);
         
         // Remove ALL existing app_name entries to prevent duplicates
         content = content.replace(/<string name="app_name">.*?<\/string>\s*/g, '');
@@ -81,12 +105,18 @@ function updateAndroidAppInfo(root, prefs) {
         );
 
         fs.writeFileSync(stringsPath, content, "utf8");
-        console.log(`✅ Android app name updated`);
+        console.log(`   ✅ Updated app_name in existing strings.xml`);
       } catch (err) {
-        console.error("✖ Failed to update strings.xml:", err.message);
+        console.error("   ✖ Failed to update strings.xml:", err.message);
       }
     } else {
-      console.log(`⚠ strings.xml not found: ${stringsPath}`);
+      // CREATE strings.xml if missing (OutSystems MABS case)
+      console.log(`   ⚠️  strings.xml not found - creating new file`);
+      try {
+        ensureStringsXml(stringsPath, appName);
+      } catch (err) {
+        console.error("   ✖ Failed to create strings.xml:", err.message);
+      }
     }
   }
 
@@ -117,9 +147,9 @@ function updateAndroidAppInfo(root, prefs) {
         }
 
         fs.writeFileSync(manifestPath, content, "utf8");
-        console.log(`✅ Android manifest updated`);
+        console.log(`   ✅ Android manifest updated`);
       } catch (err) {
-        console.error("✖ Failed to update AndroidManifest.xml:", err.message);
+        console.error("   ✖ Failed to update AndroidManifest.xml:", err.message);
       }
     }
   }
@@ -135,9 +165,7 @@ function updateIOSAppInfo(root, appFolderName, prefs) {
   const { appName, versionNumber, versionCode } = prefs;
 
   console.log(`📝 App Name: ${appName || 'không thay đổi'}`);
-  console.log(`🔢 Version: ${versionNumber || 'không thay đổi'} (${versionCode || 'không thay đổi'})`);
-
-  const plistPath = path.join(
+  console.log(`🔢 Version: ${versionNumber || 'không thay đổi'} (${versionCode || 'không thay đổi'})`);  const plistPath = path.join(
     root,
     "platforms/ios",
     appFolderName,
@@ -256,8 +284,8 @@ module.exports = function(context) {
   console.log("\n══════════════════════════════════");
   console.log("       CHANGE APP INFO HOOK        ");
   console.log("══════════════════════════════════");
-  console.log("📝 FIX: CFBundleName now CREATED if missing");
-  console.log("✅ Prevents old process name from appearing");
+  console.log("🆕 NEW: Auto-create strings.xml if missing");
+  console.log("✅ Works with OutSystems MABS");
   console.log("⚠️ Note: PACKAGE_NAME feature removed to avoid iOS provisioning profile conflicts");
 
   // Get preferences from root config
