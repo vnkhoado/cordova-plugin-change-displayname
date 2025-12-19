@@ -3,7 +3,7 @@
 ## 📊 Overview
 
 **Date**: December 19, 2025  
-**Issues Fixed**: 2 critical issues for OutSystems MABS compatibility
+**Issues Fixed**: 3 critical issues for OutSystems MABS compatibility
 
 ---
 
@@ -40,45 +40,6 @@ Thêm **10 chiến lược removal** (tăng từ 5 lên 10):
 9. 🆕 **Aggressive DecorView Hiding** - Hide tất cả non-webview children
 10. 🆕 **Delayed Forced Removal** - 500ms delay rồi force remove lần nữa
 
-### Technical Details
-
-```java
-// Strategy 6: Find dialogs via reflection
-Field[] fields = activity.getClass().getDeclaredFields();
-for (Field field : fields) {
-    if (value instanceof Dialog) {
-        dialog.dismiss();
-    }
-}
-
-// Strategy 7: Search window views for splash containers
-if (child instanceof FrameLayout || child instanceof LinearLayout) {
-    // Check for ImageView (splash logo)
-    if (innerChild instanceof ImageView) {
-        child.setVisibility(View.GONE);
-    }
-}
-
-// Strategy 8: Try OutSystems classes
-String[] classNames = {
-    "com.outsystems.android.core.SplashScreen",
-    "com.outsystems.android.SplashScreen",
-    "io.outsystems.android.SplashScreen"
-};
-
-// Strategy 9: Aggressive hide (except WebView)
-for (int i = 0; i < decorGroup.getChildCount(); i++) {
-    if (!className.contains("WebView")) {
-        child.setVisibility(View.GONE);
-    }
-}
-
-// Strategy 10: Delayed removal (last resort)
-new Handler().postDelayed(() -> {
-    // Force hide + alpha = 0
-}, 500);
-```
-
 ### Expected Results
 
 **Before Fix**:
@@ -100,65 +61,85 @@ Strategy 9: ✓ Aggressive hiding succeeded
 
 ---
 
-## 🏷️ Fix #2: App Name Not Changing
+## 🏷️ Fix #2: App Name Not Changing (Duplicate Resources Error)
 
-### Problem
+### Problem #1: strings.xml Not Found
 
-App name vẫn hiển thị tên cũ "My One Mount" thay vì "NexTalent" như trong config.
-
-### Root Cause
+App name vẫn hiển thị tên cũ "My One Mount" thay vì "NexTalent".
 
 **Log evidence**:
 ```
-⚠ strings.xml not found: .../platforms/android/app/src/main/res/values/strings.xml
+⚠ strings.xml not found: .../res/values/strings.xml
 ```
 
-- OutSystems MABS không tạo `strings.xml` ban đầu
-- Hook `after_prepare` chạy KHI CHƯA có file
-- Hook không tạo file mới, chỉ update file có sẵn
+### Problem #2: Duplicate Resources Error
+
+Sau khi tạo `strings.xml` mới, xuất hiện lỗi build:
+
+```
+ERROR: [string/app_name] cdv_strings.xml [string/app_name] strings.xml: 
+Resource and asset merger: Duplicate resources
+```
+
+### Root Cause
+
+1. **Vấn đề 1**: OutSystems MABS không tạo `strings.xml` ban đầu
+2. **Vấn đề 2**: Cordova đã có `cdv_strings.xml` chứa `app_name`
+3. Plugin tạo thêm `strings.xml` → 2 files cùng define `app_name` → duplicate!
 
 ### Solution
 
 **File**: `hooks/changeAppInfo.js`  
-**Commit**: [`c0610f5`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/c0610f5b538d6e5024784d7690a0ace1b3e67d5a)
+**Commits**: 
+- [`c0610f5`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/c0610f5b538d6e5024784d7690a0ace1b3e67d5a) - Initial attempt (created strings.xml)
+- [`48cc845`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/48cc845da87e68cfb7441dfbd07ca1a2d3d9e56d) - **FINAL FIX** (use cdv_strings.xml)
 
-#### Key Changes
-
-1. **Tạo strings.xml nếu không tồn tại**:
+#### Key Solution: Use cdv_strings.xml
 
 ```javascript
-function ensureStringsXml(stringsPath, appName) {
-  const valuesDir = path.dirname(stringsPath);
-  
-  // Ensure values directory exists
-  if (!fs.existsSync(valuesDir)) {
-    fs.mkdirSync(valuesDir, { recursive: true });
-  }
-  
-  // Create strings.xml with app_name
-  const stringsContent = `<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">${appName}</string>
-</resources>
-`;
-  
-  fs.writeFileSync(stringsPath, stringsContent, "utf8");
+// Priority 1: Use Cordova's default cdv_strings.xml
+const cdvStringsPath = path.join(
+  root,
+  "platforms/android/app/src/main/res/values/cdv_strings.xml"
+);
+
+// Priority 2: Fallback to strings.xml if exists
+const stringsPath = path.join(
+  root,
+  "platforms/android/app/src/main/res/values/strings.xml"
+);
+
+if (fs.existsSync(cdvStringsPath)) {
+  targetPath = cdvStringsPath;  // Use this!
+  console.log('🔍 Using Cordova default: cdv_strings.xml');
+} else if (fs.existsSync(stringsPath)) {
+  targetPath = stringsPath;  // Fallback
 }
-```
 
-2. **Chi tiết hóa logging**:
+// Update app_name in the found file
+const hasAppName = /<string name="app_name">.*?<\/string>/.test(content);
 
-```javascript
-console.log(`   🔍 Checking strings.xml: ${stringsPath}`);
-
-if (fs.existsSync(stringsPath)) {
-  console.log(`   📄 Found existing strings.xml`);
-  // Update existing
+if (hasAppName) {
+  // UPDATE existing
+  content = content.replace(
+    /<string name="app_name">.*?<\/string>/,
+    `<string name="app_name">${appName}</string>`
+  );
 } else {
-  console.log(`   ⚠️  strings.xml not found - creating new file`);
-  ensureStringsXml(stringsPath, appName);
+  // ADD new entry
+  content = content.replace(
+    "</resources>",
+    `    <string name="app_name">${appName}</string>\n</resources>`
+  );
 }
 ```
+
+### Why This Works
+
+✅ **NO duplicate files** - Chỉ update file có sẵn  
+✅ **Works with MABS** - cdv_strings.xml luôn tồn tại trong Cordova builds  
+✅ **Fallback safe** - Nếu không có cdv_strings.xml, dùng strings.xml  
+✅ **No build errors** - Không còn duplicate resource conflicts  
 
 ### Expected Build Log
 
@@ -167,17 +148,17 @@ if (fs.existsSync(stringsPath)) {
 ══════════════════════════════════
        CHANGE APP INFO HOOK        
 ══════════════════════════════════
-🆕 NEW: Auto-create strings.xml if missing
+🔧 FIX: Use cdv_strings.xml (no duplicate resources)
 ✅ Works with OutSystems MABS
 
 📱 Processing platform: android
 📝 App Name: NexTalent
 🔢 Version: 0.125.36 (2)
-   🔍 Checking strings.xml: .../strings.xml
-   ⚠️  strings.xml not found - creating new file
-   📁 Creating values directory
-   ✅ Created strings.xml with app_name: NexTalent
-   ✅ Android manifest updated
+   🔍 Using Cordova default: cdv_strings.xml
+   📄 Read file: cdv_strings.xml (423 bytes)
+   ✅ Updated app_name: NexTalent
+   ✅ Saved: cdv_strings.xml
+   ✅ AndroidManifest.xml updated
 
 ══════════════════════════════════
 ✅ App info update completed!
@@ -193,7 +174,7 @@ if (fs.existsSync(stringsPath)) {
 # Remove old version
 cordova plugin remove cordova-plugin-change-app-info
 
-# Add fixed version
+# Add FIXED version (with cdv_strings.xml support)
 cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
 
 # Clean build
@@ -204,29 +185,29 @@ cordova build android
 ### Step 2: Verify Splash Fix
 
 ```bash
-# Monitor logs in separate terminal
+# Monitor logs
 adb logcat -s SplashScreenManager:D
-
-# Install and run app
-cordova run android
 
 # Expected: 5-7 strategies succeed
 # Splash disappears within 1 second
 ```
 
-### Step 3: Verify App Name
+### Step 3: Verify App Name (No Duplicate Error)
 
 ```bash
-# Check generated strings.xml
-cat platforms/android/app/src/main/res/values/strings.xml
+# Check cdv_strings.xml was updated (not created new file)
+cat platforms/android/app/src/main/res/values/cdv_strings.xml | grep app_name
 
-# Should contain:
+# Should show:
 # <string name="app_name">NexTalent</string>
 
-# Visual check:
-# - App drawer icon label
-# - Recent apps name
-# - Settings > Apps
+# Verify NO duplicate strings.xml
+ls platforms/android/app/src/main/res/values/
+# Should see: cdv_strings.xml (NOT strings.xml)
+
+# Build should succeed without errors
+cordova build android
+# No "Duplicate resources" error!
 ```
 
 ---
@@ -239,52 +220,64 @@ cat platforms/android/app/src/main/res/values/strings.xml
 - ✅ **OutSystems MABS**: Full compatibility
 
 ### App Name
-- ✅ **Before**: strings.xml not found, old name persists
-- ✅ **After**: strings.xml created automatically, correct name displayed
-- ✅ **OutSystems MABS**: Works even when file doesn't exist initially
+- ❌ **Attempt 1**: strings.xml not found, old name persists
+- ❌ **Attempt 2**: Created strings.xml → Duplicate resources error
+- ✅ **Final Fix**: Update cdv_strings.xml → Works perfectly!
+- ✅ **OutSystems MABS**: No duplicate errors, correct name displayed
 
 ---
 
-## 📝 Commits
+## 📝 Commits Timeline
 
-| Fix | Commit | File | Description |
-|-----|--------|------|-------------|
-| Splash Screen | [`303adcd`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/303adcd5808296697701dc47dae0a30be64364b2) | `SplashScreenManager.java` | Add 5 aggressive removal strategies |
-| App Name | [`c0610f5`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/c0610f5b538d6e5024784d7690a0ace1b3e67d5a) | `changeAppInfo.js` | Auto-create strings.xml if missing |
-
----
-
-## 📚 Documentation
-
-- [CHANGELOG.md](CHANGELOG.md) - Chi tiết các thay đổi
-- [TESTING.md](TESTING.md) - Hướng dẫn test đầy đủ
-- [README.md](README.md) - Tài liệu plugin
+| Fix | Commit | File | Status |
+|-----|--------|------|--------|
+| Splash Screen | [`303adcd`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/303adcd5808296697701dc47dae0a30be64364b2) | `SplashScreenManager.java` | ✅ Working |
+| App Name (v1) | [`c0610f5`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/c0610f5b538d6e5024784d7690a0ace1b3e67d5a) | `changeAppInfo.js` | ❌ Duplicate error |
+| App Name (v2) | [`48cc845`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/48cc845da87e68cfb7441dfbd07ca1a2d3d9e56d) | `changeAppInfo.js` | ✅ **FINAL FIX** |
 
 ---
 
-## ❓ Troubleshooting
+## 🔍 Troubleshooting
 
-### Splash Vẫn Hiện
+### Still Getting Duplicate Resources Error?
 
 ```bash
-# Check log
-adb logcat | grep "Splash removal completed"
+# 1. Remove old plugin completely
+cordova plugin remove cordova-plugin-change-app-info
 
-# Should show: "5-7 strategies succeeded"
-# If showing "0-2 strategies", contact support
+# 2. Clean everything
+cordova clean
+rm -rf platforms/android
+
+# 3. Reinstall fresh
+cordova platform add android
+cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
+
+# 4. Build
+cordova build android
 ```
 
-### App Name Vẫn Sai
+### Verify cdv_strings.xml is Being Used
 
 ```bash
-# Verify strings.xml was created
-find platforms/android -name strings.xml -exec grep app_name {} \;
+# Check build log for this line:
+grep "Using Cordova default: cdv_strings.xml" build.log
 
-# Force rebuild
-cordova clean
-cordova platform remove android
-cordova platform add android  
-cordova build android
+# If not found, check if cdv_strings.xml exists:
+find platforms/android -name "cdv_strings.xml" -o -name "strings.xml"
+```
+
+### App Name Still Wrong?
+
+```bash
+# Check what's in cdv_strings.xml
+cat platforms/android/app/src/main/res/values/cdv_strings.xml
+
+# Should contain:
+# <string name="app_name">NexTalent</string>
+
+# If not updated, check hook ran:
+grep "CHANGE APP INFO HOOK" build.log
 ```
 
 ---
@@ -295,6 +288,28 @@ cordova build android
 - ✅ **Cordova 9.0+**
 - ✅ **Android 21+ (Lollipop)**
 - ✅ **Standard Cordova builds**
+- ✅ **No duplicate resource conflicts**
+
+---
+
+## 📚 Key Learnings
+
+### Why cdv_strings.xml?
+
+1. **Cordova default**: Tất cả Cordova projects đều có file này
+2. **Already has app_name**: Chỉ cần update, không tạo mới
+3. **No conflicts**: Không bị duplicate với bất kỳ file nào
+4. **MABS compatible**: OutSystems MABS tạo file này tự động
+
+### What NOT to Do
+
+❌ **DON'T**: Tạo `strings.xml` mới  
+❌ **DON'T**: Tạo duplicate `app_name` entries  
+❌ **DON'T**: Modify multiple string files cùng lúc  
+
+✅ **DO**: Update `cdv_strings.xml` only  
+✅ **DO**: Check if file exists first  
+✅ **DO**: Fallback to `strings.xml` if needed  
 
 ---
 
@@ -302,13 +317,13 @@ cordova build android
 
 Nếu vẫn gặp vấn đề:
 
-1. **Check logs** (chi tiết trong TESTING.md)
-2. **Clean rebuild** (xem troubleshooting trên)
-3. **Create issue**: [GitHub Issues](https://github.com/vnkhoado/cordova-plugin-change-app-info/issues)
+1. **Check commits** - Đảm bảo dùng version [`48cc845`](https://github.com/vnkhoado/cordova-plugin-change-app-info/commit/48cc845da87e68cfb7441dfbd07ca1a2d3d9e56d) hoặc mới hơn
+2. **Full clean rebuild** - Xóa platforms, reinstall plugin
+3. **Check logs** - Tìm "Using Cordova default: cdv_strings.xml"
+4. **Create issue**: [GitHub Issues](https://github.com/vnkhoado/cordova-plugin-change-app-info/issues)
 
 Provide:
 - Full build log
-- Full runtime log (`adb logcat`)
-- Cordova version
-- Android version
-- Config excerpt
+- Content of `cdv_strings.xml`
+- List of files in `res/values/`
+- Cordova/Android versions
