@@ -48,8 +48,8 @@ module.exports = function (context) {
       );
 
       const scriptTags =
-        '<script src="/StaffPortalMobile/js/AppReadyManager.js"></script>\n' +
-        '<script src="/StaffPortalMobile/js/config-loader-mobile.js"></script>\n';
+        '<script src="/StaffPortalMobile/scripts/StaffPortalMobile.AppReadyManager.js"></script>\n' +
+        '<script src="/StaffPortalMobile/scripts/StaffPortalMobile.configloadermobile.js"></script>\n';
 
       if (content.includes('</head>')) {
         content = content.replace('</head>', scriptTags + '</head>');
@@ -87,8 +87,8 @@ module.exports = function (context) {
       );
 
       const scriptTags =
-        '<script src="/StaffPortalMobile/js/AppReadyManager.js"></script>\n' +
-        '<script src="/StaffPortalMobile/js/config-loader-mobile.js"></script>\n';
+        '<script src="/StaffPortalMobile/scripts/StaffPortalMobile.AppReadyManager.js"></script>\n' +
+        '<script src="/StaffPortalMobile/scripts/StaffPortalMobile.configloadermobile.js"></script>\n';
 
       if (content.includes('</head>')) {
         content = content.replace('</head>', scriptTags + '</head>');
