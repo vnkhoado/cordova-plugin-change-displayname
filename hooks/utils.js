@@ -348,6 +348,7 @@ function hexToObjCUIColor(hex) {
 
 /**
  * Get background color from config (tries multiple keys)
+ * Uses ConfigParser.getPreference API
  */
 function getBackgroundColorPreference(config) {
   return config.getPreference('SplashScreenBackgroundColor') ||
@@ -357,19 +358,20 @@ function getBackgroundColorPreference(config) {
 }
 
 /**
- * Read color configuration from config.xml file
+ * Read color configuration from ConfigParser
  * Reads OLD_COLOR (what to replace) and SplashScreenBackgroundColor (target color)
  * 
- * Priority:
+ * Priority for target color:
  * 1. SplashScreenBackgroundColor (new color to set)
  * 2. AndroidWindowSplashScreenBackgroundColor (Cordova standard)
- * 3. Fallback to #001833
+ * 3. BackgroundColor (general preference)
+ * 4. Fallback to #001833
  * 
- * @param {string} configPath - Path to config.xml
+ * @param {Object} config - ConfigParser instance from getConfigParser()
  * @returns {Object} { oldColor: string, newColor: string }
  */
-function readColorConfigFromXml(configPath) {
-  if (!fs.existsSync(configPath)) {
+function readColorConfigFromXml(config) {
+  if (!config) {
     return {
       oldColor: '#1E1464',  // Cordova default to replace
       newColor: '#001833'   // Target color
@@ -377,31 +379,29 @@ function readColorConfigFromXml(configPath) {
   }
 
   try {
-    const content = fs.readFileSync(configPath, 'utf8');
-    
     // Read OLD_COLOR (Cordova default to replace)
-    const oldColorMatch = content.match(
-      /<preference\s+name=["']OLD_COLOR["']\s+value=["']([^"']+)["']/i
-    );
-    const oldColor = oldColorMatch ? oldColorMatch[1].trim() : '#1E1464';
+    let oldColor = config.getPreference('OLD_COLOR');
+    oldColor = oldColor ? oldColor.trim() : '#1E1464';
     
     // Read NEW/TARGET color - try multiple preference names
-    let newColor = '#001833'; // Safe default
-    
     // Priority 1: SplashScreenBackgroundColor (custom preference)
-    const bgColorMatch = content.match(
-      /<preference\s+name=["']SplashScreenBackgroundColor["']\s+value=["']([^"']+)["']/i
-    );
-    if (bgColorMatch && bgColorMatch[1]) {
-      newColor = bgColorMatch[1].trim();
+    let newColor = config.getPreference('SplashScreenBackgroundColor');
+    
+    // Priority 2: AndroidWindowSplashScreenBackgroundColor (Cordova standard)
+    if (!newColor) {
+      newColor = config.getPreference('AndroidWindowSplashScreenBackgroundColor');
+    }
+    
+    // Priority 3: BackgroundColor (general preference)
+    if (!newColor) {
+      newColor = config.getPreference('BackgroundColor');
+    }
+    
+    // Apply defaults
+    if (newColor) {
+      newColor = newColor.trim();
     } else {
-      // Priority 2: AndroidWindowSplashScreenBackgroundColor (Cordova standard)
-      const androidBgMatch = content.match(
-        /<preference\s+name=["']AndroidWindowSplashScreenBackgroundColor["']\s+value=["']([^"']+)["']/i
-      );
-      if (androidBgMatch && androidBgMatch[1]) {
-        newColor = androidBgMatch[1].trim();
-      }
+      newColor = '#001833';
     }
     
     // Normalize both colors
