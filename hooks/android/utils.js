@@ -3,6 +3,19 @@
 const fs = require('fs');
 const path = require('path');
 
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[36m'
+};
+
+function log(color, message) {
+  console.log(`${color}${message}${colors.reset}`);
+}
+
 /**
  * Normalize hex color format
  * Accepts: #001833, 001833, #001833FF, etc.
@@ -28,39 +41,80 @@ function normalizeHexColor(color) {
 }
 
 /**
- * Get background color preference from config.xml
- * Looks for preference: <preference name="AndroidWindowSplashScreenBackgroundColor" value="#001833" />
+ * Read color preferences from config.xml
+ * Supports both OLD_COLOR/SplashScreenBackgroundColor and AndroidWindowSplashScreenBackgroundColor
+ * 
+ * Priority:
+ * 1. SplashScreenBackgroundColor (new color to set)
+ * 2. AndroidWindowSplashScreenBackgroundColor (Cordova standard)
+ * 3. Fallback to #001833
  */
-function getBackgroundColorPreference(root) {
+function readColorConfigFromXml(configPath) {
+  if (!fs.existsSync(configPath)) {
+    log(colors.yellow, `⚠️  config.xml not found: ${configPath}`);
+    return { 
+      oldColor: '#1E1464',  // Cordova default to replace
+      newColor: '#001833'   // Target color
+    };
+  }
+
   try {
-    const configPath = path.join(root, 'config.xml');
-    
-    if (!fs.existsSync(configPath)) {
-      return '#001833'; // Default fallback
-    }
-    
     const content = fs.readFileSync(configPath, 'utf8');
     
-    // Try to find Android splash background color preference
-    const patterns = [
-      /name="AndroidWindowSplashScreenBackgroundColor"\s+value="([^"]+)"/,
-      /name="SplashScreenDelay"\s+value="([^"]+)"/,
-      /name="SplashMaintainAspectRatio"\s+value="([^"]+)"/
-    ];
+    // Read OLD_COLOR (Cordova default to replace)
+    const oldColorMatch = content.match(
+      /<preference\s+name=["']OLD_COLOR["']\s+value=["']([^"']+)["']/i
+    );
+    const oldColor = oldColorMatch ? oldColorMatch[1].trim() : '#1E1464';
     
-    // Look for background color specifically
-    const bgColorMatch = content.match(/name="AndroidWindowSplashScreenBackgroundColor"\s+value="([^"]+)"/);
+    // Read NEW/TARGET color - try multiple preference names
+    let newColor = '#001833'; // Safe default
     
+    // Priority 1: SplashScreenBackgroundColor (custom preference)
+    const bgColorMatch = content.match(
+      /<preference\s+name=["']SplashScreenBackgroundColor["']\s+value=["']([^"']+)["']/i
+    );
     if (bgColorMatch && bgColorMatch[1]) {
-      return normalizeHexColor(bgColorMatch[1]);
+      newColor = bgColorMatch[1].trim();
+    } else {
+      // Priority 2: AndroidWindowSplashScreenBackgroundColor (Cordova standard)
+      const androidBgMatch = content.match(
+        /<preference\s+name=["']AndroidWindowSplashScreenBackgroundColor["']\s+value=["']([^"']+)["']/i
+      );
+      if (androidBgMatch && androidBgMatch[1]) {
+        newColor = androidBgMatch[1].trim();
+      }
     }
     
-    // Fallback to default
-    return '#001833';
+    // Normalize both colors
+    const normalizedOldColor = normalizeHexColor(oldColor);
+    const normalizedNewColor = normalizeHexColor(newColor);
+    
+    log(colors.blue, `📖 Config.xml colors:`);
+    log(colors.reset, `   OLD_COLOR (to replace): ${normalizedOldColor}`);
+    log(colors.reset, `   SplashScreenBackgroundColor (new): ${normalizedNewColor}`);
+    
+    return { 
+      oldColor: normalizedOldColor, 
+      newColor: normalizedNewColor 
+    };
   } catch (error) {
-    console.error('Error reading config.xml:', error.message);
-    return '#001833'; // Safe fallback
+    log(colors.yellow, `⚠️  Error reading config.xml: ${error.message}`);
+    return { 
+      oldColor: '#1E1464', 
+      newColor: '#001833' 
+    };
   }
+}
+
+/**
+ * Get background color preference from config.xml
+ * Wrapper around readColorConfigFromXml that returns just the new color
+ */
+function getBackgroundColorPreference(root) {
+  const configPath = path.join(root, 'config.xml');
+  const { newColor } = readColorConfigFromXml(configPath);
+  return newColor;
 }
 
 /**
@@ -130,10 +184,13 @@ function createCdvThemesTemplate() {
 
 module.exports = {
   normalizeHexColor,
+  readColorConfigFromXml,
   getBackgroundColorPreference,
   ensurePathExists,
   readXmlFile,
   writeXmlFile,
   createCdvColorsTemplate,
-  createCdvThemesTemplate
+  createCdvThemesTemplate,
+  log,
+  colors
 };
