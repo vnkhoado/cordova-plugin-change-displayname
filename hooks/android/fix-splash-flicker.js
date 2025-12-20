@@ -20,7 +20,7 @@
  * 
  * Configuration from config.xml:
  *   OLD_COLOR: Previous/default Cordova splash color to replace
- *   BackgroundColor: New splash screen background color to force
+ *   SplashScreenBackgroundColor: New splash screen background color to force
  * 
  * Runs at: after_prepare stage (final before Gradle compilation)
  */
@@ -62,15 +62,15 @@ function readColorConfigFromXml(configPath) {
     );
     const oldColor = oldColorMatch ? oldColorMatch[1].trim() : '#1E1464';
     
-    // Read BackgroundColor (new splash color)
+    // Read SplashScreenBackgroundColor (new splash color)
     const bgColorMatch = content.match(
-      /<preference\s+name=["']BackgroundColor["']\s+value=["']([^"']+)["']/i
+      /<preference\s+name=["']SplashScreenBackgroundColor["']\s+value=["']([^"']+)["']/i
     );
     const newColor = bgColorMatch ? bgColorMatch[1].trim() : '#001833';
     
     log(colors.blue, `📖 Config.xml colors:`);
     log(colors.reset, `   OLD_COLOR (to replace): ${oldColor}`);
-    log(colors.reset, `   BackgroundColor (new): ${newColor}`);
+    log(colors.reset, `   SplashScreenBackgroundColor (new): ${newColor}`);
     
     return { oldColor, newColor };
   } catch (error) {
