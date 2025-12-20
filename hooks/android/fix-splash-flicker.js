@@ -13,7 +13,7 @@
  * 
  * Solution:
  * - Run at after_prepare phase (FINAL before compile)
- * - Read color configuration from config.xml
+ * - Read color configuration from config.xml using utility functions
  * - Force splash color to correct value in cdvcolors.xml
  * - Force theme colors to correct value in cdvthemes.xml
  * - Prevents any further overwriting
@@ -27,6 +27,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { getBackgroundColorPreference, normalizeHexColor } = require('../utils');
 
 const colors = {
   reset: '\x1b[0m',
@@ -78,27 +79,6 @@ function readColorConfigFromXml(configPath) {
   }
 }
 
-/**
- * Normalize color format (with or without #)
- * @param {string} color - Color value
- * @returns {string} - Normalized color with #
- */
-function normalizeColor(color) {
-  if (!color) return '#001833';
-  const trimmed = color.trim();
-  return trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
-}
-
-/**
- * Extract hex color (without #) for XML value
- * @param {string} color - Color value
- * @returns {string} - Hex without #
- */
-function getHexWithoutHash(color) {
-  const normalized = normalizeColor(color);
-  return normalized.replace('#', '');
-}
-
 function fixAndroidSplashFlicker(context) {
   const root = context.opts.projectRoot;
   
@@ -114,9 +94,8 @@ function fixAndroidSplashFlicker(context) {
   const configPath = path.join(root, 'config.xml');
   const { oldColor, newColor } = readColorConfigFromXml(configPath);
   
-  const normalizedOldColor = normalizeColor(oldColor);
-  const normalizedNewColor = normalizeColor(newColor);
-  const newColorHex = getHexWithoutHash(normalizedNewColor);
+  const normalizedOldColor = normalizeHexColor(oldColor);
+  const normalizedNewColor = normalizeHexColor(newColor);
   
   const androidResPath = path.join(
     root,
