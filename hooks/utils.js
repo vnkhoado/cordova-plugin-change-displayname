@@ -279,6 +279,28 @@ function findAllFiles(baseDir, patterns, maxDepth = 3) {
 // ============================================================================
 
 /**
+ * Validate hex color format
+ * @param {string} color - Color in hex format (#RRGGBB or RRGGBB)
+ * @returns {boolean}
+ */
+function validateHexColor(color) {
+  const hexRegex = /^#?([A-Fa-f0-9]{6})$/;
+  return hexRegex.test(color);
+}
+
+/**
+ * Normalize hex color (ensure # prefix)
+ * @param {string} color - Color in hex format
+ * @returns {string} Normalized color with # prefix
+ */
+function normalizeHexColor(color) {
+  if (!validateHexColor(color)) {
+    throw new Error(`Invalid hex color format: ${color}. Use #RRGGBB or RRGGBB`);
+  }
+  return color.startsWith('#') ? color : '#' + color;
+}
+
+/**
  * Convert hex color to RGB object (0.0 - 1.0 range)
  */
 function hexToRgb(hex) {
@@ -459,6 +481,8 @@ module.exports = {
   findAllFiles,
   
   // Color utilities
+  validateHexColor,
+  normalizeHexColor,
   hexToRgb,
   rgbToString,
   hexToSwiftUIColor,
