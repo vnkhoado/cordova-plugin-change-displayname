@@ -93,27 +93,26 @@ function generateColorVariations(oldColorHex, newColorHex) {
   const newArgb = hexToArgb(newNormalized);
 
   return [
-    // Hex with # (various cases)
-    { old: `#${oldHexNoHash}`, new: `#${newHexNoHash}`, type: 'hex_upper' },
-    { old: `#${oldHexLower}`, new: `#${newHexLower}`, type: 'hex_lower' },
-    { old: `#${oldHexLower.substring(0, 2)}${oldHexLower.substring(2, 4)}${oldHexLower.substring(4)}`, new: `#${newHexLower}`, type: 'hex_mixed' },
+    // Hex with # (various cases) - WITH WORD BOUNDARY to prevent ##
+    { old: `#${oldHexNoHash}`, new: `#${newHexNoHash}`, type: 'hex_upper', wordBoundary: true },
+    { old: `#${oldHexLower}`, new: `#${newHexLower}`, type: 'hex_lower', wordBoundary: true },
     
     // Hex without # (various cases)
-    { old: oldHexNoHash, new: newHexNoHash, type: 'hex_nohash_upper' },
-    { old: oldHexLower, new: newHexLower, type: 'hex_nohash_lower' },
+    { old: oldHexNoHash, new: newHexNoHash, type: 'hex_nohash_upper', wordBoundary: true },
+    { old: oldHexLower, new: newHexLower, type: 'hex_nohash_lower', wordBoundary: true },
     
     // RGB format
-    { old: oldRgb, new: newRgb, type: 'rgb' },
-    { old: `rgb(${oldRgb})`, new: `rgb(${newRgb})`, type: 'rgb_func' },
-    { old: `RGB(${oldRgb})`, new: `RGB(${newRgb})`, type: 'rgb_func_upper' },
+    { old: oldRgb, new: newRgb, type: 'rgb', wordBoundary: false },
+    { old: `rgb(${oldRgb})`, new: `rgb(${newRgb})`, type: 'rgb_func', wordBoundary: false },
+    { old: `RGB(${oldRgb})`, new: `RGB(${newRgb})`, type: 'rgb_func_upper', wordBoundary: false },
     
     // ARGB decimal (Android color resources)
-    { old: String(oldArgb), new: String(newArgb), type: 'argb_decimal' },
+    { old: String(oldArgb), new: String(newArgb), type: 'argb_decimal', wordBoundary: true },
   ];
 }
 
 /**
- * Replace color in file content
+ * Replace color in file content with safety checks
  */
 function replaceColorsInFile(filePath, variations) {
   try {
@@ -122,8 +121,25 @@ function replaceColorsInFile(filePath, variations) {
     let replacementCount = 0;
 
     for (const variation of variations) {
-      // Use regex for case-insensitive search where appropriate
-      const regex = new RegExp(variation.old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      // Escape special regex characters
+      const escaped = variation.old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Create regex with word boundary if needed (prevent ## or other edge cases)
+      let regex;
+      if (variation.wordBoundary) {
+        // Use negative lookbehind to prevent ## (if old starts with #)
+        if (variation.old.startsWith('#')) {
+          // Prevent ##HEX - don't match if preceded by #
+          regex = new RegExp(`(?<!#)${escaped}(?!#)`, 'gi');
+        } else {
+          // Regular word boundary
+          regex = new RegExp(`\\b${escaped}\\b`, 'gi');
+        }
+      } else {
+        // No boundary needed (for RGB functions, etc.)
+        regex = new RegExp(escaped, 'gi');
+      }
+      
       const matches = content.match(regex);
       
       if (matches) {
@@ -132,6 +148,9 @@ function replaceColorsInFile(filePath, variations) {
       }
     }
 
+    // Final cleanup: Fix any ## that might have been created
+    content = content.replace(/##([0-9A-Fa-f]{6})/g, '#$1');
+
     if (content !== originalContent) {
       fs.writeFileSync(filePath, content, 'utf8');
       return replacementCount;
@@ -139,6 +158,7 @@ function replaceColorsInFile(filePath, variations) {
 
     return 0;
   } catch (error) {
+    console.error(`Error processing ${filePath}:`, error.message);
     return -1; // Error
   }
 }
@@ -209,10 +229,11 @@ function aggressiveColorReplace(context) {
     log(colors.yellow, `   Files modified: ${filesWithChanges}`);
     log(colors.yellow, `   Total replacements: ${totalReplacements}`);
     log(colors.yellow, `\n   Color formats replaced:`);
-    log(colors.yellow, `   ✓ Hex: #${oldColor.substring(1)} → #${newColor.substring(1)}`);
+    log(colors.yellow, `   ✓ Hex: ${oldColor} → ${newColor}`);
     log(colors.yellow, `   ✓ RGB: ${hexToRgbString(oldColor)} → ${hexToRgbString(newColor)}`);
     log(colors.yellow, `   ✓ ARGB: ${hexToArgb(oldColor)} → ${hexToArgb(newColor)}`);
-    log(colors.yellow, `   ✓ All case variations (Upper/Lower)\n`);
+    log(colors.yellow, `   ✓ All case variations (Upper/Lower)`);
+    log(colors.yellow, `   ✓ Safety: Prevents ## (double hash) edge case\n`);
 
   } catch (error) {
     log(colors.red, `\n❌ Hook execution failed: ${error.message}`);
