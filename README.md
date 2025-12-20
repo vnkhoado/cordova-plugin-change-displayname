@@ -1,41 +1,25 @@
 # cordova-plugin-change-app-info
 
-Cordova plugin to change app info (package name, display name, version, icon) from CDN at build time. Stores app configuration in JSON format accessible from web and mobile apps. Supports native gradient splash screens. **Optimized for OutSystems MABS with forced splash color override**.
+Cordova plugin to change app info (display name, version, icon) from CDN at build time. Stores app configuration in JSON format accessible from web and mobile apps. **Optimized for OutSystems MABS**.
 
 ## Features
 
 ✅ **Dynamic App Configuration**
-- Change package name/bundle ID at build time
 - Set app display name dynamically
 - Configure version number and build code
 - Download and set app icon from CDN URL (requires sharp or jimp)
 
-✅ **JSON Config Storage** (NEW in v2.9.11)
+✅ **JSON Config Storage**
 - Saves app info to `.cordova-app-data/build-config.json`
 - Accessible from web apps via `configLoader.load()`
 - Accessible from mobile apps via `mobileConfigLoader.load()`
 - Tracks build history (last 50 builds)
 - **No sqlite needed!** Works on all cloud builds
 
-✅ **Gradient Splash Screens** (NEW in v2.9.11)
-- CSS linear-gradient support for native splash screens
-- Works on iOS (all device sizes) and Android
-- Smooth color transitions, no white flash
-- Set via `SPLASH_GRADIENT` preference
-
-✅ **Auto-Copy Build Config** (NEW in v2.9.12)
-- Automatically copies config files to `www/` directory
-- Prevents Cordova from deleting essential files during prepare
-- Runs before all other hooks in build pipeline
-- Works seamlessly - no configuration needed!
-
 ✅ **UI Customization**
+- **Splash screen color**: Custom background color for native splash screen
 - **Webview background color**: Eliminate white flash on app launch
-- **Native splash screen**: Auto-override OutSystems theme colors
-- **Native pre-splash**: No white flash when tapping app icon (iOS)
-- **Deep color override**: Replaces ALL color tags in LaunchScreen (not just first)
-- **Force override**: Prevents OutSystems from overriding splash colors
-- **iOS Background Fix**: Automatic code injection to eliminate color flash during app startup
+- **Works with OutSystems MABS**: Properly overrides theme colors
 
 ✅ **Build Success Notification**
 - Send HTTP POST notification to API when build completes
@@ -62,10 +46,6 @@ Cordova plugin to change app info (package name, display name, version, icon) fr
 - **jimp**: Fallback image processor (pure JavaScript)
   - `npm install jimp`
   - Works everywhere, slower than sharp
-
-- **cordova-sqlite-storage**: Runtime SQLite access for app (optional)
-  - Only needed if your app needs to access/modify build database at runtime
-  - `cordova plugin add cordova-sqlite-storage@6.1.0`
 
 ## Installation
 
@@ -100,78 +80,6 @@ npm install jimp    # Pure JavaScript processor
 cordova build android ios
 ```
 
-## How Auto-Copy Hook Works
-
-### Problem Solved
-
-Cordova's `prepare` step automatically deletes all files from `platforms/www/` that don't exist in the project's `www/` directory. This caused `build-config.json` to be deleted BEFORE the `injectBuildInfo` hook could update it.
-
-**Build Flow (Before Fix)**:
-```
-cordova build
-├─ Merge www/ files to platforms/www/
-├─ Delete files not in www/ ← build-config.json deleted here ✗
-├─ Run after_prepare hooks
-│  └─ injectBuildInfo tries to update it ✗ (already deleted)
-```
-
-### Solution
-
-The new `auto-copy-config-files.js` hook runs in the `before_prepare` phase and copies essential files into `www/`. This makes them "source files" so Cordova won't delete them.
-
-**Build Flow (After Fix)**:
-```
-cordova build
-├─ Run before_prepare hooks
-│  └─ auto-copy-config-files copies templates to www/ ✓
-├─ Merge www/ files to platforms/www/
-├─ Delete files not in www/ (build-config.json stays since it's in www/) ✓
-├─ Run after_prepare hooks
-│  └─ injectBuildInfo updates build-config.json ✓ (file exists)
-```
-
-### What The Hook Does
-
-✅ Creates `www/.cordova-app-data/` directory
-✅ Creates `www/.cordova-app-data/build-config.json` template
-✅ Creates `www/.cordova-app-data/build-history.json` template
-✅ Copies `config-loader.js` to `www/js/`
-✅ Copies `config-loader-mobile.js` to `www/js/`
-✅ Warns if script tag missing from index.html
-
-### Build Log Output
-
-You'll see output like this during `cordova build`:
-
-```
-════════════════════════════════════════════════════════════════
-  AUTO-COPY CONFIG FILES - Preserving source files
-════════════════════════════════════════════════════════════════
-
-✅ Created directory: www/.cordova-app-data
-✅ Created directory: www/js
-✅ Created: www/.cordova-app-data/build-config.json
-✅ Created: www/.cordova-app-data/build-history.json
-✅ Copied: www/js/config-loader.js
-✅ Copied: www/js/config-loader-mobile.js
-✅ Script tag found in index.html
-
-════════════════════════════════════════════════════════════════
-✅ Auto-copy completed! Files preserved for injectBuildInfo
-════════════════════════════════════════════════════════════════
-```
-
-### No Configuration Needed
-
-The hook is **automatically registered** for both Android and iOS platforms. It runs with every `cordova build` and `cordova prepare` automatically.
-
-No additional setup required! Just build as usual:
-
-```bash
-cordova build android
-# Hook runs automatically ✓
-```
-
 ## Configuration
 
 ### Basic App Configuration
@@ -184,24 +92,7 @@ cordova build android
 | `CDN_ICON` | Icon URL (1024x1024 PNG) | `"https://cdn.com/icon.png"` |
 | `ENVIRONMENT` | Environment name | `"production"` |
 
-### Gradient Splash Screen (NEW)
-
-```xml
-<!-- config.xml -->
-<preference name="SPLASH_GRADIENT" value="linear-gradient(135deg, #667eea 0%, #764ba2 100%)" />
-```
-
-**Supported Gradients**:
-- `linear-gradient(angle, color1, color2, ...)`
-- `linear-gradient(to right, #color1, #color2)`
-- `linear-gradient(45deg, rgb(r,g,b), rgb(r,g,b))`
-
-**Works On**:
-- ✅ iOS (iPhone + iPad)
-- ✅ Android (all versions)
-- ❌ Web (fallback to solid color)
-
-### Splash Screen Color Override (OutSystems)
+### Splash Screen Color
 
 **For OutSystems apps**, set ALL THREE:
 
@@ -215,8 +106,7 @@ cordova build android
 1. `after_prepare`: Initial splash color setup
 2. OutSystems: May inject theme colors during build
 3. `before_compile`: **Force override** - replaces ALL color tags
-4. **iOS Background Fix**: Auto-injects code into AppDelegate and MainViewController
-5. Result: Your color preference wins everywhere!
+4. Result: Your color preference wins everywhere!
 
 ### Webview Background
 
@@ -328,17 +218,14 @@ await mobileConfigLoader.displayTable();
     <preference name="CDN_ICON" value="https://cdn.example.com/icon-1024.png" />
     <preference name="ENVIRONMENT" value="production" />
     
-    <!-- Splash Screen - Gradient -->
-    <preference name="SPLASH_GRADIENT" value="linear-gradient(135deg, #667eea 0%, #764ba2 100%)" />
-    
-    <!-- Splash Screen - Fallback Color (for web, web preview) -->
-    <preference name="BackgroundColor" value="#667eea" />
-    <preference name="SplashScreenBackgroundColor" value="#667eea" />
-    <preference name="AndroidWindowSplashScreenBackground" value="#667eea" />
+    <!-- Splash Screen Color -->
+    <preference name="BackgroundColor" value="#001833" />
+    <preference name="SplashScreenBackgroundColor" value="#001833" />
+    <preference name="AndroidWindowSplashScreenBackground" value="#001833" />
     <preference name="SplashScreenDelay" value="3000" />
     
     <!-- Webview -->
-    <preference name="WEBVIEW_BACKGROUND_COLOR" value="#667eea" />
+    <preference name="WEBVIEW_BACKGROUND_COLOR" value="#001833" />
     
     <!-- Plugin -->
     <plugin name="cordova-plugin-change-app-info" spec="https://github.com/vnkhoado/cordova-plugin-change-app-info.git" />
@@ -377,24 +264,20 @@ await mobileConfigLoader.displayTable();
         "value": "production"
       },
       {
-        "name": "SPLASH_GRADIENT",
-        "value": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-      },
-      {
         "name": "BackgroundColor",
-        "value": "#667eea"
+        "value": "#001833"
       },
       {
         "name": "SplashScreenBackgroundColor",
-        "value": "#667eea"
+        "value": "#001833"
       },
       {
         "name": "AndroidWindowSplashScreenBackground",
-        "value": "#667eea"
+        "value": "#001833"
       },
       {
         "name": "WEBVIEW_BACKGROUND_COLOR",
-        "value": "#667eea"
+        "value": "#001833"
       }
     ]
   }
@@ -407,29 +290,26 @@ await mobileConfigLoader.displayTable();
 
 **Symptom**: `build-config.json` file not found in app
 
-**Solution**: This is now fixed by the auto-copy hook! If still having issues:
+**Solution**: Clean and rebuild:
 
 ```bash
-# 1. Check files in www/
-ls -la www/.cordova-app-data/
-ls -la www/js/config-loader*.js
-
-# 2. Check build log for auto-copy messages
-cordova build android --verbose 2>&1 | grep -i "auto-copy"
-
-# 3. Clean and rebuild
+# 1. Clean build artifacts
 cordova clean
+
+# 2. Remove and re-add platforms
 cordova platform remove android
 cordova platform add android
+
+# 3. Build with verbose output
 cordova build android --verbose
 ```
 
-### Gradient Splash Not Showing
+### Splash Color Not Applied
 
 **Android**:
 ```bash
-# Check drawable folder
-find platforms/android -name "splash_gradient_bg.xml"
+# Verify colors.xml
+grep "splash_background" platforms/android/app/src/main/res/values/colors.xml
 
 # Rebuild
 cordova platform remove android
@@ -439,9 +319,8 @@ cordova build android
 
 **iOS**:
 ```bash
-# Check splash images
-find platforms/ios -name "splash*.png" | wc -l
-# Should be 5+ images
+# Check LaunchScreen
+find platforms/ios -name "LaunchScreen.storyboard"
 
 # Rebuild
 cordova platform remove ios
@@ -477,49 +356,19 @@ document.addEventListener('deviceready', async () => {
 - Rebuild: `cordova platform remove ios && cordova platform add ios`
 
 **Android**:
-- Check `SPLASH_GRADIENT` preference is set
-- Verify drawable XML generated
+- Verify `SplashScreenBackgroundColor` preference is set
+- Check `colors.xml` has `splash_background` color
 
 ## Changelog
 
-### v2.9.12 (2025-12-18) ✨ AUTO-COPY HOOK
-- **NEW**: Auto-copy hook - prevents build config deletion during prepare
-- **FEATURE**: Runs before_prepare - copies files before Cordova deletes them
-- **FIXED**: build-config.json no longer deleted
-- **IMPROVED**: No user setup needed - automatic!
-- **DOCS**: Added troubleshooting and how-it-works section
+See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
-### v2.9.11 (2025-12-17) ✨ JSON CONFIG + GRADIENT SPLASH
-- **NEW**: JSON config storage - replaces sqlite (works everywhere!)
-- **NEW**: Web config loader - read config in browser apps
-- **NEW**: Mobile config loader - read config in iOS/Android apps
-- **NEW**: Gradient splash screen support (CSS linear-gradient)
-- **NEW**: Build history tracking (JSON format)
-- **FIXED**: iOS Contents.json (now includes all 5 splash sizes)
-- **FIXED**: iOS async/await for image generation
-- **FIXED**: Android drawable path (values → drawable)
-- **FIXED**: Remove ImageView reference in splash layout
-- **REMOVED**: sqlite3 dependency - no longer needed
-
-### v2.9.10 (2025-12-17) ✨ AUTO-INSTALL
-- **NEW**: Auto-install optional dependencies on first build
-- **NEW**: Auto-check for sharp and jimp
-- **IMPROVED**: Clear status messages
-
-### v2.9.8 (2025-12-16) 🎉 NATIVE PRE-SPLASH
-- **NEW**: Native pre-splash color - no white flash on tap!
-- **FEATURE**: Auto-creates Color Assets
-- **IMPROVED**: Proper UILaunchScreen configuration
-
-### v2.9.7 (2025-12-16) 🚀 MAJOR IMPROVEMENTS  
-- **FIXED**: iOS app name not updating
-- **FIXED**: iOS splash color on all elements
-- **FIXED**: Android icon generation with validation
-
-### v2.9.6 (2025-12-16) 🎯 iOS BACKGROUND FIX
-- **NEW**: Auto-inject AppDelegate color fix
-- **FEATURE**: Eliminate color flash during startup
-- **IMPROVED**: Swift and Objective-C support
+### v2.9.12+ (2025-12-20) 🚀 CLEANUP & REFACTOR
+- **REFACTORED**: Consolidated 6 duplicate splash color hooks into unified `customizeColors.js`
+- **REMOVED**: Splash screen toggle feature (was not working)
+- **CLEANED**: Removed obsolete documentation files
+- **IMPROVED**: Better code organization and maintainability
+- **DOCS**: Updated with simplified, cleaner examples
 
 ## License
 
