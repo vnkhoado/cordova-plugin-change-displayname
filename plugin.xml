@@ -50,8 +50,8 @@
         <hook type="after_prepare" src="hooks/injectAppReadyManager.js" />
         <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
         
-        <!-- FIX PHASE: Force override splash color & fix flicker (FINAL after_prepare) -->
-        <hook type="after_prepare" src="hooks/android/fix-splash-flicker.js" />
+        <!-- COMPILE PHASE: Force override splash color & fix flicker (FINAL - no more Cordova processing) -->
+        <hook type="before_compile" src="hooks/android/fix-splash-flicker.js" />
         
         <!-- BUILD PHASE: Send success notification -->
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
