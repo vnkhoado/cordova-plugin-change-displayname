@@ -1,201 +1,506 @@
-/**
- * Utility Functions for Cordova Plugin Color Management
- * 
- * Provides reusable functions for:
- * - Reading preferences from config.xml
- * - Color normalization and formatting
- * - Color preference retrieval with fallbacks
- */
+#!/usr/bin/env node
 
+const path = require('path');
 const fs = require('fs');
+const https = require('https');
+const http = require('http');
 
-const colors = {
-  reset: '\x1b[0m',
-  bright: '\x1b[1m',
-  red: '\x1b[31m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[36m'
-};
+// ============================================================================
+// CONFIG UTILITIES
+// ============================================================================
 
 /**
- * Log helper function
- * @param {string} color - ANSI color code
- * @param {string} message - Message to log
+ * Get config.xml path for platform
  */
-function log(color, message) {
-  console.log(`${color}${message}${colors.reset}`);
+function getConfigPath(context, platform) {
+  const root = context.opts.projectRoot;
+  const platformPath = path.join(root, 'platforms', platform);
+  
+  if (!fs.existsSync(platformPath)) {
+    return null;
+  }
+  
+  let configPath = path.join(platformPath, 'config.xml');
+  if (fs.existsSync(configPath)) {
+    return configPath;
+  }
+  
+  configPath = path.join(root, 'config.xml');
+  if (fs.existsSync(configPath)) {
+    return configPath;
+  }
+  
+  return null;
 }
 
 /**
- * Extract preference value from config.xml by name
- * Searches for: <preference name="PREF_NAME" value="VALUE" />
- * 
- * @param {string} configContent - Content of config.xml
- * @param {string} preferenceName - Preference name to search for
- * @param {string} defaultValue - Default value if preference not found (default: '')
- * @returns {string} - Preference value or defaultValue
- * 
- * @example
- * getPreferenceValue(content, 'SplashScreenBackgroundColor', '#001833')
- * // Returns: value from config.xml or '#001833' if not found
+ * Get ConfigParser instance
  */
-function getPreferenceValue(configContent, preferenceName, defaultValue = '') {
-  if (!configContent || !preferenceName) return defaultValue;
+function getConfigParser(context, configPath) {
+  const ConfigParser = context.requireCordovaModule('cordova-common').ConfigParser;
+  return new ConfigParser(configPath || path.join(context.opts.projectRoot, 'config.xml'));
+}
+
+/**
+ * Check if Cordova version is above a specific version
+ */
+function isCordovaAbove(context, version) {
+  try {
+    const cordovaVersion = context.opts.cordova.version;
+    if (!cordovaVersion) return false;
+    
+    const current = cordovaVersion.split('.').map(Number);
+    const target = version.split('.').map(Number);
+    
+    for (let i = 0; i < Math.max(current.length, target.length); i++) {
+      const currentPart = current[i] || 0;
+      const targetPart = target[i] || 0;
+      
+      if (currentPart > targetPart) return true;
+      if (currentPart < targetPart) return false;
+    }
+    
+    return true;
+  } catch (err) {
+    console.warn('⚠️ Could not determine Cordova version:', err.message);
+    return true;
+  }
+}
+
+/**
+ * Get Cordova version
+ */
+function getCordovaVersion(context) {
+  try {
+    return context.opts.cordova.version || 'unknown';
+  } catch (err) {
+    return 'unknown';
+  }
+}
+
+// ============================================================================
+// PLATFORM UTILITIES
+// ============================================================================
+
+function isIOS(platform) {
+  return platform === 'ios';
+}
+
+function isAndroid(platform) {
+  return platform === 'android';
+}
+
+/**
+ * Get iOS app folder name (looks for .xcodeproj)
+ */
+function getIOSAppFolderName(root) {
+  const platformPath = path.join(root, 'platforms/ios');
   
-  // Match: <preference name="PREF_NAME" value="VALUE" />
-  // Also handles single quotes and extra whitespace
-  const pattern = new RegExp(
-    `<preference\\s+name=["']${preferenceName}["']\\s+value=["']([^"']+)["']`,
-    'i'
+  if (!fs.existsSync(platformPath)) {
+    return null;
+  }
+  
+  const folders = fs.readdirSync(platformPath).filter(f => {
+    const fullPath = path.join(platformPath, f);
+    return (
+      fs.statSync(fullPath).isDirectory() &&
+      f !== 'CordovaLib' &&
+      f !== 'www' &&
+      f !== 'cordova' &&
+      f !== 'build' &&
+      f !== 'DerivedData'
+    );
+  });
+  
+  return folders.length > 0 ? folders[0] : null;
+}
+
+/**
+ * Get iOS project name from .xcodeproj
+ */
+function getIOSProjectName(iosPath) {
+  if (!fs.existsSync(iosPath)) return null;
+  
+  const xcodeProjects = fs.readdirSync(iosPath)
+    .filter(f => f.endsWith('.xcodeproj'));
+  
+  return xcodeProjects.length > 0 ? xcodeProjects[0].replace('.xcodeproj', '') : null;
+}
+
+/**
+ * Get Android package name from build.gradle
+ */
+function getAndroidPackageName(root) {
+  const buildGradlePath = path.join(
+    root,
+    'platforms/android/app/build.gradle'
   );
   
-  const match = configContent.match(pattern);
-  return match ? match[1].trim() : defaultValue;
+  if (!fs.existsSync(buildGradlePath)) {
+    return null;
+  }
+  
+  try {
+    const content = fs.readFileSync(buildGradlePath, 'utf8');
+    const match = content.match(/applicationId\s+"([^"]+)"/);
+    return match ? match[1] : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+// ============================================================================
+// FILE UTILITIES
+// ============================================================================
+
+/**
+ * Safe file write with backup
+ */
+function safeWriteFile(filePath, content) {
+  if (fs.existsSync(filePath)) {
+    const backupPath = filePath + '.backup';
+    try {
+      fs.copyFileSync(filePath, backupPath);
+    } catch (err) {
+      console.warn('⚠️ Could not create backup:', err.message);
+    }
+  }
+  fs.writeFileSync(filePath, content, 'utf8');
+}
+
+function isFileReadable(filePath) {
+  try {
+    fs.accessSync(filePath, fs.constants.R_OK);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+function ensureDirectoryExists(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
 }
 
 /**
- * Normalize color format (with or without #)
- * 
- * @param {string} color - Color value
+ * Find first file matching patterns in directory tree
+ */
+function findFile(baseDir, patterns, maxDepth = 3) {
+  function searchDir(dir, depth = 0) {
+    if (depth > maxDepth) return null;
+    
+    let items;
+    try {
+      items = fs.readdirSync(dir);
+    } catch (error) {
+      return null;
+    }
+    
+    for (const item of items) {
+      const fullPath = path.join(dir, item);
+      let stat;
+      
+      try {
+        stat = fs.statSync(fullPath);
+      } catch (error) {
+        continue;
+      }
+      
+      if (stat.isFile()) {
+        for (const pattern of patterns) {
+          if (item === pattern || item.endsWith(pattern)) {
+            return fullPath;
+          }
+        }
+      } else if (stat.isDirectory()) {
+        if (['node_modules', 'build', 'Pods', '.git', 'DerivedData'].includes(item)) {
+          continue;
+        }
+        const found = searchDir(fullPath, depth + 1);
+        if (found) return found;
+      }
+    }
+    
+    return null;
+  }
+  
+  return searchDir(baseDir);
+}
+
+/**
+ * Find all files matching patterns
+ */
+function findAllFiles(baseDir, patterns, maxDepth = 3) {
+  const results = [];
+  
+  function searchDir(dir, depth = 0) {
+    if (depth > maxDepth) return;
+    
+    let items;
+    try {
+      items = fs.readdirSync(dir);
+    } catch (error) {
+      return;
+    }
+    
+    for (const item of items) {
+      const fullPath = path.join(dir, item);
+      let stat;
+      
+      try {
+        stat = fs.statSync(fullPath);
+      } catch (error) {
+        continue;
+      }
+      
+      if (stat.isFile()) {
+        for (const pattern of patterns) {
+          if (item === pattern || item.endsWith(pattern)) {
+            results.push(fullPath);
+            break;
+          }
+        }
+      } else if (stat.isDirectory()) {
+        if (['node_modules', 'build', 'Pods', '.git', 'DerivedData'].includes(item)) {
+          continue;
+        }
+        searchDir(fullPath, depth + 1);
+      }
+    }
+  }
+  
+  searchDir(baseDir);
+  return results;
+}
+
+// ============================================================================
+// COLOR UTILITIES
+// ============================================================================
+
+/**
+ * Validate hex color format
+ * @param {string} color - Color in hex format (#RRGGBB or RRGGBB)
+ * @returns {boolean}
+ */
+function validateHexColor(color) {
+  const hexRegex = /^#?([A-Fa-f0-9]{6})$/;
+  return hexRegex.test(color);
+}
+
+/**
+ * Normalize hex color format
+ * @param {string} color - Color in hex format
  * @returns {string} - Normalized color with #
- * 
- * @example
- * normalizeColor('#001833')  // Returns: '#001833'
- * normalizeColor('001833')   // Returns: '#001833'
- * normalizeColor('')         // Returns: '#001833' (default fallback)
  */
-function normalizeColor(color) {
-  if (!color) return '#001833';
-  const trimmed = color.trim();
-  return trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+function normalizeHexColor(color) {
+  if (!color) return null;
+  const hex = color.trim().toUpperCase();
+  return hex.startsWith('#') ? hex : `#${hex}`;
 }
 
 /**
- * Extract hex color without # prefix
- * 
- * @param {string} color - Color value
- * @returns {string} - Hex color without #
- * 
- * @example
- * getHexWithoutHash('#001833')  // Returns: '001833'
- * getHexWithoutHash('001833')   // Returns: '001833'
+ * Convert hex color to RGB object (0.0 - 1.0 range)
  */
-function getHexWithoutHash(color) {
-  const normalized = normalizeColor(color);
-  return normalized.replace('#', '');
+function hexToRgb(hex) {
+  hex = hex.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16) / 255.0;
+  const g = parseInt(hex.substring(2, 4), 16) / 255.0;
+  const b = parseInt(hex.substring(4, 6), 16) / 255.0;
+  return { r, g, b };
 }
 
 /**
- * Get background color preference from config.xml
- * Reads SplashScreenBackgroundColor preference with fallback to default
- * 
- * @param {string} configPath - Path to config.xml
- * @param {string} defaultColor - Default color if not found (default: #001833)
- * @returns {string} - Normalized color value with #
- * 
- * @example
- * getBackgroundColorPreference('/path/to/config.xml')
- * // Returns: color from config.xml or '#001833' if not found
+ * Convert RGB object to string for XML
  */
-function getBackgroundColorPreference(configPath, defaultColor = '#001833') {
-  if (!fs.existsSync(configPath)) {
-    log(colors.yellow, `⚠️  config.xml not found: ${configPath}`);
-    return normalizeColor(defaultColor);
+function rgbToString(rgb, precision = 3) {
+  return `red="${rgb.r.toFixed(precision)}" green="${rgb.g.toFixed(precision)}" blue="${rgb.b.toFixed(precision)}"`;
+}
+
+/**
+ * Convert hex to Swift UIColor
+ */
+function hexToSwiftUIColor(hex) {
+  const rgb = hexToRgb(hex);
+  return `UIColor(red: ${rgb.r.toFixed(3)}, green: ${rgb.g.toFixed(3)}, blue: ${rgb.b.toFixed(3)}, alpha: 1.0)`;
+}
+
+/**
+ * Convert hex to Objective-C UIColor
+ */
+function hexToObjCUIColor(hex) {
+  const rgb = hexToRgb(hex);
+  return `[UIColor colorWithRed:${rgb.r.toFixed(3)} green:${rgb.g.toFixed(3)} blue:${rgb.b.toFixed(3)} alpha:1.0]`;
+}
+
+/**
+ * Get background color from config (tries multiple keys)
+ */
+function getBackgroundColorPreference(config) {
+  return config.getPreference('SplashScreenBackgroundColor') ||
+         config.getPreference('BackgroundColor') ||
+         config.getPreference('WEBVIEW_BACKGROUND_COLOR') ||
+         null;
+}
+
+// ============================================================================
+// PLIST UTILITIES
+// ============================================================================
+
+/**
+ * Update plist value using string replacement
+ */
+function updatePlistValue(plistContent, key, value) {
+  const regex = new RegExp(`(<key>${key}</key>\\s*<string>)[^<]*(</string>)`);
+  if (regex.test(plistContent)) {
+    return plistContent.replace(regex, `$1${value}$2`);
   }
+  return plistContent;
+}
 
+/**
+ * Get iOS Info.plist path
+ */
+function getInfoPlistPath(iosPath) {
+  const projectName = getIOSProjectName(iosPath);
+  if (!projectName) return null;
+  
+  return path.join(iosPath, projectName, `${projectName}-Info.plist`);
+}
+
+// ============================================================================
+// DOWNLOAD UTILITIES
+// ============================================================================
+
+/**
+ * Download file from URL
+ */
+function downloadFile(url) {
+  return new Promise((resolve, reject) => {
+    const protocol = url.startsWith('https') ? https : http;
+    protocol.get(url, (response) => {
+      // Handle redirects
+      if (response.statusCode === 301 || response.statusCode === 302) {
+        return downloadFile(response.headers.location).then(resolve).catch(reject);
+      }
+      
+      if (response.statusCode !== 200) {
+        return reject(new Error(`Download failed with status ${response.statusCode}`));
+      }
+      
+      const chunks = [];
+      response.on('data', chunk => chunks.push(chunk));
+      response.on('end', () => resolve(Buffer.concat(chunks)));
+      response.on('error', reject);
+    }).on('error', reject);
+  });
+}
+
+// ============================================================================
+// IMAGE PROCESSING UTILITIES
+// ============================================================================
+
+/**
+ * Try to load image processing library (sharp or jimp)
+ */
+function getImageProcessor() {
   try {
-    const configContent = fs.readFileSync(configPath, 'utf8');
-    const colorValue = getPreferenceValue(
-      configContent,
-      'SplashScreenBackgroundColor',
-      defaultColor
-    );
-    
-    return normalizeColor(colorValue);
-  } catch (error) {
-    log(colors.yellow, `⚠️  Error reading config.xml: ${error.message}`);
-    return normalizeColor(defaultColor);
+    const sharp = require('sharp');
+    return { type: 'sharp', lib: sharp };
+  } catch (e) {
+    try {
+      const Jimp = require('jimp');
+      return { type: 'jimp', lib: Jimp };
+    } catch (e2) {
+      return null;
+    }
   }
 }
 
 /**
- * Get old color preference from config.xml
- * Reads OLD_COLOR preference with fallback to default Cordova color
- * 
- * @param {string} configPath - Path to config.xml
- * @param {string} defaultColor - Default color if not found (default: #1E1464)
- * @returns {string} - Normalized color value with #
- * 
- * @example
- * getOldColorPreference('/path/to/config.xml')
- * // Returns: color from config.xml or '#1E1464' if not found
+ * Resize image using available processor
  */
-function getOldColorPreference(configPath, defaultColor = '#1E1464') {
-  if (!fs.existsSync(configPath)) {
-    return normalizeColor(defaultColor);
+async function resizeImage(inputBuffer, outputPath, size) {
+  const processor = getImageProcessor();
+  
+  if (!processor) {
+    throw new Error('No image processor available (install sharp or jimp)');
   }
-
-  try {
-    const configContent = fs.readFileSync(configPath, 'utf8');
-    const colorValue = getPreferenceValue(
-      configContent,
-      'OLD_COLOR',
-      defaultColor
-    );
-    
-    return normalizeColor(colorValue);
-  } catch (error) {
-    return normalizeColor(defaultColor);
+  
+  if (processor.type === 'sharp') {
+    await processor.lib(inputBuffer)
+      .resize(size, size)
+      .toFile(outputPath);
+  } else { // jimp
+    const image = await processor.lib.read(inputBuffer);
+    await image.resize(size, size).writeAsync(outputPath);
   }
 }
 
-/**
- * Read all color configuration from config.xml
- * Retrieves both OLD_COLOR and SplashScreenBackgroundColor
- * 
- * @param {string} configPath - Path to config.xml
- * @returns {object} - { oldColor, newColor } both normalized with #
- * 
- * @example
- * readColorConfigFromXml('/path/to/config.xml')
- * // Returns: { oldColor: '#1E1464', newColor: '#001833' }
- */
-function readColorConfigFromXml(configPath) {
-  if (!fs.existsSync(configPath)) {
-    log(colors.yellow, `⚠️  config.xml not found: ${configPath}`);
-    return { 
-      oldColor: normalizeColor('#1E1464'), 
-      newColor: normalizeColor('#001833') 
-    };
-  }
+// ============================================================================
+// LOGGING UTILITIES
+// ============================================================================
 
-  try {
-    const oldColor = getOldColorPreference(configPath);
-    const newColor = getBackgroundColorPreference(configPath);
-    
-    log(colors.blue, `📖 Config.xml colors:`);
-    log(colors.reset, `   OLD_COLOR (to replace): ${oldColor}`);
-    log(colors.reset, `   SplashScreenBackgroundColor (new): ${newColor}`);
-    
-    return { oldColor, newColor };
-  } catch (error) {
-    log(colors.yellow, `⚠️  Error reading config.xml: ${error.message}`);
-    return { 
-      oldColor: normalizeColor('#1E1464'), 
-      newColor: normalizeColor('#001833') 
-    };
-  }
+function logWithTimestamp(message) {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] ${message}`);
 }
 
-// Export all utility functions
+function logSection(title) {
+  console.log('\n══════════════════════════════════════════════');
+  console.log(`  ${title}`);
+  console.log('══════════════════════════════════════════════');
+}
+
+function logSectionComplete(message) {
+  console.log('\n══════════════════════════════════════════════');
+  console.log(message);
+  console.log('══════════════════════════════════════════════\n');
+}
+
 module.exports = {
-  getPreferenceValue,
-  normalizeColor,
-  getHexWithoutHash,
+  // Config utilities
+  getConfigPath,
+  getConfigParser,
+  isCordovaAbove,
+  getCordovaVersion,
+  
+  // Platform utilities
+  isIOS,
+  isAndroid,
+  getIOSAppFolderName,
+  getIOSProjectName,
+  getAndroidPackageName,
+  
+  // File utilities
+  safeWriteFile,
+  isFileReadable,
+  ensureDirectoryExists,
+  findFile,
+  findAllFiles,
+  
+  // Color utilities
+  validateHexColor,
+  normalizeHexColor,
+  hexToRgb,
+  rgbToString,
+  hexToSwiftUIColor,
+  hexToObjCUIColor,
   getBackgroundColorPreference,
-  getOldColorPreference,
-  readColorConfigFromXml,
-  log,
-  colors
+  
+  // Plist utilities
+  updatePlistValue,
+  getInfoPlistPath,
+  
+  // Download utilities
+  downloadFile,
+  
+  // Image processing utilities
+  getImageProcessor,
+  resizeImage,
+  
+  // Logging utilities
+  logWithTimestamp,
+  logSection,
+  logSectionComplete
 };
