@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.9.10">
+    version="2.9.13">
     
-    <name>Change App Info (iOS Optimized)</name>
-    <description>Cordova plugin to change app display name, version and icon from CDN at build time. Creates read-only SQLite database with build info. Supports custom colors for splash screen and webview. Runtime CSS injection from CDN. Optimized for OutSystems MABS.</description>
+    <name>Change App Info</name>
+    <description>Cordova plugin to change app display name, version and icon from CDN at build time. Stores build info in JSON format. Supports custom colors for splash screen and webview. Runtime CSS injection. Optimized for OutSystems MABS.</description>
     <license>MIT</license>
-    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,optimized,sqlite,build-info,outsystems,css,runtime,color,splash,webview</keywords>
+    <keywords>cordova,app,info,displayname,version,icon,ios,android,cdn,optimized,json,build-info,outsystems,css,runtime,color,splash,webview</keywords>
     
     <author>vnkhoado</author>
     <repo>https://github.com/vnkhoado/cordova-plugin-change-app-info.git</repo>
@@ -42,7 +42,7 @@
         <hook type="after_prepare" src="hooks/generateIcons.js" />
         <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
         
-        <!-- CUSTOMIZE PHASE: Update colors (unified hook, replaces 6 duplicate hooks) -->
+        <!-- CUSTOMIZE PHASE: Update colors (unified hook) -->
         <hook type="after_prepare" src="hooks/customizeColors.js" />
         <hook type="after_prepare" src="hooks/customizeWebview.js" />
         
@@ -79,7 +79,7 @@
         <hook type="after_prepare" src="hooks/ios/unified-prepare-standalone.js" />
         <hook type="after_prepare" src="hooks/ios/inject-gradient-splash.js" />
         
-        <!-- CUSTOMIZE PHASE: Update colors (unified hook, replaces 6 duplicate hooks) -->
+        <!-- CUSTOMIZE PHASE: Update colors (unified hook) -->
         <hook type="after_prepare" src="hooks/customizeColors.js" />
         
         <!-- INJECT PHASE: Add runtime scripts -->
