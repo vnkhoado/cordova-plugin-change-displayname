@@ -295,8 +295,21 @@ function validateHexColor(color) {
  */
 function normalizeHexColor(color) {
   if (!color) return null;
-  const hex = color.trim().toUpperCase();
-  return hex.startsWith('#') ? hex : `#${hex}`;
+  
+  // Remove # if present
+  let hex = color.replace(/^#/, '');
+  
+  // Remove alpha channel if present (last 2 chars if 8 chars long)
+  if (hex.length === 8) {
+    hex = hex.substring(0, 6);
+  }
+  
+  // Ensure 6 characters
+  if (hex.length !== 6) {
+    return null;
+  }
+  
+  return '#' + hex.toLowerCase();
 }
 
 /**
@@ -341,6 +354,70 @@ function getBackgroundColorPreference(config) {
          config.getPreference('BackgroundColor') ||
          config.getPreference('WEBVIEW_BACKGROUND_COLOR') ||
          null;
+}
+
+/**
+ * Read color configuration from config.xml file
+ * Reads OLD_COLOR (what to replace) and SplashScreenBackgroundColor (target color)
+ * 
+ * Priority:
+ * 1. SplashScreenBackgroundColor (new color to set)
+ * 2. AndroidWindowSplashScreenBackgroundColor (Cordova standard)
+ * 3. Fallback to #001833
+ * 
+ * @param {string} configPath - Path to config.xml
+ * @returns {Object} { oldColor: string, newColor: string }
+ */
+function readColorConfigFromXml(configPath) {
+  if (!fs.existsSync(configPath)) {
+    return {
+      oldColor: '#1E1464',  // Cordova default to replace
+      newColor: '#001833'   // Target color
+    };
+  }
+
+  try {
+    const content = fs.readFileSync(configPath, 'utf8');
+    
+    // Read OLD_COLOR (Cordova default to replace)
+    const oldColorMatch = content.match(
+      /<preference\s+name=["']OLD_COLOR["']\s+value=["']([^"']+)["']/i
+    );
+    const oldColor = oldColorMatch ? oldColorMatch[1].trim() : '#1E1464';
+    
+    // Read NEW/TARGET color - try multiple preference names
+    let newColor = '#001833'; // Safe default
+    
+    // Priority 1: SplashScreenBackgroundColor (custom preference)
+    const bgColorMatch = content.match(
+      /<preference\s+name=["']SplashScreenBackgroundColor["']\s+value=["']([^"']+)["']/i
+    );
+    if (bgColorMatch && bgColorMatch[1]) {
+      newColor = bgColorMatch[1].trim();
+    } else {
+      // Priority 2: AndroidWindowSplashScreenBackgroundColor (Cordova standard)
+      const androidBgMatch = content.match(
+        /<preference\s+name=["']AndroidWindowSplashScreenBackgroundColor["']\s+value=["']([^"']+)["']/i
+      );
+      if (androidBgMatch && androidBgMatch[1]) {
+        newColor = androidBgMatch[1].trim();
+      }
+    }
+    
+    // Normalize both colors
+    const normalizedOldColor = normalizeHexColor(oldColor);
+    const normalizedNewColor = normalizeHexColor(newColor);
+    
+    return {
+      oldColor: normalizedOldColor || '#1E1464',
+      newColor: normalizedNewColor || '#001833'
+    };
+  } catch (error) {
+    return {
+      oldColor: '#1E1464',
+      newColor: '#001833'
+    };
+  }
 }
 
 // ============================================================================
@@ -487,6 +564,7 @@ module.exports = {
   hexToSwiftUIColor,
   hexToObjCUIColor,
   getBackgroundColorPreference,
+  readColorConfigFromXml,
   
   // Plist utilities
   updatePlistValue,
