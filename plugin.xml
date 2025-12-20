@@ -81,6 +81,10 @@
         <hook type="before_compile" src="hooks/forceOverrideNativeColors.js" />
         <hook type="before_compile" src="hooks/scanAndReplaceColor.js" />
         <hook type="before_compile" src="hooks/native-gradient-splash.js" />
+        
+        <!-- NEW: Fix Android splash color flicker at final phase -->
+        <hook type="before_compile" src="hooks/android/fix-splash-flicker.js" />
+        
         <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
     </platform>
