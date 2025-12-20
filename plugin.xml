@@ -86,8 +86,9 @@
         <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
         <hook type="after_prepare" src="hooks/injectAppReadyManager.js" />
         
-        <!-- COMPILE PHASE: Force override metadata -->
+        <!-- COMPILE PHASE: Force override metadata & fix splash flicker -->
         <hook type="before_compile" src="hooks/ios/force-metadata-override.js" />
+        <hook type="before_compile" src="hooks/ios/fix-splash-flicker.js" />
         
         <!-- BUILD PHASE: Build and send success -->
         <hook type="before_build" src="hooks/ios/unified-build.js" />
