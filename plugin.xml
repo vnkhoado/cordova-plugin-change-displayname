@@ -4,9 +4,9 @@
     version="2.9.10">
     
     <name>Change App Info (iOS Optimized)</name>
-    <description>Cordova plugin to change app package name, display name, version and icon from CDN at build time. Creates read-only SQLite database with build info. Supports splash screen and webview background color customization. Runtime CSS injection from CDN. Optimized for OutSystems MABS.</description>
+    <description>Cordova plugin to change app display name, version and icon from CDN at build time. Creates read-only SQLite database with build info. Supports custom colors for splash screen and webview. Runtime CSS injection from CDN. Optimized for OutSystems MABS.</description>
     <license>MIT</license>
-    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,optimized,sqlite,build-info,outsystems,css,runtime</keywords>
+    <keywords>cordova,app,info,package,displayname,version,icon,ios,android,cdn,optimized,sqlite,build-info,outsystems,css,runtime,color,splash,webview</keywords>
     
     <author>vnkhoado</author>
     <repo>https://github.com/vnkhoado/cordova-plugin-change-app-info.git</repo>
@@ -17,15 +17,6 @@
     
     <!-- Android Platform -->
     <platform name="android">
-        <!-- NOTE: No external dependencies needed!
-             SplashScreenManager implements graceful fallback strategies:
-             1. SplashScreen.hide() (if cordova-plugin-splashscreen available)
-             2. Fade out animation (always works)
-             3. Dialog dismissal (fallback)
-             
-             Compatible with all Cordova Android versions including 13+
-        -->
-        
         <!-- Native CSS Injector -->
         <config-file target="res/xml/config.xml" parent="/*">
             <feature name="CSSInjector">
@@ -34,54 +25,32 @@
             </feature>
         </config-file>
         
-        <!-- Splash Screen Manager -->
-        <config-file target="res/xml/config.xml" parent="/*">
-            <feature name="SplashScreenManager">
-                <param name="android-package" value="io.outsystems.android.SplashScreenManager" />
-            </feature>
-        </config-file>
-        
         <source-file src="src/android/CSSInjector.java" target-dir="src/com/vnkhoado/cordova/changeappinfo" />
-        <source-file src="src/android/SplashScreenManager.java" target-dir="src/io/outsystems/android" />
         
         <!-- Copy AppReadyManager.js to www -->
         <asset src="www/js/AppReadyManager.js" target="js/AppReadyManager.js" />
         
-        <!-- Download CDN resources and cache locally -->
+        <!-- CLEANUP PHASE: Prepare and backup configs -->
         <hook type="before_prepare" src="hooks/downloadCDNResources.js" />
-        
-        <!-- Auto-copy config files to preserve them during prepare -->
         <hook type="before_prepare" src="hooks/auto-copy-config-files.js" />
-        
-        <!-- Auto-install dependencies before build -->
-        <hook type="before_prepare" src="scripts/auto-install-deps.js" />
-        
-        <!-- NEW: Update splash screen with gradient support -->
-        <hook type="before_prepare" src="hooks/updateSplashScreen.js" />
-        
-        <!-- Standard build hooks -->
+        <hook type="before_prepare" src="hooks/scripts/auto-install-deps.js" />
         <hook type="before_prepare" src="hooks/backupAppInfo.js" />
         
-        <!-- CRITICAL: Remove conflicting strings.xml BEFORE updating cdv_strings.xml -->
+        <!-- PREPARE PHASE: Update app metadata and remove conflicts -->
         <hook type="after_prepare" src="hooks/removeConflictingStringsXml.js" />
-        
         <hook type="after_prepare" src="hooks/changeAppInfo.js" />
         <hook type="after_prepare" src="hooks/generateIcons.js" />
         <hook type="after_prepare" src="hooks/injectBuildInfo.js" />
-        <hook type="after_prepare" src="hooks/customizeSplashScreen.js" />
+        
+        <!-- CUSTOMIZE PHASE: Update colors (unified hook, replaces 6 duplicate hooks) -->
+        <hook type="after_prepare" src="hooks/customizeColors.js" />
         <hook type="after_prepare" src="hooks/customizeWebview.js" />
         
-        <!-- NEW: Inject AppReadyManager script tag into index.html -->
+        <!-- INJECT PHASE: Add runtime scripts -->
         <hook type="after_prepare" src="hooks/injectAppReadyManager.js" />
-        
-        <!-- NEW: Inject CSS loader code into MainActivity -->
         <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
         
-        <hook type="before_compile" src="hooks/forceOverrideSplashColor.js" />
-        <hook type="before_compile" src="hooks/forceOverrideNativeColors.js" />
-        <hook type="before_compile" src="hooks/scanAndReplaceColor.js" />
-        <hook type="before_compile" src="hooks/native-gradient-splash.js" />
-        <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
+        <!-- BUILD PHASE: Send success notification -->
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
     </platform>
     
@@ -100,41 +69,27 @@
         <!-- Copy AppReadyManager.js to www -->
         <asset src="www/js/AppReadyManager.js" target="js/AppReadyManager.js" />
         
-        <!-- Download CDN resources and cache locally -->
+        <!-- CLEANUP PHASE: Prepare and backup configs -->
         <hook type="before_prepare" src="hooks/downloadCDNResources.js" />
-        
-        <!-- Auto-copy config files to preserve them during prepare -->
         <hook type="before_prepare" src="hooks/auto-copy-config-files.js" />
-        
-        <!-- Auto-install dependencies before build -->
-        <hook type="before_prepare" src="scripts/auto-install-deps.js" />
-        
-        <!-- NEW: Update splash screen with gradient support -->
-        <hook type="before_prepare" src="hooks/updateSplashScreen.js" />
-        
-        <!-- IMPORTANT: Clear old cache to ensure app name/icon updates are visible -->
+        <hook type="before_prepare" src="hooks/scripts/auto-install-deps.js" />
         <hook type="before_prepare" src="hooks/ios-cache-clear.js" />
         
-        <!-- iOS-optimized hooks -->
+        <!-- PREPARE PHASE: Update app metadata -->
         <hook type="after_prepare" src="hooks/ios/unified-prepare-standalone.js" />
-        
-        <!-- NEW: Inject gradient splash into HTML -->
         <hook type="after_prepare" src="hooks/ios/inject-gradient-splash.js" />
         
-        <!-- NEW: Inject CSS loader code into AppDelegate -->
-        <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
+        <!-- CUSTOMIZE PHASE: Update colors (unified hook, replaces 6 duplicate hooks) -->
+        <hook type="after_prepare" src="hooks/customizeColors.js" />
         
-        <!-- NEW: Inject AppReadyManager script tag into index.html -->
+        <!-- INJECT PHASE: Add runtime scripts -->
+        <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
         <hook type="after_prepare" src="hooks/injectAppReadyManager.js" />
         
-        <!-- CRITICAL: Force override MABS metadata with plugin values -->
+        <!-- COMPILE PHASE: Force override metadata -->
         <hook type="before_compile" src="hooks/ios/force-metadata-override.js" />
         
-        <!-- UNIFIED: Generate native gradient splash -->
-        <hook type="before_compile" src="hooks/native-gradient-splash.js" />
-        
-        <hook type="before_compile" src="hooks/ios/unified-compile.js" />
-        <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
+        <!-- BUILD PHASE: Build and send success -->
         <hook type="before_build" src="hooks/ios/unified-build.js" />
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
         
