@@ -6,6 +6,7 @@
  * MABS 12 FIX: Assets.xcassets detection + UIImageName in UILaunchScreen
  * STORYBOARD FIX: Force override ALL background colors (including MABS defaults)
  * CRITICAL CRASH FIX: Use CDVLaunchScreen (already in bundle) instead of creating new one
+ * BUILD INFO: JSON-based storage (consistent with Android)
  */
 
 const fs = require('fs');
@@ -350,52 +351,102 @@ async function generateIcons(context, iosPath) {
 }
 
 async function injectBuildInfo(context, iosPath) {
-  console.log('💾 Step 4: Inject Build Info');
+  console.log('💾 Step 4: Inject Build Info (JSON)');
   
   try {
     const ConfigParser = context.requireCordovaModule('cordova-common').ConfigParser;
     const config = new ConfigParser(path.join(context.opts.projectRoot, 'config.xml'));
     
+    const appName = config.getPreference('APP_NAME') || config.name() || 'Unknown';
+    const versionNumber = config.getPreference('VERSION_NUMBER') || config.version() || '0.0.0';
+    const versionCode = config.getPreference('VERSION_CODE') || '0';
     const environment = config.getPreference('ENVIRONMENT') || 'production';
     const apiHostname = config.getPreference('API_HOSTNAME') || '';
+    const cdnIcon = config.getPreference('CDN_ICON') || '';
     
+    console.log(`   ℹ️  App: ${appName}`);
+    console.log(`   ℹ️  Version: ${versionNumber} (${versionCode})`);
     console.log(`   ℹ️  Environment: ${environment}`);
     if (apiHostname) console.log(`   ℹ️  API: ${apiHostname}`);
     
-    const pluginsPath = path.join(context.opts.projectRoot, 'plugins');
-    const hasSQLite = fs.existsSync(path.join(pluginsPath, 'cordova-sqlite-storage'));
-    
-    if (!hasSQLite) {
-      console.log('   ℹ️  SQLite plugin not found, skipping database creation');
+    // Get www path
+    const wwwPath = path.join(iosPath, 'www');
+    if (!fs.existsSync(wwwPath)) {
+      console.log('   ⚠️  www directory not found');
       return;
     }
     
-    const xcodeProjects = fs.readdirSync(iosPath).filter(f => f.endsWith('.xcodeproj'));
-    if (xcodeProjects.length === 0) return;
-    
-    const projectName = xcodeProjects[0].replace('.xcodeproj', '');
-    const dbPath = path.join(iosPath, projectName, 'Resources/buildInfo.db');
-    
-    const resourcesDir = path.dirname(dbPath);
-    if (!fs.existsSync(resourcesDir)) {
-      fs.mkdirSync(resourcesDir, { recursive: true });
+    // Create .cordova-app-data directory
+    const cordovaDataDir = path.join(wwwPath, '.cordova-app-data');
+    if (!fs.existsSync(cordovaDataDir)) {
+      fs.mkdirSync(cordovaDataDir, { recursive: true });
     }
     
-    const sqlite3 = require('sqlite3');
-    const db = new sqlite3.Database(dbPath);
+    // Build info object
+    const buildInfo = {
+      timestamp: new Date().toISOString(),
+      version: '1.0',
+      config: {
+        appName: appName,
+        appId: config.packageName() || 'unknown',
+        appVersion: versionNumber,
+        appDescription: config.getPreference('APP_DESCRIPTION') || '',
+        platform: 'ios',
+        author: config.getPreference('AUTHOR') || '',
+        buildDate: new Date().toISOString(),
+        buildTimestamp: Date.now(),
+        environment: environment,
+        apiHostname: apiHostname,
+        cdnIcon: cdnIcon
+      }
+    };
     
-    db.serialize(() => {
-      db.run('CREATE TABLE IF NOT EXISTS build_info (key TEXT PRIMARY KEY, value TEXT)');
-      db.run('INSERT OR REPLACE INTO build_info VALUES (?, ?)', ['environment', environment]);
-      db.run('INSERT OR REPLACE INTO build_info VALUES (?, ?)', ['api_hostname', apiHostname]);
-      db.run('INSERT OR REPLACE INTO build_info VALUES (?, ?)', ['build_date', new Date().toISOString()]);
+    // Write build-config.json
+    const configPath = path.join(cordovaDataDir, 'build-config.json');
+    fs.writeFileSync(configPath, JSON.stringify(buildInfo, null, 2), 'utf8');
+    console.log('   ✅ Created build-config.json');
+    
+    // Update build history
+    const historyPath = path.join(cordovaDataDir, 'build-history.json');
+    let history = [];
+    
+    if (fs.existsSync(historyPath)) {
+      try {
+        const historyData = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
+        history = historyData.history || [];
+      } catch (e) {
+        console.log('   ⚠️  Could not read history, starting fresh');
+      }
+    }
+    
+    // Add new entry
+    history.push({
+      timestamp: new Date().toISOString(),
+      buildId: `build_${Date.now()}`,
+      platform: 'ios',
+      appVersion: versionNumber,
+      appName: appName,
+      environment: environment,
+      success: true
     });
     
-    db.close();
+    // Keep only last 50
+    if (history.length > 50) {
+      history = history.slice(-50);
+    }
     
-    console.log('   ✅ Created build info database');
+    const historyData = {
+      version: '1.0',
+      count: history.length,
+      lastUpdated: new Date().toISOString(),
+      history: history
+    };
+    
+    fs.writeFileSync(historyPath, JSON.stringify(historyData, null, 2), 'utf8');
+    console.log(`   ✅ Updated build-history.json (${history.length} entries)`);
+    
   } catch (error) {
-    console.log('   ⚠️  Build info skipped:', error.message);
+    console.log('   ⚠️  Build info failed:', error.message);
   }
 }
 
