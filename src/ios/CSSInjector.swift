@@ -89,6 +89,7 @@ class CSSInjector: CDVPlugin {
             }
             
             let css = "html, body { background-color: \(colorString) !important; margin: 0; padding: 0; }"
+            let escapedCSS = css.replacingOccurrences(of: "'", with: "\\'")
             let javascript = """
             (function() {
                 try {
@@ -96,7 +97,7 @@ class CSSInjector: CDVPlugin {
                     if (existingStyle) { existingStyle.remove(); }
                     var style = document.createElement('style');
                     style.id = 'cordova-plugin-webview-bg';
-                    style.textContent = '\(css.replacingOccurrences(of: "'", with: "\\\'")';
+                    style.textContent = '\(escapedCSS)';
                     (document.head || document.documentElement).appendChild(style);
                     console.log('Background CSS injected: \(colorString)');
                 } catch(e) {
@@ -295,7 +296,7 @@ class CSSInjector: CDVPlugin {
         // Escape CSS content for use in JavaScript string
         let escapedCSS = cssContent
             .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\\'")
+            .replacingOccurrences(of: "'", with: "\\'")
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "")
