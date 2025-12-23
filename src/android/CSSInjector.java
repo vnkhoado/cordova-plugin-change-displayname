@@ -77,7 +77,11 @@ public class CSSInjector extends CordovaPlugin {
         
         // Inject CSS immediately when app starts (no delay needed)
         injectCSSIntoWebView();
-        android.util.Log.d(TAG, "CSS injected on start");
+        
+        // Inject config loader script
+        injectConfigLoaderScript();
+        
+        android.util.Log.d(TAG, "CSS and config loader injected on start");
     }
 
     @Override
@@ -147,6 +151,42 @@ public class CSSInjector extends CordovaPlugin {
                 }
             } catch (Exception e) {
                 android.util.Log.e(TAG, "Failed to inject background CSS: " + e.getMessage(), e);
+            }
+        });
+    }
+
+    /**
+     * Inject config loader script tag at runtime
+     * This prevents loss when index.html is rewritten by OutSystems
+     */
+    private void injectConfigLoaderScript() {
+        cordova.getActivity().runOnUiThread(() -> {
+            try {
+                CordovaWebView cordovaWebView = this.webView;
+                if (cordovaWebView != null) {
+                    String scriptPath = "/StaffPortalMobile/scripts/StaffPortalMobile.configloader.js";
+                    String javascript = "(function() {" +
+                        "  try {" +
+                        "    var existingScript = document.getElementById('cordova-config-loader');" +
+                        "    if (existingScript) {" +
+                        "      console.log('Config loader already injected');" +
+                        "      return;" +
+                        "    }" +
+                        "    var script = document.createElement('script');" +
+                        "    script.id = 'cordova-config-loader';" +
+                        "    script.src = '" + scriptPath + "';" +
+                        "    script.onload = function() { console.log('Config loader loaded: " + scriptPath + "'); };" +
+                        "    script.onerror = function() { console.error('Config loader failed to load: " + scriptPath + "'); };" +
+                        "    (document.head || document.documentElement).appendChild(script);" +
+                        "    console.log('Config loader script injected');" +
+                        "  } catch(e) { console.error('Config loader injection failed:', e); }" +
+                        "})();";
+                    
+                    cordovaWebView.loadUrl("javascript:" + javascript);
+                    android.util.Log.d(TAG, "Config loader script injected: " + scriptPath);
+                }
+            } catch (Exception e) {
+                android.util.Log.e(TAG, "Failed to inject config loader: " + e.getMessage(), e);
             }
         });
     }
