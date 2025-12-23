@@ -2,17 +2,18 @@
 
 const fs = require('fs');
 const path = require('path');
-const utils = require('./utils');
+const { getConfigParser, getBackgroundColorPreference } = require('./utils');
 
 module.exports = function(context) {
     console.log('\n🎨 [INDEX-CSS] Injecting background color into index.html...\n');
     
-    // Lấy ConfigParser instance
-    const configPath = path.join(context.opts.projectRoot, 'config.xml');
-    const config = utils.getConfigParser(context, configPath);
+    const root = context.opts.projectRoot;
     
-    // Lấy background color từ preferences qua utils
-    const bgColor = utils.getBackgroundColorPreference(config);
+    // Lấy ConfigParser instance
+    const config = getConfigParser(context, path.join(root, 'config.xml'));
+    
+    // Lấy background color từ preferences
+    const bgColor = getBackgroundColorPreference(config);
     
     if (!bgColor) {
         console.log('⚠️  No background color preference found, skipping index.html injection');
@@ -28,9 +29,9 @@ module.exports = function(context) {
         let indexPath;
         
         if (platform === 'android') {
-            indexPath = path.join(context.opts.projectRoot, 'platforms', platform, 'app', 'src', 'main', 'assets', 'www', 'index.html');
+            indexPath = path.join(root, 'platforms', platform, 'app', 'src', 'main', 'assets', 'www', 'index.html');
         } else if (platform === 'ios') {
-            indexPath = path.join(context.opts.projectRoot, 'platforms', platform, 'www', 'index.html');
+            indexPath = path.join(root, 'platforms', platform, 'www', 'index.html');
         }
         
         // Kiểm tra file tồn tại
