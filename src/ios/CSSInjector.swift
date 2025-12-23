@@ -11,9 +11,20 @@ class CSSInjector: CDVPlugin {
     override func pluginInitialize() {
         super.pluginInitialize()
         
-        // Read WEBVIEW_BACKGROUND_COLOR from preferences
-        if let bgColor = self.commandDelegate.settings["webview_background_color"] as? String {
-            setWebViewBackgroundColor(colorString: bgColor)
+        // Read WEBVIEW_BACKGROUND_COLOR from preferences (with fallbacks)
+        var bgColor: String?
+        if let color = self.commandDelegate.settings["webview_background_color"] as? String {
+            bgColor = color
+        } else if let color = self.commandDelegate.settings["backgroundcolor"] as? String {
+            bgColor = color
+        } else if let color = self.commandDelegate.settings["splashscreenbackgroundcolor"] as? String {
+            bgColor = color
+        }
+        
+        if let color = bgColor {
+            setWebViewBackgroundColor(colorString: color)
+            // Inject background color CSS at runtime
+            injectBackgroundColorCSS(colorString: color)
         }
         
         // Pre-load CSS content
@@ -61,6 +72,44 @@ class CSSInjector: CDVPlugin {
                 webView.backgroundColor = .clear
                 webView.isOpaque = false
                 print("[CSSInjector] Invalid color format, using clear: \(colorString)")
+            }
+        }
+    }
+    
+    /**
+     * Inject background color CSS into WebView at runtime
+     * This prevents white flash even if index.html is rewritten
+     */
+    private func injectBackgroundColorCSS(colorString: String) {
+        DispatchQueue.main.async {
+            guard let wkWebView = self.webView as? WKWebView else {
+                print("[CSSInjector] WKWebView not available for background CSS injection")
+                return
+            }
+            
+            let css = "html, body { background-color: \(colorString) !important; margin: 0; padding: 0; }"
+            let javascript = """
+            (function() {
+                try {
+                    var existingStyle = document.getElementById('cordova-plugin-webview-bg');
+                    if (existingStyle) { existingStyle.remove(); }
+                    var style = document.createElement('style');
+                    style.id = 'cordova-plugin-webview-bg';
+                    style.textContent = '\(css.replacingOccurrences(of: "'", with: "\\\'")';
+                    (document.head || document.documentElement).appendChild(style);
+                    console.log('Background CSS injected: \(colorString)');
+                } catch(e) {
+                    console.error('Background CSS injection failed:', e);
+                }
+            })();
+            """
+            
+            wkWebView.evaluateJavaScript(javascript) { (_, error) in
+                if let error = error {
+                    print("[CSSInjector] Failed to inject background CSS: \(error.localizedDescription)")
+                } else {
+                    print("[CSSInjector] Background color CSS injected: \(colorString)")
+                }
             }
         }
     }
@@ -202,7 +251,7 @@ class CSSInjector: CDVPlugin {
         // Escape CSS content for use in JavaScript string
         let escapedCSS = cssContent
             .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "'", with: "\\\'")
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "")
