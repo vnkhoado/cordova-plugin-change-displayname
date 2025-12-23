@@ -279,6 +279,40 @@ function findAllFiles(baseDir, patterns, maxDepth = 3) {
 // ============================================================================
 
 /**
+ * Validate hex color format
+ * @param {string} color - Color in hex format (#RRGGBB or RRGGBB)
+ * @returns {boolean}
+ */
+function validateHexColor(color) {
+  const hexRegex = /^#?([A-Fa-f0-9]{6})$/;
+  return hexRegex.test(color);
+}
+
+/**
+ * Normalize hex color format
+ * @param {string} color - Color in hex format
+ * @returns {string} - Normalized color with #
+ */
+function normalizeHexColor(color) {
+  if (!color) return null;
+  
+  // Remove # if present
+  let hex = color.replace(/^#/, '');
+  
+  // Remove alpha channel if present (last 2 chars if 8 chars long)
+  if (hex.length === 8) {
+    hex = hex.substring(0, 6);
+  }
+  
+  // Ensure 6 characters
+  if (hex.length !== 6) {
+    return null;
+  }
+  
+  return '#' + hex.toLowerCase();
+}
+
+/**
  * Convert hex color to RGB object (0.0 - 1.0 range)
  */
 function hexToRgb(hex) {
@@ -314,12 +348,76 @@ function hexToObjCUIColor(hex) {
 
 /**
  * Get background color from config (tries multiple keys)
+ * Uses ConfigParser.getPreference API
  */
 function getBackgroundColorPreference(config) {
   return config.getPreference('SplashScreenBackgroundColor') ||
          config.getPreference('BackgroundColor') ||
          config.getPreference('WEBVIEW_BACKGROUND_COLOR') ||
          null;
+}
+
+/**
+ * Read color configuration from ConfigParser
+ * Reads OLD_COLOR (what to replace) and SplashScreenBackgroundColor (target color)
+ * 
+ * Priority for target color:
+ * 1. SplashScreenBackgroundColor (new color to set)
+ * 2. AndroidWindowSplashScreenBackgroundColor (Cordova standard)
+ * 3. BackgroundColor (general preference)
+ * 4. Fallback to #001833
+ * 
+ * @param {Object} config - ConfigParser instance from getConfigParser()
+ * @returns {Object} { oldColor: string, newColor: string }
+ */
+function readColorConfigFromXml(config) {
+  if (!config) {
+    return {
+      oldColor: '#1E1464',  // Cordova default to replace
+      newColor: '#001833'   // Target color
+    };
+  }
+
+  try {
+    // Read OLD_COLOR (Cordova default to replace)
+    let oldColor = config.getPreference('OLD_COLOR');
+    oldColor = oldColor ? oldColor.trim() : '#1E1464';
+    
+    // Read NEW/TARGET color - try multiple preference names
+    // Priority 1: SplashScreenBackgroundColor (custom preference)
+    let newColor = config.getPreference('SplashScreenBackgroundColor');
+    
+    // Priority 2: AndroidWindowSplashScreenBackgroundColor (Cordova standard)
+    if (!newColor) {
+      newColor = config.getPreference('AndroidWindowSplashScreenBackgroundColor');
+    }
+    
+    // Priority 3: BackgroundColor (general preference)
+    if (!newColor) {
+      newColor = config.getPreference('BackgroundColor');
+    }
+    
+    // Apply defaults
+    if (newColor) {
+      newColor = newColor.trim();
+    } else {
+      newColor = '#001833';
+    }
+    
+    // Normalize both colors
+    const normalizedOldColor = normalizeHexColor(oldColor);
+    const normalizedNewColor = normalizeHexColor(newColor);
+    
+    return {
+      oldColor: normalizedOldColor || '#1E1464',
+      newColor: normalizedNewColor || '#001833'
+    };
+  } catch (error) {
+    return {
+      oldColor: '#1E1464',
+      newColor: '#001833'
+    };
+  }
 }
 
 // ============================================================================
@@ -459,11 +557,14 @@ module.exports = {
   findAllFiles,
   
   // Color utilities
+  validateHexColor,
+  normalizeHexColor,
   hexToRgb,
   rgbToString,
   hexToSwiftUIColor,
   hexToObjCUIColor,
   getBackgroundColorPreference,
+  readColorConfigFromXml,
   
   // Plist utilities
   updatePlistValue,
