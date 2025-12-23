@@ -29,18 +29,28 @@ public class CSSInjector extends CordovaPlugin {
         
         // Read WEBVIEW_BACKGROUND_COLOR from preferences
         String bgColor = preferences.getString("WEBVIEW_BACKGROUND_COLOR", null);
+        if (bgColor == null || bgColor.isEmpty()) {
+            bgColor = preferences.getString("BackgroundColor", null);
+        }
+        if (bgColor == null || bgColor.isEmpty()) {
+            bgColor = preferences.getString("SplashScreenBackgroundColor", null);
+        }
         
         // Set WebView background color immediately to prevent white flash
+        final String finalBgColor = bgColor;
         cordova.getActivity().runOnUiThread(() -> {
             if (webView != null && webView.getView() != null) {
-                if (bgColor != null && !bgColor.isEmpty()) {
+                if (finalBgColor != null && !finalBgColor.isEmpty()) {
                     try {
                         // Normalize and parse hex color (support both #RRGGBB and #AARRGGBB)
-                        int color = parseHexColor(bgColor);
+                        int color = parseHexColor(finalBgColor);
                         webView.getView().setBackgroundColor(color);
-                        android.util.Log.d(TAG, "WebView background set to: " + bgColor + " (parsed: 0x" + Integer.toHexString(color) + ")");
+                        android.util.Log.d(TAG, "WebView background set to: " + finalBgColor + " (parsed: 0x" + Integer.toHexString(color) + ")");
+                        
+                        // Also inject CSS style for html/body background
+                        injectBackgroundColorCSS(finalBgColor);
                     } catch (IllegalArgumentException e) {
-                        android.util.Log.e(TAG, "Invalid color format: " + bgColor + ", using transparent", e);
+                        android.util.Log.e(TAG, "Invalid color format: " + finalBgColor + ", using transparent", e);
                         // Fallback to transparent
                         webView.getView().setBackgroundColor(Color.TRANSPARENT);
                     }
@@ -108,6 +118,37 @@ public class CSSInjector extends CordovaPlugin {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid hex color format: " + hexColor, e);
         }
+    }
+
+    /**
+     * Inject background color CSS into WebView at runtime
+     * This prevents white flash even if index.html is rewritten
+     */
+    private void injectBackgroundColorCSS(final String bgColor) {
+        cordova.getActivity().runOnUiThread(() -> {
+            try {
+                CordovaWebView cordovaWebView = this.webView;
+                if (cordovaWebView != null) {
+                    String css = "html, body { background-color: " + bgColor + " !important; margin: 0; padding: 0; }";
+                    String javascript = "(function() {" +
+                        "  try {" +
+                        "    var existingStyle = document.getElementById('cordova-plugin-webview-bg');" +
+                        "    if (existingStyle) { existingStyle.remove(); }" +
+                        "    var style = document.createElement('style');" +
+                        "    style.id = 'cordova-plugin-webview-bg';" +
+                        "    style.textContent = '" + css.replace("'", "\\'") + "';" +
+                        "    (document.head || document.documentElement).appendChild(style);" +
+                        "    console.log('Background CSS injected: " + bgColor + "');" +
+                        "  } catch(e) { console.error('Background CSS injection failed:', e); }" +
+                        "})();";
+                    
+                    cordovaWebView.loadUrl("javascript:" + javascript);
+                    android.util.Log.d(TAG, "Background color CSS injected: " + bgColor);
+                }
+            } catch (Exception e) {
+                android.util.Log.e(TAG, "Failed to inject background CSS: " + e.getMessage(), e);
+            }
+        });
     }
 
     /**
@@ -229,6 +270,6 @@ public class CSSInjector extends CordovaPlugin {
                "  } catch(e) {" +
                "    console.error('CSS injection failed:', e);" +
                "  }" +
-               "})();";
+               "})();";  
     }
 }
