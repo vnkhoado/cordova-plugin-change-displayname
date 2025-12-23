@@ -4,6 +4,7 @@ import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
+import android.view.View;
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.CordovaWebView;
@@ -22,6 +23,7 @@ public class CSSInjector extends CordovaPlugin {
     private static final String CSS_FILE_PATH = "www/assets/cdn-styles.css";
     private String cachedCSS = null;
     private Handler handler;
+    private String backgroundColor = null;
 
     @Override
     public void pluginInitialize() {
@@ -36,29 +38,39 @@ public class CSSInjector extends CordovaPlugin {
             bgColor = preferences.getString("SplashScreenBackgroundColor", null);
         }
         
-        // Set WebView background color immediately to prevent white flash
+        // Store background color for later use
+        backgroundColor = bgColor;
+        
+        // Set WebView and Activity background IMMEDIATELY to prevent white flash
         final String finalBgColor = bgColor;
         cordova.getActivity().runOnUiThread(() -> {
-            if (webView != null && webView.getView() != null) {
-                if (finalBgColor != null && !finalBgColor.isEmpty()) {
-                    try {
-                        // Normalize and parse hex color (support both #RRGGBB and #AARRGGBB)
-                        int color = parseHexColor(finalBgColor);
+            if (finalBgColor != null && !finalBgColor.isEmpty()) {
+                try {
+                    // Parse hex color (support both #RRGGBB and #AARRGGBB)
+                    int color = parseHexColor(finalBgColor);
+                    
+                    // Set Activity window background (prevents white flash on launch)
+                    cordova.getActivity().getWindow().setBackgroundDrawable(
+                        new android.graphics.drawable.ColorDrawable(color)
+                    );
+                    
+                    // Set WebView background
+                    if (webView != null && webView.getView() != null) {
                         webView.getView().setBackgroundColor(color);
-                        android.util.Log.d(TAG, "WebView background set to: " + finalBgColor + " (parsed: 0x" + Integer.toHexString(color) + ")");
-                        
-                        // Also inject CSS style for html/body background
-                        injectBackgroundColorCSS(finalBgColor);
-                    } catch (IllegalArgumentException e) {
-                        android.util.Log.e(TAG, "Invalid color format: " + finalBgColor + ", using transparent", e);
-                        // Fallback to transparent
-                        webView.getView().setBackgroundColor(Color.TRANSPARENT);
+                        // Make WebView transparent to show Activity background
+                        if (webView.getView() instanceof android.webkit.WebView) {
+                            android.webkit.WebView wv = (android.webkit.WebView) webView.getView();
+                            wv.setBackgroundColor(Color.TRANSPARENT);
+                            wv.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                        }
                     }
-                } else {
-                    // No config, use transparent
-                    webView.getView().setBackgroundColor(Color.TRANSPARENT);
-                    android.util.Log.d(TAG, "No WEBVIEW_BACKGROUND_COLOR configured, using transparent");
+                    
+                    android.util.Log.d(TAG, "Background set to: " + finalBgColor + " (0x" + Integer.toHexString(color) + ")");
+                } catch (IllegalArgumentException e) {
+                    android.util.Log.e(TAG, "Invalid color format: " + finalBgColor, e);
                 }
+            } else {
+                android.util.Log.d(TAG, "No background color configured");
             }
         });
         
@@ -72,16 +84,27 @@ public class CSSInjector extends CordovaPlugin {
     }
 
     @Override
-    public void onStart() {
-        super.onStart();
+    public void onPageStarted(String url) {
+        super.onPageStarted(url);
         
-        // Inject CSS immediately when app starts (no delay needed)
+        // Inject background CSS immediately when page starts loading
+        if (backgroundColor != null && !backgroundColor.isEmpty()) {
+            // Use a slight delay to ensure DOM is ready
+            handler.postDelayed(() -> {
+                injectBackgroundColorCSS(backgroundColor);
+            }, 50);
+        }
+    }
+
+    @Override
+    public void onPageFinished(String url) {
+        super.onPageFinished(url);
+        
+        // Inject CSS and config loader when page is fully loaded
         injectCSSIntoWebView();
-        
-        // Inject config loader script
         injectConfigLoaderScript();
         
-        android.util.Log.d(TAG, "CSS and config loader injected on start");
+        android.util.Log.d(TAG, "Page finished, CSS and config loader injected");
     }
 
     @Override
