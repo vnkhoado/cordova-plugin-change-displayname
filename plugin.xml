@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.9.13">
+    version="2.9.14">
     
     <name>Change App Info</name>
     <description>Cordova plugin to change app display name, version and icon from CDN at build time. Stores build info in JSON format. Supports custom colors for splash screen and webview. Runtime CSS injection. Optimized for OutSystems MABS.</description>
@@ -49,10 +49,9 @@
         <hook type="after_prepare" src="hooks/customizeColors.js" />
         <hook type="after_prepare" src="hooks/customizeWebview.js" />
         
-        <!-- INJECT PHASE: Add runtime scripts and CSS to index.html -->
+        <!-- INJECT PHASE: Add runtime scripts (CSS injected by native plugin) -->
         <hook type="after_prepare" src="hooks/injectAppReadyManager.js" />
         <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
-        <hook type="after_prepare" src="hooks/injectIndexCSS.js" />
         
         <hook type="before_compile" src="hooks/forceOverrideSplashColor.js" />
         <hook type="before_compile" src="hooks/forceOverrideNativeColors.js" />
@@ -94,10 +93,9 @@
         <!-- CUSTOMIZE PHASE: Update colors (unified hook) -->
         <hook type="after_prepare" src="hooks/customizeColors.js" />
         
-        <!-- INJECT PHASE: Add runtime scripts and CSS to index.html -->
+        <!-- INJECT PHASE: Add runtime scripts (CSS injected by native plugin) -->
         <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
         <hook type="after_prepare" src="hooks/injectAppReadyManager.js" />
-        <hook type="after_prepare" src="hooks/injectIndexCSS.js" />
         
         <!-- COMPILE PHASE: Force override metadata & fix splash flicker -->
         <hook type="before_compile" src="hooks/ios/force-metadata-override.js" />
