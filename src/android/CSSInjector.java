@@ -81,12 +81,12 @@ public class CSSInjector extends CordovaPlugin {
     public void onResume(boolean multitasking) {
         super.onResume(multitasking);
         
-        // Inject CSS on first resume
+        // Inject CSS on first resume with longer delay to ensure DOM is ready
         if (!initialInjectionDone) {
             handler.postDelayed(() -> {
                 injectAllContent();
                 initialInjectionDone = true;
-            }, 50); // Reduced delay
+            }, 500); // Increased delay for DOM ready
         }
     }
 
@@ -99,15 +99,17 @@ public class CSSInjector extends CordovaPlugin {
             injectBackgroundColorCSS(backgroundColor);
         }
         
-        // 2. Inject CDN CSS
-        injectCSSIntoWebView();
-        
-        // 3. Inject config loader script
+        // 2. Inject CDN CSS with delay
         handler.postDelayed(() -> {
-            injectConfigLoaderScript();
+            injectCSSIntoWebView();
         }, 100);
         
-        android.util.Log.d(TAG, "Content injected");
+        // 3. Inject config loader script with delay
+        handler.postDelayed(() -> {
+            injectConfigLoaderScript();
+        }, 300);
+        
+        android.util.Log.d(TAG, "Content injection scheduled");
     }
 
     @Override
@@ -152,6 +154,7 @@ public class CSSInjector extends CordovaPlugin {
 
     /**
      * Inject background color CSS into WebView
+     * Wait for DOM to be ready before injecting
      */
     private void injectBackgroundColorCSS(final String bgColor) {
         cordova.getActivity().runOnUiThread(() -> {
@@ -160,19 +163,32 @@ public class CSSInjector extends CordovaPlugin {
                 if (cordovaWebView != null) {
                     String css = "html, body { background-color: " + bgColor + " !important; margin: 0; padding: 0; }";
                     String javascript = "(function() {" +
-                        "  try {" +
-                        "    var s = document.getElementById('cordova-bg');" +
-                        "    if (s) s.remove();" +
-                        "    s = document.createElement('style');" +
-                        "    s.id = 'cordova-bg';" +
-                        "    s.textContent = '" + css.replace("'", "\\'") + "';" +
-                        "    (document.head || document.documentElement).appendChild(s);" +
-                        "    console.log('[CSSInjector] Background CSS: " + bgColor + "');" +
-                        "  } catch(e) { console.error('[CSSInjector] BG failed:', e); }" +
+                        "  function inject() {" +
+                        "    try {" +
+                        "      var target = document.head || document.getElementsByTagName('head')[0] || document.documentElement;" +
+                        "      if (!target) {" +
+                        "        console.warn('[CSSInjector] DOM not ready, retrying...');" +
+                        "        setTimeout(inject, 100);" +
+                        "        return;" +
+                        "      }" +
+                        "      var s = document.getElementById('cordova-bg');" +
+                        "      if (s) s.remove();" +
+                        "      s = document.createElement('style');" +
+                        "      s.id = 'cordova-bg';" +
+                        "      s.textContent = '" + css.replace("'", "\\'") + "';" +
+                        "      target.appendChild(s);" +
+                        "      console.log('[CSSInjector] Background CSS: " + bgColor + "');" +
+                        "    } catch(e) { console.error('[CSSInjector] BG failed:', e); }" +
+                        "  }" +
+                        "  if (document.readyState === 'loading') {" +
+                        "    document.addEventListener('DOMContentLoaded', inject);" +
+                        "  } else {" +
+                        "    inject();" +
+                        "  }" +
                         "})();";
                     
                     cordovaWebView.loadUrl("javascript:" + javascript);
-                    android.util.Log.d(TAG, "Background CSS injected");
+                    android.util.Log.d(TAG, "Background CSS scheduled");
                 }
             } catch (Exception e) {
                 android.util.Log.e(TAG, "Background CSS failed", e);
@@ -190,20 +206,33 @@ public class CSSInjector extends CordovaPlugin {
                 if (cordovaWebView != null) {
                     String scriptPath = "/StaffPortalMobile/scripts/StaffPortalMobile.configloader.js";
                     String javascript = "(function() {" +
-                        "  try {" +
-                        "    var s = document.getElementById('cordova-config');" +
-                        "    if (s) { console.log('[CSSInjector] Config exists'); return; }" +
-                        "    s = document.createElement('script');" +
-                        "    s.id = 'cordova-config';" +
-                        "    s.src = '" + scriptPath + "';" +
-                        "    s.onload = function() { console.log('[CSSInjector] Config loaded'); };" +
-                        "    s.onerror = function() { console.error('[CSSInjector] Config failed'); };" +
-                        "    (document.head || document.documentElement).appendChild(s);" +
-                        "  } catch(e) { console.error('[CSSInjector] Config inject failed:', e); }" +
+                        "  function inject() {" +
+                        "    try {" +
+                        "      var target = document.head || document.getElementsByTagName('head')[0] || document.documentElement;" +
+                        "      if (!target) {" +
+                        "        console.warn('[CSSInjector] DOM not ready for config, retrying...');" +
+                        "        setTimeout(inject, 100);" +
+                        "        return;" +
+                        "      }" +
+                        "      var s = document.getElementById('cordova-config');" +
+                        "      if (s) { console.log('[CSSInjector] Config exists'); return; }" +
+                        "      s = document.createElement('script');" +
+                        "      s.id = 'cordova-config';" +
+                        "      s.src = '" + scriptPath + "';" +
+                        "      s.onload = function() { console.log('[CSSInjector] Config loaded'); };" +
+                        "      s.onerror = function() { console.error('[CSSInjector] Config failed'); };" +
+                        "      target.appendChild(s);" +
+                        "    } catch(e) { console.error('[CSSInjector] Config inject failed:', e); }" +
+                        "  }" +
+                        "  if (document.readyState === 'loading') {" +
+                        "    document.addEventListener('DOMContentLoaded', inject);" +
+                        "  } else {" +
+                        "    inject();" +
+                        "  }" +
                         "})();";
                     
                     cordovaWebView.loadUrl("javascript:" + javascript);
-                    android.util.Log.d(TAG, "Config loader injected");
+                    android.util.Log.d(TAG, "Config loader scheduled");
                 }
             } catch (Exception e) {
                 android.util.Log.e(TAG, "Config loader failed", e);
@@ -228,7 +257,7 @@ public class CSSInjector extends CordovaPlugin {
                     if (cordovaWebView != null) {
                         String javascript = buildCSSInjectionScript(cssContent);
                         cordovaWebView.loadUrl("javascript:" + javascript);
-                        android.util.Log.d(TAG, "CDN CSS injected (" + cssContent.length() + " bytes)");
+                        android.util.Log.d(TAG, "CDN CSS scheduled (" + cssContent.length() + " bytes)");
                     }
                 } else {
                     android.util.Log.w(TAG, "CSS file empty or not found");
@@ -268,7 +297,7 @@ public class CSSInjector extends CordovaPlugin {
     }
 
     /**
-     * Build CSS injection script (Base64 encoded)
+     * Build CSS injection script (Base64 encoded with DOM ready check)
      */
     private String buildCSSInjectionScript(String cssContent) {
         try {
@@ -276,17 +305,30 @@ public class CSSInjector extends CordovaPlugin {
             String base64CSS = Base64.encodeToString(cssBytes, Base64.NO_WRAP);
             
             return "(function() {" +
-                   "  try {" +
-                   "    if (!document.getElementById('cdn-styles')) {" +
-                   "      var b64 = '" + base64CSS + "';" +
-                   "      var css = decodeURIComponent(escape(atob(b64)));" +
-                   "      var s = document.createElement('style');" +
-                   "      s.id = 'cdn-styles';" +
-                   "      s.textContent = css;" +
-                   "      (document.head || document.documentElement).appendChild(s);" +
-                   "      console.log('[CSSInjector] CDN CSS loaded');" +
-                   "    }" +
-                   "  } catch(e) { console.error('[CSSInjector] CDN CSS failed:', e); }" +
+                   "  function inject() {" +
+                   "    try {" +
+                   "      var target = document.head || document.getElementsByTagName('head')[0] || document.documentElement;" +
+                   "      if (!target) {" +
+                   "        console.warn('[CSSInjector] DOM not ready for CDN CSS, retrying...');" +
+                   "        setTimeout(inject, 100);" +
+                   "        return;" +
+                   "      }" +
+                   "      if (!document.getElementById('cdn-styles')) {" +
+                   "        var b64 = '" + base64CSS + "';" +
+                   "        var css = decodeURIComponent(escape(atob(b64)));" +
+                   "        var s = document.createElement('style');" +
+                   "        s.id = 'cdn-styles';" +
+                   "        s.textContent = css;" +
+                   "        target.appendChild(s);" +
+                   "        console.log('[CSSInjector] CDN CSS loaded');" +
+                   "      }" +
+                   "    } catch(e) { console.error('[CSSInjector] CDN CSS failed:', e); }" +
+                   "  }" +
+                   "  if (document.readyState === 'loading') {" +
+                   "    document.addEventListener('DOMContentLoaded', inject);" +
+                   "  } else {" +
+                   "    inject();" +
+                   "  }" +
                    "})();";
         } catch (Exception e) {
             android.util.Log.e(TAG, "Base64 encode failed", e);
@@ -295,7 +337,7 @@ public class CSSInjector extends CordovaPlugin {
     }
 
     /**
-     * Fallback injection (manual escaping)
+     * Fallback injection (manual escaping with DOM ready check)
      */
     private String buildFallbackInjectionScript(String cssContent) {
         String escaped = cssContent
@@ -307,15 +349,27 @@ public class CSSInjector extends CordovaPlugin {
             .replace("\t", "\\t");
         
         return "(function() {" +
-               "  try {" +
-               "    if (!document.getElementById('cdn-styles')) {" +
-               "      var s = document.createElement('style');" +
-               "      s.id = 'cdn-styles';" +
-               "      s.textContent = '" + escaped + "';" +
-               "      (document.head || document.documentElement).appendChild(s);" +
-               "      console.log('[CSSInjector] CDN CSS loaded (escaped)');" +
-               "    }" +
-               "  } catch(e) { console.error('[CSSInjector] CDN CSS failed:', e); }" +
+               "  function inject() {" +
+               "    try {" +
+               "      var target = document.head || document.getElementsByTagName('head')[0] || document.documentElement;" +
+               "      if (!target) {" +
+               "        setTimeout(inject, 100);" +
+               "        return;" +
+               "      }" +
+               "      if (!document.getElementById('cdn-styles')) {" +
+               "        var s = document.createElement('style');" +
+               "        s.id = 'cdn-styles';" +
+               "        s.textContent = '" + escaped + "';" +
+               "        target.appendChild(s);" +
+               "        console.log('[CSSInjector] CDN CSS loaded (escaped)');" +
+               "      }" +
+               "    } catch(e) { console.error('[CSSInjector] CDN CSS failed:', e); }" +
+               "  }" +
+               "  if (document.readyState === 'loading') {" +
+               "    document.addEventListener('DOMContentLoaded', inject);" +
+               "  } else {" +
+               "    inject();" +
+               "  }" +
                "})();";
     }
 }
