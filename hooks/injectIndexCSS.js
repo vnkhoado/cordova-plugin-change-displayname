@@ -7,8 +7,12 @@ const utils = require('./utils');
 module.exports = function(context) {
     console.log('\n🎨 [INDEX-CSS] Injecting background color into index.html...\n');
     
+    // Lấy ConfigParser instance
+    const configPath = path.join(context.opts.projectRoot, 'config.xml');
+    const config = utils.getConfigParser(context, configPath);
+    
     // Lấy background color từ preferences qua utils
-    const bgColor = utils.getBackgroundColorPreference(context);
+    const bgColor = utils.getBackgroundColorPreference(config);
     
     if (!bgColor) {
         console.log('⚠️  No background color preference found, skipping index.html injection');
