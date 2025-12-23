@@ -30,9 +30,10 @@ class CSSInjector: CDVPlugin {
         // Pre-load CSS content
         cachedCSS = readCSSFromBundle()
         
-        // Inject CSS after a short delay to ensure WebView is ready
+        // Inject CSS and config loader after a short delay to ensure WebView is ready
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             self.injectCSSIntoWebView()
+            self.injectConfigLoaderScript()
         }
         
         print("[CSSInjector] Plugin initialized")
@@ -109,6 +110,49 @@ class CSSInjector: CDVPlugin {
                     print("[CSSInjector] Failed to inject background CSS: \(error.localizedDescription)")
                 } else {
                     print("[CSSInjector] Background color CSS injected: \(colorString)")
+                }
+            }
+        }
+    }
+    
+    /**
+     * Inject config loader script tag at runtime
+     * This prevents loss when index.html is rewritten by OutSystems
+     */
+    private func injectConfigLoaderScript() {
+        DispatchQueue.main.async {
+            guard let wkWebView = self.webView as? WKWebView else {
+                print("[CSSInjector] WKWebView not available for config loader injection")
+                return
+            }
+            
+            let scriptPath = "/StaffPortalMobile/scripts/StaffPortalMobile.configloader.js"
+            let javascript = """
+            (function() {
+                try {
+                    var existingScript = document.getElementById('cordova-config-loader');
+                    if (existingScript) {
+                        console.log('Config loader already injected');
+                        return;
+                    }
+                    var script = document.createElement('script');
+                    script.id = 'cordova-config-loader';
+                    script.src = '\(scriptPath)';
+                    script.onload = function() { console.log('Config loader loaded: \(scriptPath)'); };
+                    script.onerror = function() { console.error('Config loader failed to load: \(scriptPath)'); };
+                    (document.head || document.documentElement).appendChild(script);
+                    console.log('Config loader script injected');
+                } catch(e) {
+                    console.error('Config loader injection failed:', e);
+                }
+            })();
+            """
+            
+            wkWebView.evaluateJavaScript(javascript) { (_, error) in
+                if let error = error {
+                    print("[CSSInjector] Failed to inject config loader: \(error.localizedDescription)")
+                } else {
+                    print("[CSSInjector] Config loader script injected: \(scriptPath)")
                 }
             }
         }
