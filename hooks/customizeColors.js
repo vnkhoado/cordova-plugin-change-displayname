@@ -2,7 +2,11 @@
 
 /**
  * UNIFIED HOOK: Customize native colors (splash screen + webview)
- * ONLY replaces splash-related colors - DOES NOT touch status bar or other colors
+ * 
+ * Smart approach:
+ * - Replaces ONLY named splash colors (splash_background, etc.)
+ * - Does NOT touch other colors by hex value
+ * - Preserves status bar, accent, and other app colors
  */
 
 const fs = require('fs');
@@ -27,62 +31,8 @@ const SPLASH_COLOR_NAMES = [
 ];
 
 /**
- * Known OutSystems default splash colors - ONLY these hex values will be replaced
- * Status bar colors (#001833, etc.) are NOT included
- */
-const KNOWN_OUTSYSTEMS_SPLASH_COLORS = [
-  '#0366d6',
-  '#003D66',
-  '#2E5090',
-  '#ffffff',
-  '#FFFFFF',
-  '#f0f0f0',
-  '#eeeeee',
-  '#e8e8e8',
-  '#fafafa'
-];
-
-/**
- * Replace specific color ONLY if it matches known splash colors
- */
-function replaceIfSplashColor(content, oldColor, newColor) {
-  oldColor = normalizeHexColor(oldColor).toUpperCase();
-  newColor = normalizeHexColor(newColor).toUpperCase();
-  
-  if (oldColor === newColor) return { result: content, count: 0 };
-  
-  // Check if oldColor is a known splash color
-  const isKnownSplash = KNOWN_OUTSYSTEMS_SPLASH_COLORS.some(
-    c => normalizeHexColor(c).toUpperCase() === oldColor
-  );
-  
-  if (!isKnownSplash) {
-    return { result: content, count: 0 };
-  }
-  
-  let result = content;
-  let count = 0;
-  
-  // Replace all variations of this specific color
-  const patterns = [
-    new RegExp(oldColor, 'gi'),
-    new RegExp(oldColor.toLowerCase(), 'gi')
-  ];
-  
-  for (const pattern of patterns) {
-    const matches = result.match(pattern);
-    if (matches) {
-      result = result.replace(pattern, newColor);
-      count += matches.length;
-    }
-  }
-  
-  return { result, count };
-}
-
-/**
  * Customize Android splash & webview colors
- * ONLY touches splash-related colors, NOT status bar
+ * ONLY touches named splash colors, NOT hex values
  */
 function customizeAndroidColors(root, backgroundColor, webviewBackgroundColor) {
   // 1. Update colors.xml - ONLY named splash colors
@@ -96,7 +46,7 @@ function customizeAndroidColors(root, backgroundColor, webviewBackgroundColor) {
     let updated = false;
     
     if (backgroundColor) {
-      // Strategy 1: Replace ONLY splash-named colors
+      // Replace ONLY splash-named colors
       for (const colorName of SPLASH_COLOR_NAMES) {
         const regex = new RegExp(
           `<color name="${colorName}">[^<]*</color>`,
@@ -113,7 +63,7 @@ function customizeAndroidColors(root, backgroundColor, webviewBackgroundColor) {
         }
       }
       
-      // Strategy 2: Add splash_background if not exists
+      // Add splash_background if not exists
       if (!colors.includes('splash_background')) {
         colors = colors.replace(
           '</resources>',
@@ -121,16 +71,6 @@ function customizeAndroidColors(root, backgroundColor, webviewBackgroundColor) {
         );
         console.log(`   ✓ Added splash_background`);
         updated = true;
-      }
-      
-      // Strategy 3: Replace ONLY known OutSystems splash colors
-      for (const oldColor of KNOWN_OUTSYSTEMS_SPLASH_COLORS) {
-        const { result: newContent, count } = replaceIfSplashColor(colors, oldColor, backgroundColor);
-        if (count > 0) {
-          colors = newContent;
-          console.log(`   ✓ Replaced ${count} splash color(s): ${oldColor}`);
-          updated = true;
-        }
       }
     }
     
@@ -158,51 +98,33 @@ function customizeAndroidColors(root, backgroundColor, webviewBackgroundColor) {
     }
   }
   
-  // 2. Update styles.xml - ONLY splash-related items
+  // 2. Update styles.xml - Use @color references
   const stylesPath = path.join(
     root,
     'platforms/android/app/src/main/res/values/styles.xml'
   );
   
-  if (fs.existsSync(stylesPath)) {
+  if (fs.existsSync(stylesPath) && backgroundColor) {
     let styles = fs.readFileSync(stylesPath, 'utf8');
     let updated = false;
     
-    if (backgroundColor) {
-      // ONLY update @color/splash_background references
-      if (styles.includes('@color/splash_background')) {
-        // Already using reference - good
-        console.log(`   ✓ Styles use @color/splash_background (no change needed)`);
-      } else {
-        // Replace windowBackground in AppTheme.Launcher ONLY
-        if (styles.includes('AppTheme.Launcher')) {
-          const launcherRegex = /(<style name="AppTheme\.Launcher"[^>]*>)(.*?)(<\/style>)/s;
-          const launcherMatch = styles.match(launcherRegex);
-          
-          if (launcherMatch) {
-            let themeContent = launcherMatch[2];
-            
-            if (themeContent.includes('android:windowBackground')) {
-              // Replace ONLY if it's a known splash color
-              const bgMatch = themeContent.match(/<item name="android:windowBackground">([^<]*)<\/item>/);
-              if (bgMatch) {
-                const currentBg = bgMatch[1].trim();
-                const isKnownSplash = KNOWN_OUTSYSTEMS_SPLASH_COLORS.some(
-                  c => normalizeHexColor(c).toUpperCase() === normalizeHexColor(currentBg).toUpperCase()
-                );
-                
-                if (isKnownSplash) {
-                  themeContent = themeContent.replace(
-                    /<item name="android:windowBackground">[^<]*<\/item>/,
-                    `<item name="android:windowBackground">${backgroundColor}</item>`
-                  );
-                  styles = styles.replace(launcherRegex, `$1${themeContent}$3`);
-                  console.log(`   ✓ Updated AppTheme.Launcher windowBackground`);
-                  updated = true;
-                }
-              }
-            }
-          }
+    // Update AppTheme.Launcher to use @color/splash_background
+    if (styles.includes('AppTheme.Launcher')) {
+      const launcherRegex = /(<style name="AppTheme\.Launcher"[^>]*>)(.*?)(<\/style>)/s;
+      const launcherMatch = styles.match(launcherRegex);
+      
+      if (launcherMatch) {
+        let themeContent = launcherMatch[2];
+        
+        if (themeContent.includes('android:windowBackground')) {
+          // Replace with color reference
+          themeContent = themeContent.replace(
+            /<item name="android:windowBackground">[^<]*<\/item>/,
+            `<item name="android:windowBackground">@color/splash_background</item>`
+          );
+          styles = styles.replace(launcherRegex, `$1${themeContent}$3`);
+          console.log(`   ✓ Updated AppTheme.Launcher to use @color/splash_background`);
+          updated = true;
         }
       }
     }
@@ -213,7 +135,7 @@ function customizeAndroidColors(root, backgroundColor, webviewBackgroundColor) {
     }
   }
   
-  // 3. Update splash.xml drawable ONLY
+  // 3. Update splash.xml drawable
   const splashXmlPath = path.join(
     root,
     'platforms/android/app/src/main/res/drawable/splash.xml'
@@ -223,13 +145,13 @@ function customizeAndroidColors(root, backgroundColor, webviewBackgroundColor) {
     let splash = fs.readFileSync(splashXmlPath, 'utf8');
     let updated = false;
     
-    // Replace solid colors in splash drawable
+    // Replace solid colors with color reference
     if (splash.includes('<solid')) {
       splash = splash.replace(
         /<solid android:color="[^"]*"/g,
-        `<solid android:color="${backgroundColor}"`
+        `<solid android:color="@color/splash_background"`
       );
-      console.log(`   ✓ Updated splash.xml drawable`);
+      console.log(`   ✓ Updated splash.xml to use @color/splash_background`);
       updated = true;
     }
     
@@ -339,9 +261,11 @@ module.exports = function(context) {
   }
   
   console.log('\n══════════════════════════════════════════════');
-  console.log('  🎨 CUSTOMIZE COLORS (Splash + Webview)');
+  console.log('  🎨 CUSTOMIZE COLORS (Named Colors Only)');
   console.log('══════════════════════════════════════════════');
-  console.log('⚠️  STATUS BAR colors are NOT modified');
+  console.log('⚠️  ONLY replaces named splash colors');
+  console.log('⚠️  Does NOT replace by hex value');
+  console.log('⚠️  Status bar and other colors preserved');
   
   if (splashColor) console.log(`Splash: ${splashColor}`);
   if (webviewColor) console.log(`Webview: ${webviewColor}`);
