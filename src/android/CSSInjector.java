@@ -24,6 +24,7 @@ public class CSSInjector extends CordovaPlugin {
     private String cachedCSS = null;
     private Handler handler;
     private String backgroundColor = null;
+    private boolean initialInjectionDone = false;
 
     @Override
     public void pluginInitialize() {
@@ -84,27 +85,36 @@ public class CSSInjector extends CordovaPlugin {
     }
 
     @Override
-    public void onPageStarted(String url) {
-        super.onPageStarted(url);
+    public void onResume(boolean multitasking) {
+        super.onResume(multitasking);
         
-        // Inject background CSS immediately when page starts loading
-        if (backgroundColor != null && !backgroundColor.isEmpty()) {
-            // Use a slight delay to ensure DOM is ready
+        // Inject CSS on first resume (when WebView is ready)
+        if (!initialInjectionDone) {
             handler.postDelayed(() -> {
-                injectBackgroundColorCSS(backgroundColor);
-            }, 50);
+                injectAllContent();
+                initialInjectionDone = true;
+            }, 100);
         }
     }
 
-    @Override
-    public void onPageFinished(String url) {
-        super.onPageFinished(url);
+    /**
+     * Inject all content (background CSS, CDN CSS, config loader)
+     */
+    private void injectAllContent() {
+        // 1. Inject background color CSS first
+        if (backgroundColor != null && !backgroundColor.isEmpty()) {
+            injectBackgroundColorCSS(backgroundColor);
+        }
         
-        // Inject CSS and config loader when page is fully loaded
+        // 2. Inject CDN CSS
         injectCSSIntoWebView();
-        injectConfigLoaderScript();
         
-        android.util.Log.d(TAG, "Page finished, CSS and config loader injected");
+        // 3. Inject config loader script
+        handler.postDelayed(() -> {
+            injectConfigLoaderScript();
+        }, 200);
+        
+        android.util.Log.d(TAG, "All content injected");
     }
 
     @Override
