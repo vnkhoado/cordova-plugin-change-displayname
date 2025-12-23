@@ -13,145 +13,27 @@
  * 
  * Solution:
  * - Run at before_compile phase (FINAL - no more processing after this)
- * - Update config.xml with correct AndroidWindowSplashScreenBackgroundColor
  * - Force splash color to correct value in cdvcolors.xml
  * - Force theme colors to correct value in cdvthemes.xml
  * - Prevents any further overwriting
  * 
  * Runs at: before_compile stage (after all prepare, before Gradle compilation)
  * 
- * Color configuration: Read from config.xml via readColorConfigFromXml()
- * - OLD_COLOR preference: Color to replace (default: #1E1464)
- * - SplashScreenBackgroundColor preference: Target color (default: #001833)
+ * Same pattern as iOS fix: force correct value at final phase
  */
 
 const fs = require('fs');
 const path = require('path');
 const {
   readColorConfigFromXml,
-  getConfigParser,
   normalizeHexColor,
-  ensureDirectoryExists
-} = require('../utils');
-
-const colors = {
-  reset: '\x1b[0m',
-  bright: '\x1b[1m',
-  red: '\x1b[31m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[36m'
-};
-
-function log(color, message) {
-  console.log(`${color}${message}${colors.reset}`);
-}
-
-function readXmlFile(filePath) {
-  try {
-    if (!fs.existsSync(filePath)) {
-      return null;
-    }
-    return fs.readFileSync(filePath, 'utf8');
-  } catch (error) {
-    console.error(`Error reading ${filePath}:`, error.message);
-    return null;
-  }
-}
-
-function writeXmlFile(filePath, content) {
-  try {
-    ensureDirectoryExists(path.dirname(filePath));
-    fs.writeFileSync(filePath, content, 'utf8');
-    return true;
-  } catch (error) {
-    console.error(`Error writing ${filePath}:`, error.message);
-    return false;
-  }
-}
-
-function createCdvColorsTemplate(backgroundColor) {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<resources>
-    <color name="cdv_splashscreen_background_color">${backgroundColor}</color>
-</resources>
-`;
-}
-
-function createCdvThemesTemplate() {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<resources>
-    <style name="cdv_splashscreen" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:windowBackground">@color/cdv_splashscreen_background_color</item>
-        <item name="android:windowNoTitle">true</item>
-    </style>
-</resources>
-`;
-}
-
-/**
- * Update config.xml with correct splash screen background color
- * This ensures the color is preserved across builds
- */
-function updateConfigXml(configPath, newColor) {
-  try {
-    let content = readXmlFile(configPath);
-    if (!content) {
-      log(colors.yellow, `   ⚠️  config.xml not found, skipping config update`);
-      return false;
-    }
-
-    const originalContent = content;
-    let updated = false;
-
-    // Update AndroidWindowSplashScreenBackgroundColor preference
-    const androidBgPattern = /<preference\s+name="AndroidWindowSplashScreenBackgroundColor"\s+value="([^"]*)"/g;
-    if (androidBgPattern.test(content)) {
-      content = content.replace(
-        androidBgPattern,
-        `<preference name="AndroidWindowSplashScreenBackgroundColor" value="${newColor}"`
-      );
-      log(colors.green, `   ✅ Updated AndroidWindowSplashScreenBackgroundColor in config.xml`);
-      updated = true;
-    } else {
-      // Preference doesn't exist, add it before </widget>
-      const widgetCloseTag = '</widget>';
-      if (content.includes(widgetCloseTag)) {
-        const insertPoint = content.lastIndexOf(widgetCloseTag);
-        content = content.substring(0, insertPoint) +
-          `    <preference name="AndroidWindowSplashScreenBackgroundColor" value="${newColor}" />\n    ` +
-          content.substring(insertPoint);
-        log(colors.green, `   ✅ Added AndroidWindowSplashScreenBackgroundColor to config.xml`);
-        updated = true;
-      }
-    }
-
-    // Also update SplashScreenBackgroundColor if it exists
-    const splashBgPattern = /<preference\s+name="SplashScreenBackgroundColor"\s+value="([^"]*)"/g;
-    if (splashBgPattern.test(content)) {
-      content = content.replace(
-        splashBgPattern,
-        `<preference name="SplashScreenBackgroundColor" value="${newColor}"`
-      );
-      log(colors.green, `   ✅ Updated SplashScreenBackgroundColor in config.xml`);
-      updated = true;
-    }
-
-    // Write back if changed
-    if (content !== originalContent) {
-      if (writeXmlFile(configPath, content)) {
-        return true;
-      }
-    } else if (updated) {
-      return true;
-    }
-
-    return false;
-  } catch (error) {
-    log(colors.red, `   ❌ Error updating config.xml: ${error.message}`);
-    return false;
-  }
-}
+  readXmlFile,
+  writeXmlFile,
+  createCdvColorsTemplate,
+  createCdvThemesTemplate,
+  log,
+  colors
+} = require('./utils');
 
 function fixAndroidSplashFlicker(context) {
   const root = context.opts.projectRoot;
@@ -160,53 +42,47 @@ function fixAndroidSplashFlicker(context) {
   log(colors.bright + colors.blue, '║  Android Splash Screen Color Flicker Fix (before_compile)  ║');
   log(colors.bright + colors.blue, '╚═══════════════════════════════════════════════════════════╝\n');
   
-  try {
-    // Get ConfigParser instance
-    const configPath = path.join(root, 'config.xml');
-    const config = getConfigParser(context, configPath);
+  // Read colors from config.xml (NO HARDCODING!)
+  const configPath = path.join(root, 'config.xml');
+  const { oldColor, newColor } = readColorConfigFromXml(configPath);
+  
+  log(colors.reset, `🎯 Replacing "${oldColor}" with "${newColor}" at final phase...`);
+  
+  const androidResPath = path.join(
+    root,
+    'platforms/android/app/src/main/res/values'
+  );
+  
+  if (!fs.existsSync(androidResPath)) {
+    log(colors.yellow, '\n⚠️  Android resources directory not found, skipping fix');
+    return;
+  }
+  
+  let fixedColors = false;
+  
+  // ============================================
+  // 1. Fix cdvcolors.xml (Splash Color)
+  // ============================================
+  const cdvColorsPath = path.join(androidResPath, 'cdvcolors.xml');
+  
+  log(colors.reset, '\n📄 Processing cdvcolors.xml:');
+  
+  let colorContent = readXmlFile(cdvColorsPath);
+  
+  if (!colorContent) {
+    // File doesn't exist, create it with newColor from config
+    log(colors.yellow, `   ⚠️  File not found, creating new cdvcolors.xml...`);
+    colorContent = createCdvColorsTemplate(newColor);
     
-    // Read colors from config.xml using ConfigParser API (NO REGEX!)
-    const { oldColor, newColor } = readColorConfigFromXml(config);
-    
-    log(colors.reset, `🎯 Replacing "${oldColor}" with "${newColor}" at final phase...`);
-    
-    // ============================================
-    // 0. Update config.xml (Source of Truth)
-    // ============================================
-    log(colors.reset, '\n📝 Updating config.xml:');
-    updateConfigXml(configPath, newColor);
-    
-    const androidResPath = path.join(
-      root,
-      'platforms/android/app/src/main/res/values'
-    );
-    
-    if (!fs.existsSync(androidResPath)) {
-      log(colors.yellow, '\n⚠️  Android resources directory not found, skipping resource fix');
-      return;
-    }
-    
-    // ============================================
-    // 1. Fix cdvcolors.xml (Splash Color)
-    // ============================================
-    const cdvColorsPath = path.join(androidResPath, 'cdvcolors.xml');
-    
-    log(colors.reset, '\n📄 Processing cdvcolors.xml:');
-    
-    let colorContent = readXmlFile(cdvColorsPath);
-    
-    if (!colorContent) {
-      // File doesn't exist, create it with newColor from config
-      log(colors.yellow, `   ⚠️  File not found, creating new cdvcolors.xml...`);
-      colorContent = createCdvColorsTemplate(newColor);
-      
-      if (writeXmlFile(cdvColorsPath, colorContent)) {
-        log(colors.green, `   ✅ Created cdvcolors.xml with color: ${newColor}`);
-      } else {
-        log(colors.red, `   ❌ Failed to create cdvcolors.xml`);
-      }
+    if (writeXmlFile(cdvColorsPath, colorContent)) {
+      log(colors.green, `   ✅ Created cdvcolors.xml with color: ${newColor}`);
+      fixedColors = true;
     } else {
-      // File exists, replace old color with new color
+      log(colors.red, `   ❌ Failed to create cdvcolors.xml`);
+    }
+  } else {
+    // File exists, replace old color with new color
+    try {
       const originalContent = colorContent;
       
       // Pattern to find and replace splash color
@@ -225,6 +101,7 @@ function fixAndroidSplashFlicker(context) {
         
         if (normalizedCurrentColor !== newColor) {
           log(colors.green, `   ✅ Updated splash color: "${normalizedCurrentColor}" → "${newColor}"`);
+          fixedColors = true;
         } else {
           log(colors.green, `   ✅ Splash color already correct: ${newColor}`);
         }
@@ -236,6 +113,7 @@ function fixAndroidSplashFlicker(context) {
             `    <color name="cdv_splashscreen_background_color">${newColor}</color>\n` +
             colorContent.substring(insertPoint);
           log(colors.green, `   ✅ Added splash color: "${newColor}"`);
+          fixedColors = true;
         }
       }
       
@@ -244,30 +122,37 @@ function fixAndroidSplashFlicker(context) {
         if (writeXmlFile(cdvColorsPath, colorContent)) {
           log(colors.green, `   ✅ cdvcolors.xml saved successfully`);
         }
-      }
-    }
-    
-    // ============================================
-    // 2. Fix cdvthemes.xml (Theme Color References)
-    // ============================================
-    const cdvThemesPath = path.join(androidResPath, 'cdvthemes.xml');
-    
-    log(colors.reset, '\n🎨 Processing cdvthemes.xml:');
-    
-    let themeContent = readXmlFile(cdvThemesPath);
-    
-    if (!themeContent) {
-      // File doesn't exist, create it
-      log(colors.yellow, `   ⚠️  File not found, creating new cdvthemes.xml...`);
-      themeContent = createCdvThemesTemplate();
-      
-      if (writeXmlFile(cdvThemesPath, themeContent)) {
-        log(colors.green, `   ✅ Created cdvthemes.xml`);
       } else {
-        log(colors.red, `   ❌ Failed to create cdvthemes.xml`);
+        log(colors.green, `   ✅ cdvcolors.xml already correct`);
       }
+      
+    } catch (error) {
+      log(colors.red, `   ❌ Error updating cdvcolors.xml: ${error.message}`);
+    }
+  }
+  
+  // ============================================
+  // 2. Fix cdvthemes.xml (Theme Color References)
+  // ============================================
+  const cdvThemesPath = path.join(androidResPath, 'cdvthemes.xml');
+  
+  log(colors.reset, '\n🎨 Processing cdvthemes.xml:');
+  
+  let themeContent = readXmlFile(cdvThemesPath);
+  
+  if (!themeContent) {
+    // File doesn't exist, create it
+    log(colors.yellow, `   ⚠️  File not found, creating new cdvthemes.xml...`);
+    themeContent = createCdvThemesTemplate();
+    
+    if (writeXmlFile(cdvThemesPath, themeContent)) {
+      log(colors.green, `   ✅ Created cdvthemes.xml`);
     } else {
-      // File exists, ensure it references the color correctly
+      log(colors.red, `   ❌ Failed to create cdvthemes.xml`);
+    }
+  } else {
+    // File exists, ensure it references the color correctly
+    try {
       const originalContent = themeContent;
       
       // Ensure theme references correct color variable
@@ -289,50 +174,49 @@ function fixAndroidSplashFlicker(context) {
           log(colors.green, `   ✅ cdvthemes.xml saved successfully`);
         }
       }
-    }
-    
-    // ============================================
-    // 3. Verify AndroidManifest.xml theme reference
-    // ============================================
-    const manifestPath = path.join(
-      root,
-      'platforms/android/app/src/main/AndroidManifest.xml'
-    );
-    
-    if (fs.existsSync(manifestPath)) {
-      log(colors.reset, '\n📋 Checking AndroidManifest.xml:');
       
-      try {
-        const content = fs.readFileSync(manifestPath, 'utf8');
-        
-        if (content.includes('@style/')) {
-          log(colors.green, `   ✅ Theme style is correctly referenced`);
-        }
-        
-      } catch (error) {
-        log(colors.yellow, `   ⚠️  Could not verify manifest: ${error.message}`);
-      }
+    } catch (error) {
+      log(colors.red, `   ❌ Error updating cdvthemes.xml: ${error.message}`);
     }
-    
-    // ============================================
-    // Summary
-    // ============================================
-    log(colors.reset, '\n' + '═'.repeat(63));
-    log(colors.bright + colors.green, '✅ Android Splash Flicker Fix Complete!');
-    log(colors.reset, '═'.repeat(63));
-    
-    log(colors.yellow, '\n📌 What was fixed:');
-    log(colors.yellow, `   1. config.xml: ${oldColor} → ${newColor}`);
-    log(colors.yellow, `   2. cdvcolors.xml: ${newColor}`);
-    log(colors.yellow, `   3. cdvthemes.xml: Color references`);
-    log(colors.yellow, '   4. Theme colors synchronized');
-    log(colors.yellow, '   5. No more color flicker on app launch');
-    log(colors.yellow, '\n   📝 Configuration from: config.xml (ConfigParser.getPreference)');
-    log(colors.yellow, '   Build phase: before_compile (FINAL - no more changes)\n');
-    
-  } catch (error) {
-    log(colors.red, `\n❌ Hook execution failed: ${error.message}`);
   }
+  
+  // ============================================
+  // 3. Verify AndroidManifest.xml theme reference
+  // ============================================
+  const manifestPath = path.join(
+    root,
+    'platforms/android/app/src/main/AndroidManifest.xml'
+  );
+  
+  if (fs.existsSync(manifestPath)) {
+    log(colors.reset, '\n📋 Checking AndroidManifest.xml:');
+    
+    try {
+      const content = fs.readFileSync(manifestPath, 'utf8');
+      
+      if (content.includes('@style/')) {
+        log(colors.green, `   ✅ Theme style is correctly referenced`);
+      }
+      
+    } catch (error) {
+      log(colors.yellow, `   ⚠️  Could not verify manifest: ${error.message}`);
+    }
+  }
+  
+  // ============================================
+  // Summary
+  // ============================================
+  log(colors.reset, '\n' + '═'.repeat(63));
+  log(colors.bright + colors.green, '✅ Android Splash Flicker Fix Complete!');
+  log(colors.reset, '═'.repeat(63));
+  
+  log(colors.yellow, '\n📌 What was fixed:');
+  log(colors.yellow, `   1. Splash color: ${oldColor} → ${newColor}`);
+  log(colors.yellow, '   2. Theme colors synchronized');
+  log(colors.yellow, '   3. Files created/updated as needed');
+  log(colors.yellow, '   4. No more color flicker on app launch');
+  log(colors.yellow, '\n   📝 Configuration from: config.xml');
+  log(colors.yellow, '   Build phase: before_compile (FINAL - no more changes)\n');
 }
 
 module.exports = function(context) {
