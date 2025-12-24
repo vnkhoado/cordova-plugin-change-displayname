@@ -21,13 +21,18 @@ const {
 
 /**
  * Known splash background color names - ONLY these will be replaced
+ * Updated to include Cordova's default color names (cdv_*)
  */
 const SPLASH_COLOR_NAMES = [
   'splash_background',
   'splashColor',
   'splash_color',
   'splashscreen_color',
-  'splashBackground'
+  'splashBackground',
+  // Cordova default color names
+  'cdv_background_color',
+  'cdv_splashscreen_background',
+  'cdv_splashscreen_background_color'
 ];
 
 /**
@@ -70,6 +75,16 @@ function customizeAndroidColors(root, backgroundColor, webviewBackgroundColor) {
           `    <color name="splash_background">${backgroundColor}</color>\n</resources>`
         );
         console.log(`   ✓ Added splash_background`);
+        updated = true;
+      }
+      
+      // Fix cdv_splashscreen_background to use direct color instead of reference
+      if (colors.includes('cdv_splashscreen_background')) {
+        colors = colors.replace(
+          /<color name="cdv_splashscreen_background">@color\/cdv_background_color<\/color>/i,
+          `<color name="cdv_splashscreen_background">${backgroundColor}</color>`
+        );
+        console.log(`   ✓ Fixed cdv_splashscreen_background reference`);
         updated = true;
       }
     }
@@ -264,6 +279,7 @@ module.exports = function(context) {
   console.log('  🎨 CUSTOMIZE COLORS (Named Colors Only)');
   console.log('══════════════════════════════════════════════');
   console.log('⚠️  ONLY replaces named splash colors');
+  console.log('⚠️  Includes Cordova cdv_* color names');
   console.log('⚠️  Does NOT replace by hex value');
   console.log('⚠️  Status bar and other colors preserved');
   
