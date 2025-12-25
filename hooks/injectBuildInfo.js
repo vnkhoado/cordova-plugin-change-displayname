@@ -5,14 +5,15 @@ const path = require('path');
 const { getConfigParser } = require('./utils');
 
 /**
- * SIMPLIFIED: JSON-only config storage (NO SQLite)
+ * SIMPLIFIED: JSON-only config storage for native injection
  * 
  * Stores build configuration in:
- *   - www/.cordova-app-data/build-config.json (current config)
+ *   - www/.cordova-app-data/build-config.json (current config with nested structure)
+ *   - www/cordova-build-config.json (flat structure for native plugin)
  *   - www/.cordova-app-data/build-history.json (build history - max 50)
  * 
- * Copies config-loader-mobile.js to www/js/
- * Injects script tag into index.html
+ * Native plugins (CSSInjector.java / CSSInjector.swift) will read 
+ * cordova-build-config.json and inject directly into window.CORDOVA_BUILD_CONFIG
  * 
  * ENHANCED:
  *   - Read hostname from OutSystems preferences (hostname, DefaultHostname)
@@ -134,6 +135,29 @@ function createBuildConfigJSON(buildInfo, configPath, root, wwwPath) {
 }
 
 /**
+ * NEW: Create flat config for native plugin injection
+ */
+function createNativeConfig(buildInfo, wwwPath) {
+  const nativeConfig = {
+    appName: buildInfo.appName,
+    appId: buildInfo.packageName,
+    appVersion: buildInfo.versionNumber,
+    versionCode: buildInfo.versionCode,
+    appDescription: buildInfo.appDescription || '',
+    platform: buildInfo.platform,
+    author: buildInfo.author || '',
+    buildDate: buildInfo.buildTime,
+    buildTimestamp: buildInfo.buildTimestamp,
+    environment: buildInfo.environment || 'production',
+    apiHostname: buildInfo.apiHostname || '',
+    cdnIcon: buildInfo.cdnIcon || ''
+  };
+  
+  const nativeConfigPath = path.join(wwwPath, 'cordova-build-config.json');
+  return writeJSONWithVerification(nativeConfigPath, nativeConfig, 'cordova-build-config.json (native)');
+}
+
+/**
  * Update build history (max 50 entries)
  */
 function updateBuildHistory(buildInfo, historyPath, root, wwwPath) {
@@ -184,151 +208,6 @@ function updateBuildHistory(buildInfo, historyPath, root, wwwPath) {
   
   if (!success1) {
     console.log('   ⚠️  Primary build-history.json failed, but backup created');
-  }
-}
-
-/**
- * Copy config loaders to app www/js/
- */
-function copyConfigLoaders(wwwPath, root) {
-  const jsDir = path.join(wwwPath, 'js');
-  
-  if (!fs.existsSync(jsDir)) {
-    fs.mkdirSync(jsDir, { recursive: true });
-  }
-  
-  const pluginDir = path.join(root, 'plugins/cordova-plugin-change-app-info');
-  
-  const files = [
-    'config-loader.js',
-    'config-loader-mobile.js'
-  ];
-  
-  for (const file of files) {
-    const source = path.join(pluginDir, 'www/js', file);
-    const dest = path.join(jsDir, file);
-    
-    if (fs.existsSync(source)) {
-      try {
-        fs.copyFileSync(source, dest);
-        
-        // Verify copy
-        if (fs.existsSync(dest)) {
-          const stats = fs.statSync(dest);
-          console.log(`   ✅ Copied: ${file} (${stats.size} bytes)`);
-        } else {
-          console.log(`   ❌ Copy failed: ${file}`);
-        }
-      } catch (error) {
-        console.log(`   ❌ Error copying ${file}:`, error.message);
-      }
-    } else {
-      console.log(`   ⚠️  Not found: ${file} at ${source}`);
-    }
-  }
-}
-
-/**
- * Inject config-loader-mobile.js script tag into index.html
- * IMPROVED: Better HTML parsing and insertion logic
- */
-function injectScriptTag(wwwPath) {
-  const indexPath = path.join(wwwPath, 'index.html');
-  
-  console.log(`   📄 Checking index.html at: ${indexPath}`);
-  
-  if (!fs.existsSync(indexPath)) {
-    console.log('   ⚠️  index.html not found, skipping injection');
-    return false;
-  }
-  
-  try {
-    let html = fs.readFileSync(indexPath, 'utf8');
-    const originalLength = html.length;
-    
-    console.log(`   📝 Read index.html: ${originalLength} bytes`);
-    
-    // Remove old script tags (if any from previous versions)
-    html = html.replace(/<script[^>]*src=['"]build-info\.js['"][^>]*><\/script>\s*/g, '');
-    html = html.replace(/<script[^>]*src=['"]app_build_info\.js['"][^>]*><\/script>\s*/g, '');
-    
-    // Check if already injected
-    if (html.includes('config-loader-mobile.js')) {
-      console.log('   ℹ️  Script tag already present in HTML');
-      return true;
-    }
-    
-    // Create script tag
-    const scriptTag = '<script src="js/config-loader-mobile.js"></script>';
-    let inserted = false;
-    
-    // Strategy 1: Insert right after <head> tag
-    if (html.includes('<head>')) {
-      html = html.replace(
-        /<head>/i,
-        '<head>\n    ' + scriptTag
-      );
-      inserted = true;
-      console.log('   📍 Inserted after <head> tag');
-    }
-    // Strategy 2: Insert before cordova.js
-    else if (html.includes('cordova.js')) {
-      html = html.replace(
-        /<script[^>]*src=['"]cordova\.js['"][^>]*><\/script>/,
-        scriptTag + '\n    $&'
-      );
-      inserted = true;
-      console.log('   📍 Inserted before cordova.js');
-    }
-    // Strategy 3: Insert before </head>
-    else if (html.includes('</head>')) {
-      html = html.replace(
-        /<\/head>/i,
-        '    ' + scriptTag + '\n  </head>'
-      );
-      inserted = true;
-      console.log('   📍 Inserted before </head> tag');
-    }
-    // Strategy 4: Insert at start of <body>
-    else if (html.includes('<body>')) {
-      html = html.replace(
-        /<body[^>]*>/i,
-        '$&\n    ' + scriptTag
-      );
-      inserted = true;
-      console.log('   📍 Inserted at start of <body>');
-    }
-    // Strategy 5: Insert before </body>
-    else if (html.includes('</body>')) {
-      html = html.replace(
-        /<\/body>/i,
-        '    ' + scriptTag + '\n</body>'
-      );
-      inserted = true;
-      console.log('   📍 Inserted before </body> tag');
-    }
-    
-    if (!inserted) {
-      console.log('   ⚠️  Could not find insertion point in HTML');
-      console.log('   📄 HTML structure:', html.substring(0, 500));
-      return false;
-    }
-    
-    // Write updated HTML
-    fs.writeFileSync(indexPath, html, 'utf8');
-    
-    // Verify the write
-    const verifyHtml = fs.readFileSync(indexPath, 'utf8');
-    if (verifyHtml.includes('config-loader-mobile.js')) {
-      console.log(`   ✅ Injected and verified: ${verifyHtml.length} bytes (was ${originalLength})`);
-      return true;
-    } else {
-      console.log('   ❌ Injection verification failed!');
-      return false;
-    }
-  } catch (error) {
-    console.error('   ❌ Error injecting script:', error.message);
-    return false;
   }
 }
 
@@ -406,14 +285,14 @@ function injectBuildInfo(context, platform) {
   createBuildConfigJSON(buildInfo, configPath, root, wwwPath);
   updateBuildHistory(buildInfo, historyPath, root, wwwPath);
   
-  // Copy config loaders
-  copyConfigLoaders(wwwPath, root);
+  // NEW: Create flat config for native injection
+  const nativeConfigCreated = createNativeConfig(buildInfo, wwwPath);
   
-  // Inject script tag
-  const injected = injectScriptTag(wwwPath);
-  
-  if (!injected) {
-    console.log('   ⚠️  Script injection may have failed - check manually');
+  if (nativeConfigCreated) {
+    console.log('   ✅ Config files created for native injection');
+    console.log('   ℹ️  Native plugins will inject config into window.CORDOVA_BUILD_CONFIG');
+  } else {
+    console.log('   ⚠️  Native config creation may have failed - check manually');
   }
 }
 
@@ -424,7 +303,7 @@ module.exports = function(context) {
   const platforms = context.opts.platforms;
   
   console.log('\n══════════════════════════════════════════════');
-  console.log('  INJECT BUILD INFO (JSON Only - Enhanced)');
+  console.log('  INJECT BUILD INFO (Native Injection Ready)');
   console.log('══════════════════════════════════════════════');
   
   for (const platform of platforms) {
