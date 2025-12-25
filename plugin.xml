@@ -37,8 +37,8 @@
         <hook type="before_prepare" src="hooks/backupAppInfo.js" />
         
         <!-- AGGRESSIVE REPLACEMENT PHASE (FIRST): Global color replacement (ALL formats) -->
-        <hook type="after_prepare" src="hooks/android/aggressive-color-replace.js" /
-        <hook type="after_prepare" src="hooks/update-splash-theme-color.js" />>
+        <hook type="after_prepare" src="hooks/android/aggressive-color-replace.js" />
+        <hook type="after_prepare" src="hooks/update-splash-theme-color.js" />
         
         <!-- PREPARE PHASE: Update app metadata and remove conflicts -->
         <hook type="after_prepare" src="hooks/removeConflictingStringsXml.js" />
