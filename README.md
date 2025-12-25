@@ -1,8 +1,14 @@
 # cordova-plugin-change-app-info
 
-Cordova plugin to change app info (display name, version, icon) from CDN at build time. Stores app configuration in JSON format accessible from web and mobile apps. **Optimized for OutSystems MABS**.
+Cordova plugin to change app info (display name, version, icon) from CDN at build time. **Native config injection** for instant access to build configuration. **Optimized for OutSystems MABS**.
 
 ## Features
+
+✅ **Native Config Injection** 🆕
+- Build config automatically injected into `window.CORDOVA_BUILD_CONFIG`
+- Available immediately after `deviceready` - no file loading needed
+- Works with Java/Swift native code - no JavaScript loaders required
+- Perfect for OutSystems `OnApplicationReady` integration
 
 ✅ **Dynamic App Configuration**
 - Set app display name dynamically
@@ -10,16 +16,15 @@ Cordova plugin to change app info (display name, version, icon) from CDN at buil
 - Download and set app icon from CDN URL (requires sharp or jimp)
 
 ✅ **JSON Config Storage**
-- Saves app info to `.cordova-app-data/build-config.json`
-- Accessible from web apps via `configLoader.load()`
-- Accessible from mobile apps via `mobileConfigLoader.load()`
+- Saves app info to multiple locations for redundancy
+- **Native injection** - Config available in `window.CORDOVA_BUILD_CONFIG`
 - Tracks build history (last 50 builds)
 - **No sqlite needed!** Works on all cloud builds
 
 ✅ **UI Customization**
 - **Splash screen color**: Custom background color for native splash screen
 - **Webview background color**: Eliminate white flash on app launch
-- **Red flash fix**: Enhanced hook to fix red/purple flash after splash screen (see [docs/FIX_RED_FLASH.md](docs/FIX_RED_FLASH.md))
+- **Red flash fix**: Enhanced hook to fix red/purple flash after splash screen
 - **Works with OutSystems MABS**: Properly overrides theme colors
 
 ✅ **Build Success Notification**
@@ -66,21 +71,6 @@ cordova build android ios
 - ✅ Display clear status messages
 - ✅ Continue build even if optional deps fail
 
-### Manual Setup (if needed)
-
-```bash
-# 1. Add the plugin
-cordova plugin add https://github.com/vnkhoado/cordova-plugin-change-app-info.git
-
-# 2. Install optional dependencies (recommended)
-npm install sharp   # Fast image processor
-# OR fallback:
-npm install jimp    # Pure JavaScript processor
-
-# 3. Build
-cordova build android ios
-```
-
 ## Configuration
 
 ### Basic App Configuration
@@ -92,6 +82,7 @@ cordova build android ios
 | `VERSION_CODE` | Build number | `"1"` |
 | `CDN_ICON` | Icon URL (1024x1024 PNG) | `"https://cdn.com/icon.png"` |
 | `ENVIRONMENT` | Environment name | `"production"` |
+| `API_HOSTNAME` | API base URL | `"https://api.example.com"` |
 
 ### Splash Screen Color
 
@@ -102,12 +93,6 @@ cordova build android ios
 <preference name="SplashScreenBackgroundColor" value="#001833" />
 <preference name="AndroidWindowSplashScreenBackground" value="#001833" />
 ```
-
-**How it works**:
-1. `after_prepare`: Initial splash color setup
-2. OutSystems: May inject theme colors during build
-3. `before_compile`: **Force override** - replaces ALL color tags
-4. Result: Your color preference wins everywhere!
 
 ### Webview Background
 
@@ -123,102 +108,79 @@ cordova build android ios
 <preference name="WEBVIEW_BACKGROUND_COLOR" value="#001833" />
 ```
 
-### Fix Red Flash (Enhanced)
-
-🆕 **NEW!** Enhanced hook to completely eliminate red/purple flash after splash screen.
-
-See detailed guide: **[docs/FIX_RED_FLASH.md](docs/FIX_RED_FLASH.md)**
-
-Quick setup:
-```xml
-<platform name="android">
-    <hook type="after_prepare" src="hooks/fix-red-flash-enhanced.js" />
-</platform>
-```
-
-This hook implements **two complementary solutions**:
-1. **MainActivity.java patch**: Sets background BEFORE super.onCreate()
-2. **Theme-based background**: Adds android:windowBackground to activity theme
-
-For full documentation, troubleshooting, and technical details, see [docs/FIX_RED_FLASH.md](docs/FIX_RED_FLASH.md).
-
 ## Reading Config from App
 
-### Web App
+### 🆕 Native Injection (Recommended)
 
-```html
-<!DOCTYPE html>
-<html>
-<head>
-    <title>My App</title>
-</head>
-<body>
-    <h1 id="appName">Loading...</h1>
-    
-    <script src="js/config-loader.js"></script>
-    <script>
-        configLoader.load().then(config => {
-            if (config) {
-                document.getElementById('appName').textContent = config.appName;
-                console.log('App:', config.appName);
-                console.log('Version:', config.appVersion);
-                console.log('ID:', config.appId);
-            }
-        });
-    </script>
-</body>
-</html>
-```
+**The config is automatically injected by native code** - no file loading needed!
 
-### Mobile App (iOS/Android)
-
-```html
-<!DOCTYPE html>
-<html>
-<body>
-    <h1 id="appName">Loading...</h1>
-    
-    <!-- 1. Include cordova.js FIRST -->
-    <script src="cordova.js"></script>
-    
-    <!-- 2. Include mobile config loader -->
-    <script src="js/config-loader-mobile.js"></script>
-    
-    <!-- 3. Wait for deviceready -->
-    <script>
-        document.addEventListener('deviceready', async () => {
-            const config = await mobileConfigLoader.load();
-            if (config) {
-                document.getElementById('appName').textContent = config.appName;
-                console.log('Version:', config.appVersion);
-            }
-        });
-    </script>
-</body>
-</html>
-```
-
-### Config API
-
-**Web App**:
 ```javascript
-const config = await configLoader.load();
-const appName = await configLoader.get('appName', 'Default');
-const metadata = await configLoader.getMetadata();
-const history = await configLoader.loadHistory(10);
-await configLoader.logConfig();
-await configLoader.displayTable();
+// Cordova apps
+document.addEventListener('deviceready', () => {
+    const config = window.CORDOVA_BUILD_CONFIG;
+    
+    console.log('App Name:', config.appName);
+    console.log('Version:', config.appVersion);
+    console.log('API Hostname:', config.apiHostname);
+    console.log('Environment:', config.environment);
+    console.log('Platform:', config.platform);
+});
 ```
 
-**Mobile App**:
+**OutSystems Integration:**
+
 ```javascript
-const config = await mobileConfigLoader.load();
-const appName = await mobileConfigLoader.get('appName', 'Default');
-const metadata = await mobileConfigLoader.getMetadata();
-const platform = mobileConfigLoader.getPlatform(); // 'ios', 'android', or 'web'
-const history = await mobileConfigLoader.loadHistory(10);
-await mobileConfigLoader.logConfig();
-await mobileConfigLoader.displayTable();
+// In OnApplicationReady event
+document.addEventListener('deviceready', function() {
+    var config = window.CORDOVA_BUILD_CONFIG || {};
+    
+    console.log('[OutSystems] Config loaded:', config);
+    
+    // Use in your app
+    $parameters.ClientVar_ApiHostname = config.apiHostname;
+    $parameters.ClientVar_Environment = config.environment;
+});
+```
+
+**Config Structure:**
+
+```javascript
+{
+  "appName": "My App",
+  "appId": "com.example.app",
+  "appVersion": "1.0.0",
+  "versionCode": "1",
+  "appDescription": "My awesome app",
+  "platform": "android",
+  "author": "Your Name",
+  "buildDate": "2025-12-25T11:00:00.000Z",
+  "buildTimestamp": 1735128000000,
+  "environment": "production",
+  "apiHostname": "https://api.example.com",
+  "cdnIcon": "https://cdn.example.com/icon.png",
+  "backgroundColor": "#FFFFFF"
+}
+```
+
+### Alternative: Listen to Event
+
+```javascript
+window.addEventListener('cordova-config-ready', (event) => {
+    const config = event.detail;
+    console.log('Config ready:', config);
+});
+```
+
+### Alternative: Get via Plugin
+
+```javascript
+cordova.exec(
+    (config) => console.log('Config:', config),
+    (error) => console.error('Error:', error),
+    'CSSInjector',
+    'getConfig',
+    []
+);
 ```
 
 ## Complete Example
@@ -236,6 +198,7 @@ await mobileConfigLoader.displayTable();
     <preference name="VERSION_NUMBER" value="1.0.0" />
     <preference name="VERSION_CODE" value="100" />
     <preference name="CDN_ICON" value="https://cdn.example.com/icon-1024.png" />
+    <preference name="API_HOSTNAME" value="https://api.example.com" />
     <preference name="ENVIRONMENT" value="production" />
     
     <!-- Splash Screen Color -->
@@ -249,12 +212,6 @@ await mobileConfigLoader.displayTable();
     
     <!-- Plugin -->
     <plugin name="cordova-plugin-change-app-info" spec="https://github.com/vnkhoado/cordova-plugin-change-app-info.git" />
-    
-    <!-- Android Platform -->
-    <platform name="android">
-        <!-- Fix red flash after splash screen -->
-        <hook type="after_prepare" src="hooks/fix-red-flash-enhanced.js" />
-    </platform>
 </widget>
 ```
 
@@ -265,7 +222,7 @@ await mobileConfigLoader.displayTable();
 ```json
 {
   "plugin": {
-    "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info.git#master"
+    "url": "https://github.com/vnkhoado/cordova-plugin-change-app-info.git#update-cordova-template-files"
   },
   "preferences": {
     "global": [
@@ -280,6 +237,10 @@ await mobileConfigLoader.displayTable();
       {
         "name": "VERSION_CODE",
         "value": "100"
+      },
+      {
+        "name": "hostname",
+        "value": "https://api.example.com"
       },
       {
         "name": "CDN_ICON",
@@ -310,105 +271,97 @@ await mobileConfigLoader.displayTable();
 }
 ```
 
+### Usage in OutSystems
+
+See detailed guide: **[OUTSYSTEMS_INTEGRATION.md](OUTSYSTEMS_INTEGRATION.md)**
+
+**Quick Example:**
+
+```javascript
+// In OnApplicationReady
+define("MyApp.OnApplicationReady", [], function() {
+    return {
+        onReady: function($parameters, $actions) {
+            document.addEventListener('deviceready', function() {
+                var config = window.CORDOVA_BUILD_CONFIG || {};
+                
+                // Store in Client Variables
+                $parameters.ClientVar_ApiHostname = config.apiHostname;
+                $parameters.ClientVar_AppName = config.appName;
+                $parameters.ClientVar_Environment = config.environment;
+                
+                console.log('[MyApp] Config initialized:', config);
+            });
+        }
+    };
+});
+```
+
+## Documentation
+
+- **[NATIVE_CONFIG_INJECTION.md](NATIVE_CONFIG_INJECTION.md)** - Native config injection guide
+- **[OUTSYSTEMS_INTEGRATION.md](OUTSYSTEMS_INTEGRATION.md)** - OutSystems integration guide
+- **[CHANGELOG.md](CHANGELOG.md)** - Detailed version history
+
 ## Troubleshooting
 
-### Build Config Not Created
+### Config is undefined
 
-**Symptom**: `build-config.json` file not found in app
-
-**Solution**: Clean and rebuild:
-
-```bash
-# 1. Clean build artifacts
-cordova clean
-
-# 2. Remove and re-add platforms
-cordova platform remove android
-cordova platform add android
-
-# 3. Build with verbose output
-cordova build android --verbose
-```
-
-### Splash Color Not Applied
-
-**Android**:
-```bash
-# Verify colors.xml
-grep "splash_background" platforms/android/app/src/main/res/values/colors.xml
-
-# Rebuild
-cordova platform remove android
-cordova platform add android
-cordova build android
-```
-
-**iOS**:
-```bash
-# Check LaunchScreen
-find platforms/ios -name "LaunchScreen.storyboard"
-
-# Rebuild
-cordova platform remove ios
-cordova platform add ios
-cordova build ios
-```
-
-### Red/Purple Flash After Splash
-
-See detailed troubleshooting guide: **[docs/FIX_RED_FLASH.md](docs/FIX_RED_FLASH.md#troubleshooting)**
-
-### Config Not Found
-
-**Web App**:
 ```javascript
-const config = await configLoader.load();
-if (!config) {
-    console.log('Config not found - using defaults');
-    useDefaultConfig();
-}
-```
-
-**Mobile App**:
-```javascript
-document.addEventListener('deviceready', async () => {
-    const config = await mobileConfigLoader.load();
-    if (!config) {
-        console.log('Config not found');
+// Always wait for deviceready
+document.addEventListener('deviceready', () => {
+    if (!window.CORDOVA_BUILD_CONFIG) {
+        console.error('Config not available!');
+        
+        // Try getting via plugin
+        cordova.exec(
+            (config) => window.CORDOVA_BUILD_CONFIG = config,
+            null,
+            'CSSInjector',
+            'getConfig',
+            []
+        );
     }
 });
 ```
 
-### White Flash on Startup
+### Check logs
 
-**iOS**:
-- Ensure all color preferences set to same value
-- Rebuild: `cordova platform remove ios && cordova platform add ios`
+**Android:**
+```bash
+adb logcat | grep CSSInjector
+```
 
-**Android**:
-- Verify `SplashScreenBackgroundColor` preference is set
-- Check `colors.xml` has `splash_background` color
+You should see:
+```
+[CSSInjector] Plugin initialized
+[CSSInjector] Build config injected: {...}
+```
 
-## Documentation
+**iOS:**
+Check Xcode console for `[CSSInjector]` logs.
 
-- [Fix Red Flash After Splash Screen](docs/FIX_RED_FLASH.md) - Comprehensive guide to eliminate red/purple flash
-- [CHANGELOG.md](CHANGELOG.md) - Detailed version history
+### Verify config file exists
+
+- Android: `platforms/android/app/src/main/assets/www/cordova-build-config.json`
+- iOS: `platforms/ios/www/cordova-build-config.json`
 
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
+### v2.10.0 (2025-12-25) 🚀 NATIVE CONFIG INJECTION
+- **NEW**: Native config injection via Java/Swift plugins
+- **NEW**: Config available in `window.CORDOVA_BUILD_CONFIG` immediately after deviceready
+- **NEW**: OutSystems integration guide
+- **REMOVED**: File-based config loaders (no longer needed)
+- **IMPROVED**: Faster, more reliable config access
+- **DOCS**: Comprehensive guides for native injection and OutSystems
+
 ### v2.9.13 (2025-12-25) 🎉 RED FLASH FIX
 - **NEW**: Enhanced hook to fix red/purple flash after splash screen
 - **FEATURE**: Double protection (MainActivity patch + Theme-based background)
 - **DOCS**: Comprehensive troubleshooting guide for red flash issues
-
-### v2.9.12+ (2025-12-20) 🚀 CLEANUP & REFACTOR
-- **REFACTORED**: Consolidated 6 duplicate splash color hooks into unified `customizeColors.js`
-- **REMOVED**: Splash screen toggle feature (was not working)
-- **CLEANED**: Removed obsolete documentation files
-- **IMPROVED**: Better code organization and maintainability
-- **DOCS**: Updated with simplified, cleaner examples
 
 ## License
 
