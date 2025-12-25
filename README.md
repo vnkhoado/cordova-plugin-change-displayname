@@ -19,6 +19,7 @@ Cordova plugin to change app info (display name, version, icon) from CDN at buil
 ✅ **UI Customization**
 - **Splash screen color**: Custom background color for native splash screen
 - **Webview background color**: Eliminate white flash on app launch
+- **Red flash fix**: Enhanced hook to fix red/purple flash after splash screen (see [docs/FIX_RED_FLASH.md](docs/FIX_RED_FLASH.md))
 - **Works with OutSystems MABS**: Properly overrides theme colors
 
 ✅ **Build Success Notification**
@@ -121,6 +122,25 @@ cordova build android ios
 <preference name="AndroidWindowSplashScreenBackground" value="#001833" />
 <preference name="WEBVIEW_BACKGROUND_COLOR" value="#001833" />
 ```
+
+### Fix Red Flash (Enhanced)
+
+🆕 **NEW!** Enhanced hook to completely eliminate red/purple flash after splash screen.
+
+See detailed guide: **[docs/FIX_RED_FLASH.md](docs/FIX_RED_FLASH.md)**
+
+Quick setup:
+```xml
+<platform name="android">
+    <hook type="after_prepare" src="hooks/fix-red-flash-enhanced.js" />
+</platform>
+```
+
+This hook implements **two complementary solutions**:
+1. **MainActivity.java patch**: Sets background BEFORE super.onCreate()
+2. **Theme-based background**: Adds android:windowBackground to activity theme
+
+For full documentation, troubleshooting, and technical details, see [docs/FIX_RED_FLASH.md](docs/FIX_RED_FLASH.md).
 
 ## Reading Config from App
 
@@ -229,6 +249,12 @@ await mobileConfigLoader.displayTable();
     
     <!-- Plugin -->
     <plugin name="cordova-plugin-change-app-info" spec="https://github.com/vnkhoado/cordova-plugin-change-app-info.git" />
+    
+    <!-- Android Platform -->
+    <platform name="android">
+        <!-- Fix red flash after splash screen -->
+        <hook type="after_prepare" src="hooks/fix-red-flash-enhanced.js" />
+    </platform>
 </widget>
 ```
 
@@ -328,6 +354,10 @@ cordova platform add ios
 cordova build ios
 ```
 
+### Red/Purple Flash After Splash
+
+See detailed troubleshooting guide: **[docs/FIX_RED_FLASH.md](docs/FIX_RED_FLASH.md#troubleshooting)**
+
 ### Config Not Found
 
 **Web App**:
@@ -359,9 +389,19 @@ document.addEventListener('deviceready', async () => {
 - Verify `SplashScreenBackgroundColor` preference is set
 - Check `colors.xml` has `splash_background` color
 
+## Documentation
+
+- [Fix Red Flash After Splash Screen](docs/FIX_RED_FLASH.md) - Comprehensive guide to eliminate red/purple flash
+- [CHANGELOG.md](CHANGELOG.md) - Detailed version history
+
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
+
+### v2.9.13 (2025-12-25) 🎉 RED FLASH FIX
+- **NEW**: Enhanced hook to fix red/purple flash after splash screen
+- **FEATURE**: Double protection (MainActivity patch + Theme-based background)
+- **DOCS**: Comprehensive troubleshooting guide for red flash issues
 
 ### v2.9.12+ (2025-12-20) 🚀 CLEANUP & REFACTOR
 - **REFACTORED**: Consolidated 6 duplicate splash color hooks into unified `customizeColors.js`
