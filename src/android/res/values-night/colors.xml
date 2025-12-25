@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash screen background color for dark mode -->
+    <!-- Uses same color as light mode for consistency -->
+    <color name="cordova_splash_background">#001833</color>
+</resources>
