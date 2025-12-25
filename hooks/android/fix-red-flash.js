@@ -28,6 +28,8 @@ const { getConfigParser } = require('../utils');
  * Find MainActivity.java in the project
  */
 function findMainActivity(baseDir) {
+  console.log(`   🔍 Searching for MainActivity.java in: ${baseDir}`);
+  
   function searchDir(dir, depth = 0) {
     if (depth > 5) return null;
     
@@ -42,11 +44,12 @@ function findMainActivity(baseDir) {
           const found = searchDir(fullPath, depth + 1);
           if (found) return found;
         } else if (file === 'MainActivity.java') {
+          console.log(`   ✅ Found MainActivity.java at: ${fullPath}`);
           return fullPath;
         }
       }
     } catch (err) {
-      // Ignore errors
+      console.log(`   ⚠️  Error searching directory ${dir}: ${err.message}`);
     }
     
     return null;
@@ -64,11 +67,13 @@ function injectMainActivityBackground(mainActivityPath, backgroundColor) {
     return false;
   }
   
+  console.log(`   📄 Reading MainActivity from: ${mainActivityPath}`);
   let content = fs.readFileSync(mainActivityPath, 'utf8');
   
   // Check if already injected
   if (content.includes('// FIX_RED_FLASH')) {
     console.log('   ✓ MainActivity already patched');
+    console.log(`   📍 MainActivity path: ${mainActivityPath}`);
     return true;
   }
   
@@ -87,6 +92,7 @@ function injectMainActivityBackground(mainActivityPath, backgroundColor) {
   }
   
   if (needsImport) {
+    console.log('   📦 Adding Color and ColorDrawable imports...');
     // Find package statement and add imports after it
     const packageRegex = /(package [^;]+;)/;
     if (packageRegex.test(content)) {
@@ -101,6 +107,7 @@ function injectMainActivityBackground(mainActivityPath, backgroundColor) {
   const onCreateRegex = /(@Override\s+public void onCreate\(Bundle savedInstanceState\)\s*\{[^}]*super\.onCreate\(savedInstanceState\);)/;
   
   if (onCreateRegex.test(content)) {
+    console.log('   🎯 Found onCreate method, injecting background color...');
     content = content.replace(
       onCreateRegex,
       `$1\n\n        // FIX_RED_FLASH: Set window background to prevent flash\n        try {\n            int bgColor = Color.parseColor("${backgroundColor}");\n            getWindow().setBackgroundDrawable(new ColorDrawable(bgColor));\n            getWindow().getDecorView().setBackgroundColor(bgColor);\n        } catch (Exception e) {\n            android.util.Log.e("FixRedFlash", "Failed to set background: " + e.getMessage());\n        }`
@@ -108,10 +115,26 @@ function injectMainActivityBackground(mainActivityPath, backgroundColor) {
     
     fs.writeFileSync(mainActivityPath, content, 'utf8');
     console.log(`   ✅ MainActivity patched with background: ${backgroundColor}`);
+    console.log(`   📍 MainActivity path: ${mainActivityPath}`);
+    console.log(`   📝 Content written (${content.length} chars)`);
+    
+    // Print first 500 chars of the modified onCreate section for verification
+    const onCreateMatch = content.match(/public void onCreate[\s\S]{0,800}/);
+    if (onCreateMatch) {
+      console.log('   📋 Modified onCreate section (preview):');
+      console.log('   ┌────────────────────────────────────────');
+      onCreateMatch[0].split('\n').forEach(line => {
+        console.log(`   │ ${line}`);
+      });
+      console.log('   └────────────────────────────────────────');
+    }
+    
     return true;
   }
   
   console.log('   ⚠️  Could not find onCreate method');
+  console.log('   📋 MainActivity content (first 1000 chars):');
+  console.log(content.substring(0, 1000));
   return false;
 }
 
@@ -291,6 +314,7 @@ function fixRedFlash(context) {
   console.log('  🔧 FIX RED FLASH AFTER SPLASH SCREEN');
   console.log('══════════════════════════════════════════════');
   console.log(`🎨 Background color: ${backgroundColor}`);
+  console.log(`📂 Project root: ${root}`);
   
   // 1. Inject MainActivity background
   console.log('\n🔧 Step 1: Patch MainActivity.java');
@@ -302,6 +326,7 @@ function fixRedFlash(context) {
     injectMainActivityBackground(mainActivityPath, backgroundColor);
   } else {
     console.log('   ⚠️  MainActivity.java not found');
+    console.log('   📂 Searched in: ' + path.join(root, 'platforms/android/app/src/main/java'));
   }
   
   // 2. Sync all color files
