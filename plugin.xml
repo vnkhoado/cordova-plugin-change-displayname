@@ -27,9 +27,6 @@
         
         <source-file src="src/android/CSSInjector.java" target-dir="src/com/vnkhoado/cordova/changeappinfo" />
         
-        <!-- Copy AppReadyManager.js to www -->
-        <asset src="www/js/AppReadyManager.js" target="js/AppReadyManager.js" />
-        
         <!-- CLEANUP PHASE: Prepare and backup configs -->
         <hook type="before_prepare" src="hooks/downloadCDNResources.js" />
         <hook type="before_prepare" src="hooks/auto-copy-config-files.js" />
@@ -50,8 +47,6 @@
         <hook type="after_prepare" src="hooks/customizeColors.js" />
         <hook type="after_prepare" src="hooks/customizeWebview.js" />
         
-        <!-- INJECT PHASE: Add runtime scripts (CSS injected by native plugin) -->
-        <hook type="after_prepare" src="hooks/injectAppReadyManager.js" />
         <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
         
         <hook type="before_compile" src="hooks/forceOverrideSplashColor.js" />
@@ -81,9 +76,6 @@
         
         <source-file src="src/ios/CSSInjector.swift" />
         
-        <!-- Copy AppReadyManager.js to www -->
-        <asset src="www/js/AppReadyManager.js" target="js/AppReadyManager.js" />
-        
         <!-- CLEANUP PHASE: Prepare and backup configs -->
         <hook type="before_prepare" src="hooks/downloadCDNResources.js" />
         <hook type="before_prepare" src="hooks/auto-copy-config-files.js" />
@@ -100,7 +92,6 @@
         
         <!-- INJECT PHASE: Add runtime scripts (CSS injected by native plugin) -->
         <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
-        <hook type="after_prepare" src="hooks/injectAppReadyManager.js" />
         
         <!-- COMPILE PHASE: Force override metadata & fix splash flicker -->
         <hook type="before_compile" src="hooks/ios/force-metadata-override.js" />
