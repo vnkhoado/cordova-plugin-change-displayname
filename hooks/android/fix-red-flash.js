@@ -22,7 +22,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getConfigParser, hexToRgb } = require('../utils');
+const { getConfigParser } = require('../utils');
 
 /**
  * Find MainActivity.java in the project
@@ -72,12 +72,29 @@ function injectMainActivityBackground(mainActivityPath, backgroundColor) {
     return true;
   }
   
-  // Add imports if needed
-  if (!content.includes('import android.graphics.Color;')) {
-    content = content.replace(
-      /(package [^;]+;)/,
-      '$1\n\nimport android.graphics.Color;\nimport android.graphics.drawable.ColorDrawable;'
-    );
+  // Add imports if needed - FIXED: Add both Color and ColorDrawable
+  const importsToAdd = [
+    'import android.graphics.Color;',
+    'import android.graphics.drawable.ColorDrawable;'
+  ];
+  
+  let needsImport = false;
+  for (const importStatement of importsToAdd) {
+    if (!content.includes(importStatement)) {
+      needsImport = true;
+      break;
+    }
+  }
+  
+  if (needsImport) {
+    // Find package statement and add imports after it
+    const packageRegex = /(package [^;]+;)/;
+    if (packageRegex.test(content)) {
+      content = content.replace(
+        packageRegex,
+        `$1\n\nimport android.graphics.Color;\nimport android.graphics.drawable.ColorDrawable;`
+      );
+    }
   }
   
   // Find onCreate and inject background color
@@ -150,21 +167,27 @@ function syncAllColorFiles(root, backgroundColor) {
       'webview_background'
     ];
     
+    let modified = false;
     for (const colorName of colorNames) {
       const regex = new RegExp(`<color name="${colorName}">([^<]*)</color>`);
       if (regex.test(content)) {
+        const oldContent = content;
         content = content.replace(regex, `<color name="${colorName}">${backgroundColor}</color>`);
+        if (oldContent !== content) modified = true;
       } else {
         // Add if missing
         content = content.replace(
           '</resources>',
           `    <color name="${colorName}">${backgroundColor}</color>\n</resources>`
         );
+        modified = true;
       }
     }
     
-    fs.writeFileSync(cdvColorsPath, content, 'utf8');
-    console.log('   ✅ Synchronized all color definitions');
+    if (modified) {
+      fs.writeFileSync(cdvColorsPath, content, 'utf8');
+      console.log('   ✅ Synchronized all color definitions');
+    }
   }
   
   // Update colors.xml (legacy)
@@ -177,19 +200,25 @@ function syncAllColorFiles(root, backgroundColor) {
       'webview_background'
     ];
     
+    let modified = false;
     for (const colorName of colorNames) {
       const regex = new RegExp(`<color name="${colorName}">([^<]*)</color>`);
       if (regex.test(content)) {
+        const oldContent = content;
         content = content.replace(regex, `<color name="${colorName}">${backgroundColor}</color>`);
+        if (oldContent !== content) modified = true;
       } else {
         content = content.replace(
           '</resources>',
           `    <color name="${colorName}">${backgroundColor}</color>\n</resources>`
         );
+        modified = true;
       }
     }
     
-    fs.writeFileSync(colorsPath, content, 'utf8');
+    if (modified) {
+      fs.writeFileSync(colorsPath, content, 'utf8');
+    }
   }
 }
 
@@ -210,6 +239,7 @@ function updateThemeFiles(root, backgroundColor) {
     
     if (fs.existsSync(themePath)) {
       let content = fs.readFileSync(themePath, 'utf8');
+      let modified = false;
       
       // Update all windowBackground references
       const patterns = [
@@ -218,16 +248,18 @@ function updateThemeFiles(root, backgroundColor) {
       ];
       
       for (const pattern of patterns) {
-        if (pattern.test(content)) {
-          content = content.replace(
-            pattern,
-            '<item name="android:windowBackground">@color/splash_background</item>'
-          );
-        }
+        const oldContent = content;
+        content = content.replace(
+          pattern,
+          '<item name="android:windowBackground">@color/splash_background</item>'
+        );
+        if (oldContent !== content) modified = true;
       }
       
-      fs.writeFileSync(themePath, content, 'utf8');
-      console.log(`   ✅ Updated ${themeFile}`);
+      if (modified) {
+        fs.writeFileSync(themePath, content, 'utf8');
+        console.log(`   ✅ Updated ${themeFile}`);
+      }
     }
   }
 }
