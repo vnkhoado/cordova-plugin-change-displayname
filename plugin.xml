@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.9.14">
+    version="2.9.15">
     
     <name>Change App Info</name>
     <description>Cordova plugin to change app display name, version and icon from CDN at build time. Stores build info in JSON format. Supports custom colors for splash screen and webview. Runtime CSS injection. Optimized for OutSystems MABS.</description>
@@ -60,6 +60,9 @@
         
         <!-- NEW: Fix Android splash color flicker at final phase -->
         <hook type="before_compile" src="hooks/android/fix-splash-flicker.js" />
+        
+        <!-- NEW: Fix red/white flash after splash screen -->
+        <hook type="before_compile" src="hooks/android/fix-red-flash.js" />
         
         <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
