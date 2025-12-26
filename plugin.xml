@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
     id="cordova-plugin-change-app-info"
-    version="2.9.14">
+    version="2.9.15">
     
     <name>Change App Info</name>
-    <description>Cordova plugin to change app display name, version and icon from CDN at build time. Stores build info in JSON format. Supports custom colors for splash screen and webview. Runtime CSS injection. Optimized for OutSystems MABS.</description>
+    <description>Cordova plugin to change app display name, version and icon from CDN at build time. Stores build info in JSON format. Supports custom colors for splash screen and webview. Native config injection. Optimized for OutSystems MABS.</description>
     <license>MIT</license>
-    <keywords>cordova,app,info,displayname,version,icon,ios,android,cdn,optimized,json,build-info,outsystems,css,runtime,color,splash,webview</keywords>
+    <keywords>cordova,app,info,displayname,version,icon,ios,android,cdn,optimized,json,build-info,outsystems,css,runtime,color,splash,webview,native-injection</keywords>
     
     <author>vnkhoado</author>
     <repo>https://github.com/vnkhoado/cordova-plugin-change-app-info.git</repo>
@@ -17,7 +17,7 @@
     
     <!-- Android Platform -->
     <platform name="android">
-        <!-- Native CSS Injector -->
+        <!-- Native CSS Injector & Config Injector -->
         <config-file target="res/xml/config.xml" parent="/*">
             <feature name="CSSInjector">
                 <param name="android-package" value="com.vnkhoado.cordova.changeappinfo.CSSInjector" />
@@ -27,17 +27,14 @@
         
         <source-file src="src/android/CSSInjector.java" target-dir="src/com/vnkhoado/cordova/changeappinfo" />
         
-        <!-- Copy AppReadyManager.js to www -->
-        <asset src="www/js/AppReadyManager.js" target="js/AppReadyManager.js" />
-        
         <!-- CLEANUP PHASE: Prepare and backup configs -->
         <hook type="before_prepare" src="hooks/downloadCDNResources.js" />
-        <hook type="before_prepare" src="hooks/auto-copy-config-files.js" />
         <hook type="before_prepare" src="hooks/scripts/auto-install-deps.js" />
         <hook type="before_prepare" src="hooks/backupAppInfo.js" />
         
         <!-- AGGRESSIVE REPLACEMENT PHASE (FIRST): Global color replacement (ALL formats) -->
         <hook type="after_prepare" src="hooks/android/aggressive-color-replace.js" />
+        <hook type="after_prepare" src="hooks/update-splash-theme-color.js" />
         
         <!-- PREPARE PHASE: Update app metadata and remove conflicts -->
         <hook type="after_prepare" src="hooks/removeConflictingStringsXml.js" />
@@ -49,17 +46,16 @@
         <hook type="after_prepare" src="hooks/customizeColors.js" />
         <hook type="after_prepare" src="hooks/customizeWebview.js" />
         
-        <!-- INJECT PHASE: Add runtime scripts (CSS injected by native plugin) -->
-        <hook type="after_prepare" src="hooks/injectAppReadyManager.js" />
-        <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
-        
         <hook type="before_compile" src="hooks/forceOverrideSplashColor.js" />
         <hook type="before_compile" src="hooks/forceOverrideNativeColors.js" />
         <hook type="before_compile" src="hooks/scanAndReplaceColor.js" />
         <hook type="before_compile" src="hooks/native-gradient-splash.js" />
         
-        <!-- NEW: Fix Android splash color flicker at final phase -->
+        <!-- Fix Android splash color flicker at final phase -->
         <hook type="before_compile" src="hooks/android/fix-splash-flicker.js" />
+        
+        <!-- Fix red/white flash after splash screen -->
+        <hook type="before_compile" src="hooks/android/fix-red-flash.js" />
         
         <hook type="post_compile" src="hooks/forceMBASSplashColor.js" />
         <hook type="after_build" src="hooks/sendBuildSuccess.js" />
@@ -67,7 +63,7 @@
     
     <!-- iOS Platform -->
     <platform name="ios">
-        <!-- Native CSS Injector -->
+        <!-- Native CSS Injector & Config Injector -->
         <config-file target="config.xml" parent="/*">
             <feature name="CSSInjector">
                 <param name="ios-package" value="CSSInjector" />
@@ -77,12 +73,8 @@
         
         <source-file src="src/ios/CSSInjector.swift" />
         
-        <!-- Copy AppReadyManager.js to www -->
-        <asset src="www/js/AppReadyManager.js" target="js/AppReadyManager.js" />
-        
         <!-- CLEANUP PHASE: Prepare and backup configs -->
         <hook type="before_prepare" src="hooks/downloadCDNResources.js" />
-        <hook type="before_prepare" src="hooks/auto-copy-config-files.js" />
         <hook type="before_prepare" src="hooks/scripts/auto-install-deps.js" />
         <hook type="before_prepare" src="hooks/backupAppInfo.js" />
         <hook type="before_prepare" src="hooks/ios-cache-clear.js" />
@@ -93,10 +85,6 @@
         
         <!-- CUSTOMIZE PHASE: Update colors (unified hook) -->
         <hook type="after_prepare" src="hooks/customizeColors.js" />
-        
-        <!-- INJECT PHASE: Add runtime scripts (CSS injected by native plugin) -->
-        <hook type="after_prepare" src="hooks/inject-css-native-code.js" />
-        <hook type="after_prepare" src="hooks/injectAppReadyManager.js" />
         
         <!-- COMPILE PHASE: Force override metadata & fix splash flicker -->
         <hook type="before_compile" src="hooks/ios/force-metadata-override.js" />

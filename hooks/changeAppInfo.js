@@ -52,9 +52,29 @@ function getPreferences(context) {
 }
 
 /**
+ * Get Android strings file path, supporting both old and new naming
+ * Priority: cdv_strings.xml (new) > strings.xml (legacy)
+ */
+function getStringsPath(root) {
+  const resPath = path.join(root, 'platforms/android/app/src/main/res/values');
+  const newPath = path.join(resPath, 'cdv_strings.xml');
+  const oldPath = path.join(resPath, 'strings.xml');
+  
+  if (fs.existsSync(newPath)) {
+    console.log('   ℹ️  Using new Cordova template: cdv_strings.xml');
+    return newPath;
+  } else if (fs.existsSync(oldPath)) {
+    console.log('   ℹ️  Using legacy template: strings.xml');
+    return oldPath;
+  }
+  
+  return null;
+}
+
+/**
  * Update Android app info
  * 
- * FIX: Use cdv_strings.xml (Cordova default) instead of creating new strings.xml
+ * UPDATED: Supports both cdv_strings.xml (new) and strings.xml (legacy)
  * This avoids "Duplicate resources" error
  */
 function updateAndroidAppInfo(root, prefs) {
@@ -63,61 +83,42 @@ function updateAndroidAppInfo(root, prefs) {
   console.log(`📝 App Name: ${appName || 'không thay đổi'}`);
   console.log(`🔢 Version: ${versionNumber || 'không thay đổi'} (${versionCode || 'không thay đổi'}`);
 
-  // Update app_name in cdv_strings.xml (Cordova's default location)
+  // Update app_name in strings file
   if (appName) {
-    // Try cdv_strings.xml first (Cordova default)
-    const cdvStringsPath = path.join(
-      root,
-      "platforms/android/app/src/main/res/values/cdv_strings.xml"
-    );
-    
-    // Fallback to strings.xml if cdv_strings.xml doesn't exist
-    const stringsPath = path.join(
-      root,
-      "platforms/android/app/src/main/res/values/strings.xml"
-    );
+    const stringsPath = getStringsPath(root);
 
-    let targetPath = null;
-    
-    if (fs.existsSync(cdvStringsPath)) {
-      targetPath = cdvStringsPath;
-      console.log(`   🔍 Using Cordova default: cdv_strings.xml`);
-    } else if (fs.existsSync(stringsPath)) {
-      targetPath = stringsPath;
-      console.log(`   🔍 Using fallback: strings.xml`);
-    } else {
+    if (!stringsPath) {
       console.log(`   ⚠️  Neither cdv_strings.xml nor strings.xml found`);
       console.log(`   ℹ️  Cordova will use widget name from config.xml`);
-      return;
-    }
+    } else {
+      try {
+        let content = fs.readFileSync(stringsPath, "utf8");
+        console.log(`   📄 Read file: ${path.basename(stringsPath)} (${content.length} bytes)`);
+        
+        // Check if app_name exists
+        const hasAppName = /<string name="app_name">.*?<\/string>/.test(content);
+        
+        if (hasAppName) {
+          // UPDATE existing app_name
+          content = content.replace(
+            /<string name="app_name">.*?<\/string>/,
+            `<string name="app_name">${appName}</string>`
+          );
+          console.log(`   ✅ Updated app_name: ${appName}`);
+        } else {
+          // ADD new app_name entry
+          content = content.replace(
+            "</resources>",
+            `    <string name="app_name">${appName}</string>\n</resources>`
+          );
+          console.log(`   ✅ Added app_name: ${appName}`);
+        }
 
-    try {
-      let content = fs.readFileSync(targetPath, "utf8");
-      console.log(`   📄 Read file: ${path.basename(targetPath)} (${content.length} bytes)`);
-      
-      // Check if app_name exists
-      const hasAppName = /<string name="app_name">.*?<\/string>/.test(content);
-      
-      if (hasAppName) {
-        // UPDATE existing app_name
-        content = content.replace(
-          /<string name="app_name">.*?<\/string>/,
-          `<string name="app_name">${appName}</string>`
-        );
-        console.log(`   ✅ Updated app_name: ${appName}`);
-      } else {
-        // ADD new app_name entry
-        content = content.replace(
-          "</resources>",
-          `    <string name="app_name">${appName}</string>\n</resources>`
-        );
-        console.log(`   ✅ Added app_name: ${appName}`);
+        fs.writeFileSync(stringsPath, content, "utf8");
+        console.log(`   ✅ Saved: ${path.basename(stringsPath)}`);
+      } catch (err) {
+        console.error(`   ✖ Failed to update ${path.basename(stringsPath)}:`, err.message);
       }
-
-      fs.writeFileSync(targetPath, content, "utf8");
-      console.log(`   ✅ Saved: ${path.basename(targetPath)}`);
-    } catch (err) {
-      console.error(`   ✖ Failed to update ${path.basename(targetPath)}:`, err.message);
     }
   }
 
@@ -161,6 +162,7 @@ function updateAndroidAppInfo(root, prefs) {
  * 
  * FIX: Ensure CFBundleName is CREATED if missing (not just updated)
  * This prevents old process name from appearing in app switcher
+ * iOS-specific - no changes for new Cordova template
  */
 function updateIOSAppInfo(root, appFolderName, prefs) {
   const { appName, versionNumber, versionCode } = prefs;
@@ -287,7 +289,7 @@ module.exports = function(context) {
   console.log("\n══════════════════════════════════");
   console.log("       CHANGE APP INFO HOOK        ");
   console.log("══════════════════════════════════");
-  console.log("🔧 FIX: Use cdv_strings.xml (no duplicate resources)");
+  console.log("🔧 Android: Supports cdv_strings.xml (new) and strings.xml (legacy)");
   console.log("✅ Works with OutSystems MABS");
   console.log("⚠️ Note: PACKAGE_NAME feature removed to avoid iOS provisioning profile conflicts");
 

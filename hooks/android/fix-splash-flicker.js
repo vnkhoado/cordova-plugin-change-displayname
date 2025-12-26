@@ -13,8 +13,8 @@
  * 
  * Solution:
  * - Run at before_compile phase (FINAL - no more processing after this)
- * - Force splash color to correct value in cdvcolors.xml
- * - Force theme colors to correct value in cdvthemes.xml
+ * - Force splash color to correct value in cdv_colors.xml (Cordova default)
+ * - Force theme colors to correct value in cdv_themes.xml
  * - Prevents any further overwriting
  * 
  * Runs at: before_compile stage (after all prepare, before Gradle compilation)
@@ -61,24 +61,24 @@ function fixAndroidSplashFlicker(context) {
   let fixedColors = false;
   
   // ============================================
-  // 1. Fix cdvcolors.xml (Splash Color)
+  // 1. Fix cdv_colors.xml (Cordova default naming with underscore)
   // ============================================
-  const cdvColorsPath = path.join(androidResPath, 'cdvcolors.xml');
+  const cdvColorsPath = path.join(androidResPath, 'cdv_colors.xml');
   
-  log(colors.reset, '\n📄 Processing cdvcolors.xml:');
+  log(colors.reset, '\n📄 Processing cdv_colors.xml:');
   
   let colorContent = readXmlFile(cdvColorsPath);
   
   if (!colorContent) {
     // File doesn't exist, create it with newColor from config
-    log(colors.yellow, `   ⚠️  File not found, creating new cdvcolors.xml...`);
+    log(colors.yellow, `   ⚠️  File not found, creating new cdv_colors.xml...`);
     colorContent = createCdvColorsTemplate(newColor);
     
     if (writeXmlFile(cdvColorsPath, colorContent)) {
-      log(colors.green, `   ✅ Created cdvcolors.xml with color: ${newColor}`);
+      log(colors.green, `   ✅ Created cdv_colors.xml with color: ${newColor}`);
       fixedColors = true;
     } else {
-      log(colors.red, `   ❌ Failed to create cdvcolors.xml`);
+      log(colors.red, `   ❌ Failed to create cdv_colors.xml`);
     }
   } else {
     // File exists, replace old color with new color
@@ -120,35 +120,35 @@ function fixAndroidSplashFlicker(context) {
       // Write back if changed
       if (colorContent !== originalContent) {
         if (writeXmlFile(cdvColorsPath, colorContent)) {
-          log(colors.green, `   ✅ cdvcolors.xml saved successfully`);
+          log(colors.green, `   ✅ cdv_colors.xml saved successfully`);
         }
       } else {
-        log(colors.green, `   ✅ cdvcolors.xml already correct`);
+        log(colors.green, `   ✅ cdv_colors.xml already correct`);
       }
       
     } catch (error) {
-      log(colors.red, `   ❌ Error updating cdvcolors.xml: ${error.message}`);
+      log(colors.red, `   ❌ Error updating cdv_colors.xml: ${error.message}`);
     }
   }
   
   // ============================================
-  // 2. Fix cdvthemes.xml (Theme Color References)
+  // 2. Fix cdv_themes.xml (Cordova default naming with underscore)
   // ============================================
-  const cdvThemesPath = path.join(androidResPath, 'cdvthemes.xml');
+  const cdvThemesPath = path.join(androidResPath, 'cdv_themes.xml');
   
-  log(colors.reset, '\n🎨 Processing cdvthemes.xml:');
+  log(colors.reset, '\n🎨 Processing cdv_themes.xml:');
   
   let themeContent = readXmlFile(cdvThemesPath);
   
   if (!themeContent) {
     // File doesn't exist, create it
-    log(colors.yellow, `   ⚠️  File not found, creating new cdvthemes.xml...`);
+    log(colors.yellow, `   ⚠️  File not found, creating new cdv_themes.xml...`);
     themeContent = createCdvThemesTemplate();
     
     if (writeXmlFile(cdvThemesPath, themeContent)) {
-      log(colors.green, `   ✅ Created cdvthemes.xml`);
+      log(colors.green, `   ✅ Created cdv_themes.xml`);
     } else {
-      log(colors.red, `   ❌ Failed to create cdvthemes.xml`);
+      log(colors.red, `   ❌ Failed to create cdv_themes.xml`);
     }
   } else {
     // File exists, ensure it references the color correctly
@@ -165,18 +165,18 @@ function fixAndroidSplashFlicker(context) {
         );
         log(colors.green, `   ✅ Theme window background: Uses cdv_splashscreen_background_color`);
       } else {
-        log(colors.green, `   ✅ cdvthemes.xml already correct`);
+        log(colors.green, `   ✅ cdv_themes.xml already correct`);
       }
       
       // Write back if changed
       if (themeContent !== originalContent) {
         if (writeXmlFile(cdvThemesPath, themeContent)) {
-          log(colors.green, `   ✅ cdvthemes.xml saved successfully`);
+          log(colors.green, `   ✅ cdv_themes.xml saved successfully`);
         }
       }
       
     } catch (error) {
-      log(colors.red, `   ❌ Error updating cdvthemes.xml: ${error.message}`);
+      log(colors.red, `   ❌ Error updating cdv_themes.xml: ${error.message}`);
     }
   }
   
@@ -213,7 +213,7 @@ function fixAndroidSplashFlicker(context) {
   log(colors.yellow, '\n📌 What was fixed:');
   log(colors.yellow, `   1. Splash color: ${oldColor} → ${newColor}`);
   log(colors.yellow, '   2. Theme colors synchronized');
-  log(colors.yellow, '   3. Files created/updated as needed');
+  log(colors.yellow, '   3. Files updated: cdv_colors.xml, cdv_themes.xml');
   log(colors.yellow, '   4. No more color flicker on app launch');
   log(colors.yellow, '\n   📝 Configuration from: config.xml');
   log(colors.yellow, '   Build phase: before_compile (FINAL - no more changes)\n');

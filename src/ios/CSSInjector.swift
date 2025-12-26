@@ -6,7 +6,9 @@ import UIKit
 class CSSInjector: CDVPlugin {
     
     private static let CSS_FILE_PATH = "www/assets/cdn-styles.css"
+    private static let CONFIG_FILE_PATH = "www/cordova-build-config.json"
     private var cachedCSS: String?
+    private var cachedConfig: [String: Any]?
     
     override func pluginInitialize() {
         super.pluginInitialize()
@@ -23,17 +25,17 @@ class CSSInjector: CDVPlugin {
         
         if let color = bgColor {
             setWebViewBackgroundColor(colorString: color)
-            // Inject background color CSS at runtime
             injectBackgroundColorCSS(colorString: color)
         }
         
-        // Pre-load CSS content
+        // Pre-load CSS and config
         cachedCSS = readCSSFromBundle()
+        cachedConfig = readConfigFromBundle()
         
-        // Inject CSS and config loader after a short delay to ensure WebView is ready
+        // Inject config, CSS after a short delay to ensure WebView is ready
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.injectBuildConfig()  // Inject config first
             self.injectCSSIntoWebView()
-            self.injectConfigLoaderScript()
         }
         
         print("[CSSInjector] Plugin initialized")
@@ -48,6 +50,121 @@ class CSSInjector: CDVPlugin {
             messageAs: "CSS injected"
         )
         self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
+    }
+    
+    @objc(getConfig:)
+    func getConfig(command: CDVInvokedUrlCommand) {
+        var config = cachedConfig
+        if config == nil {
+            config = readConfigFromBundle()
+            cachedConfig = config
+        }
+        
+        if let configDict = config {
+            let pluginResult = CDVPluginResult(
+                status: CDVCommandStatus_OK,
+                messageAs: configDict
+            )
+            self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
+        } else {
+            let pluginResult = CDVPluginResult(
+                status: CDVCommandStatus_ERROR,
+                messageAs: "Config not available"
+            )
+            self.commandDelegate.send(pluginResult, callbackId: command.callbackId)
+        }
+    }
+    
+    // MARK: - Build Config Injection
+    
+    /**
+     * Read config JSON from bundle
+     */
+    private func readConfigFromBundle() -> [String: Any]? {
+        guard let bundlePath = Bundle.main.path(forResource: "www", ofType: nil) else {
+            print("[CSSInjector] www bundle path not found")
+            return nil
+        }
+        
+        let configPath = (bundlePath as NSString).appendingPathComponent("cordova-build-config.json")
+        
+        do {
+            let jsonData = try Data(contentsOf: URL(fileURLWithPath: configPath))
+            let config = try JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any]
+            return config
+        } catch {
+            print("[CSSInjector] Failed to read config: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    /**
+     * Inject build config into window
+     */
+    private func injectBuildConfig() {
+        DispatchQueue.main.async {
+            guard let wkWebView = self.webView as? WKWebView else {
+                print("[CSSInjector] WKWebView not available for config injection")
+                return
+            }
+            
+            var config = self.cachedConfig
+            if config == nil {
+                config = self.readConfigFromBundle()
+                self.cachedConfig = config
+            }
+            
+            guard var configDict = config else {
+                print("[CSSInjector] No config found, skipping injection")
+                return
+            }
+            
+            // Add background color if available
+            if let bgColor = self.commandDelegate.settings["webview_background_color"] as? String {
+                configDict["backgroundColor"] = bgColor
+            } else if let bgColor = self.commandDelegate.settings["backgroundcolor"] as? String {
+                configDict["backgroundColor"] = bgColor
+            }
+            
+            // Convert to JSON string
+            do {
+                let jsonData = try JSONSerialization.data(withJSONObject: configDict, options: [])
+                if let jsonString = String(data: jsonData, encoding: .utf8) {
+                    let escapedJSON = jsonString
+                        .replacingOccurrences(of: "\\", with: "\\\\")
+                        .replacingOccurrences(of: "'", with: "\\'")
+                        .replacingOccurrences(of: "\"", with: "\\\"")
+                        .replacingOccurrences(of: "\n", with: "\\n")
+                    
+                    let javascript = """
+                    (function() {
+                        try {
+                            var config = JSON.parse("\(escapedJSON)");
+                            window.CORDOVA_BUILD_CONFIG = config;
+                            window.AppConfig = config;
+                            console.log('[Native iOS] Build config injected:', config);
+                            
+                            if (typeof CustomEvent !== 'undefined') {
+                                window.dispatchEvent(new CustomEvent('cordova-config-ready', { detail: config }));
+                            }
+                        } catch(e) {
+                            console.error('[Native iOS] Config injection failed:', e);
+                        }
+                    })();
+                    """
+                    
+                    wkWebView.evaluateJavaScript(javascript) { (_, error) in
+                        if let error = error {
+                            print("[CSSInjector] Failed to inject config: \(error.localizedDescription)")
+                        } else {
+                            print("[CSSInjector] Build config injected successfully")
+                        }
+                    }
+                }
+            } catch {
+                print("[CSSInjector] Failed to serialize config: \(error.localizedDescription)")
+            }
+        }
     }
     
     // MARK: - WebView Background Color
@@ -79,7 +196,6 @@ class CSSInjector: CDVPlugin {
     
     /**
      * Inject background color CSS into WebView at runtime
-     * This prevents white flash even if index.html is rewritten
      */
     private func injectBackgroundColorCSS(colorString: String) {
         DispatchQueue.main.async {
@@ -111,49 +227,6 @@ class CSSInjector: CDVPlugin {
                     print("[CSSInjector] Failed to inject background CSS: \(error.localizedDescription)")
                 } else {
                     print("[CSSInjector] Background color CSS injected: \(colorString)")
-                }
-            }
-        }
-    }
-    
-    /**
-     * Inject config loader script tag at runtime
-     * This prevents loss when index.html is rewritten by OutSystems
-     */
-    private func injectConfigLoaderScript() {
-        DispatchQueue.main.async {
-            guard let wkWebView = self.webView as? WKWebView else {
-                print("[CSSInjector] WKWebView not available for config loader injection")
-                return
-            }
-            
-            let scriptPath = "/StaffPortalMobile/scripts/StaffPortalMobile.configloader.js"
-            let javascript = """
-            (function() {
-                try {
-                    var existingScript = document.getElementById('cordova-config-loader');
-                    if (existingScript) {
-                        console.log('Config loader already injected');
-                        return;
-                    }
-                    var script = document.createElement('script');
-                    script.id = 'cordova-config-loader';
-                    script.src = '\(scriptPath)';
-                    script.onload = function() { console.log('Config loader loaded: \(scriptPath)'); };
-                    script.onerror = function() { console.error('Config loader failed to load: \(scriptPath)'); };
-                    (document.head || document.documentElement).appendChild(script);
-                    console.log('Config loader script injected');
-                } catch(e) {
-                    console.error('Config loader injection failed:', e);
-                }
-            })();
-            """
-            
-            wkWebView.evaluateJavaScript(javascript) { (_, error) in
-                if let error = error {
-                    print("[CSSInjector] Failed to inject config loader: \(error.localizedDescription)")
-                } else {
-                    print("[CSSInjector] Config loader script injected: \(scriptPath)")
                 }
             }
         }
@@ -238,7 +311,6 @@ class CSSInjector: CDVPlugin {
         let cssPath = (bundlePath as NSString).appendingPathComponent("assets/cdn-styles.css")
         
         do {
-            // Read with UTF-8 encoding to handle Unicode characters properly
             let cssContent = try String(contentsOfFile: cssPath, encoding: .utf8)
             return cssContent
         } catch {
@@ -249,7 +321,6 @@ class CSSInjector: CDVPlugin {
     
     /**
      * Build JavaScript code to inject CSS into page
-     * Uses Base64 encoding to safely transfer CSS content
      */
     private func buildCSSInjectionScript(cssContent: String) -> String {
         // Try Base64 encoding first (safest method)
@@ -290,7 +361,7 @@ class CSSInjector: CDVPlugin {
     }
     
     /**
-     * Fallback method using manual escaping (if Base64 encoding fails)
+     * Fallback method using manual escaping
      */
     private func buildFallbackInjectionScript(cssContent: String) -> String {
         // Escape CSS content for use in JavaScript string
@@ -302,7 +373,6 @@ class CSSInjector: CDVPlugin {
             .replacingOccurrences(of: "\r", with: "")
             .replacingOccurrences(of: "\t", with: "\\t")
         
-        // JavaScript to inject CSS
         return """
         (function() {
             try {
@@ -311,7 +381,7 @@ class CSSInjector: CDVPlugin {
                     style.id = 'cdn-injected-styles';
                     style.textContent = '\(escapedCSS)';
                     (document.head || document.documentElement).appendChild(style);
-                    console.log('CSS injected by native code (escaped)');  
+                    console.log('CSS injected by native code (escaped)');
                 }
             } catch(e) {
                 console.error('CSS injection failed:', e);

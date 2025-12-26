@@ -155,14 +155,45 @@ function getAndroidPackageName(root) {
 
 /**
  * Safe file write with backup
+ * UPDATED: Moves backup files outside res directory to avoid Gradle errors
  */
 function safeWriteFile(filePath, content) {
   if (fs.existsSync(filePath)) {
-    const backupPath = filePath + '.backup';
-    try {
-      fs.copyFileSync(filePath, backupPath);
-    } catch (err) {
-      console.warn('⚠️ Could not create backup:', err.message);
+    // Check if this is an Android res file that needs special backup handling
+    const isAndroidResFile = filePath.includes('/res/values/') || 
+                             filePath.includes('\\res\\values\\');
+    
+    if (isAndroidResFile) {
+      // Move backup to parent directory outside res
+      const fileName = path.basename(filePath);
+      const platformDir = filePath.split(/[\\/]platforms[\\/]/)[0];
+      const backupDir = path.join(platformDir, 'plugins', 'cordova-plugin-change-app-info', 'backups');
+      
+      // Ensure backup directory exists
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+      
+      const backupPath = path.join(backupDir, fileName + '.backup');
+      
+      try {
+        fs.copyFileSync(filePath, backupPath);
+        // Clean up any old backup in the same directory
+        const oldBackupPath = filePath + '.backup';
+        if (fs.existsSync(oldBackupPath)) {
+          fs.unlinkSync(oldBackupPath);
+        }
+      } catch (err) {
+        console.warn('⚠️ Could not create backup:', err.message);
+      }
+    } else {
+      // For non-Android res files, keep old behavior
+      const backupPath = filePath + '.backup';
+      try {
+        fs.copyFileSync(filePath, backupPath);
+      } catch (err) {
+        console.warn('⚠️ Could not create backup:', err.message);
+      }
     }
   }
   fs.writeFileSync(filePath, content, 'utf8');

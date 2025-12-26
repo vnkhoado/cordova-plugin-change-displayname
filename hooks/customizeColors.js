@@ -7,6 +7,7 @@
  * - Replaces ONLY named splash colors (splash_background, etc.)
  * - Does NOT touch other colors by hex value
  * - Preserves status bar, accent, and other app colors
+ * - UPDATED: Supports new Cordova template file names (cdv_*.xml)
  */
 
 const fs = require('fs');
@@ -36,17 +37,59 @@ const SPLASH_COLOR_NAMES = [
 ];
 
 /**
+ * Get the colors.xml file path, supporting both old and new naming conventions
+ * Priority: cdv_colors.xml (new) > colors.xml (legacy)
+ */
+function getColorsPath(root) {
+  const resPath = path.join(root, 'platforms/android/app/src/main/res/values');
+  const newPath = path.join(resPath, 'cdv_colors.xml');
+  const oldPath = path.join(resPath, 'colors.xml');
+  
+  if (fs.existsSync(newPath)) {
+    console.log('   ℹ️  Using new Cordova template: cdv_colors.xml');
+    return newPath;
+  } else if (fs.existsSync(oldPath)) {
+    console.log('   ℹ️  Using legacy template: colors.xml');
+    return oldPath;
+  }
+  
+  return null;
+}
+
+/**
+ * Get the styles.xml file path, supporting both old and new naming conventions
+ * Priority: cdv_themes.xml (new) > themes.xml > styles.xml (legacy)
+ */
+function getStylesPath(root) {
+  const resPath = path.join(root, 'platforms/android/app/src/main/res/values');
+  const cdvThemesPath = path.join(resPath, 'cdv_themes.xml');
+  const themesPath = path.join(resPath, 'themes.xml');
+  const stylesPath = path.join(resPath, 'styles.xml');
+  
+  if (fs.existsSync(cdvThemesPath)) {
+    console.log('   ℹ️  Using new Cordova template: cdv_themes.xml');
+    return cdvThemesPath;
+  } else if (fs.existsSync(themesPath)) {
+    console.log('   ℹ️  Using themes.xml');
+    return themesPath;
+  } else if (fs.existsSync(stylesPath)) {
+    console.log('   ℹ️  Using legacy template: styles.xml');
+    return stylesPath;
+  }
+  
+  return null;
+}
+
+/**
  * Customize Android splash & webview colors
  * ONLY touches named splash colors, NOT hex values
+ * UPDATED: Supports both old and new Cordova file naming
  */
 function customizeAndroidColors(root, backgroundColor, webviewBackgroundColor) {
-  // 1. Update colors.xml - ONLY named splash colors
-  const colorsPath = path.join(
-    root,
-    'platforms/android/app/src/main/res/values/colors.xml'
-  );
+  // 1. Update colors.xml or cdv_colors.xml - ONLY named splash colors
+  const colorsPath = getColorsPath(root);
   
-  if (fs.existsSync(colorsPath)) {
+  if (colorsPath && fs.existsSync(colorsPath)) {
     let colors = fs.readFileSync(colorsPath, 'utf8');
     let updated = false;
     
@@ -109,17 +152,16 @@ function customizeAndroidColors(root, backgroundColor, webviewBackgroundColor) {
     
     if (updated) {
       safeWriteFile(colorsPath, colors);
-      console.log(`   📝 Saved colors.xml`);
+      console.log(`   📝 Saved ${path.basename(colorsPath)}`);
     }
+  } else {
+    console.log('   ⚠️  No colors file found (colors.xml or cdv_colors.xml)');
   }
   
-  // 2. Update styles.xml - Use @color references
-  const stylesPath = path.join(
-    root,
-    'platforms/android/app/src/main/res/values/styles.xml'
-  );
+  // 2. Update styles.xml/themes.xml/cdv_themes.xml - Use @color references
+  const stylesPath = getStylesPath(root);
   
-  if (fs.existsSync(stylesPath) && backgroundColor) {
+  if (stylesPath && fs.existsSync(stylesPath) && backgroundColor) {
     let styles = fs.readFileSync(stylesPath, 'utf8');
     let updated = false;
     
@@ -146,8 +188,10 @@ function customizeAndroidColors(root, backgroundColor, webviewBackgroundColor) {
     
     if (updated) {
       safeWriteFile(stylesPath, styles);
-      console.log(`   📝 Saved styles.xml`);
+      console.log(`   📝 Saved ${path.basename(stylesPath)}`);
     }
+  } else if (!stylesPath) {
+    console.log('   ⚠️  No styles/themes file found');
   }
   
   // 3. Update splash.xml drawable
@@ -280,6 +324,7 @@ module.exports = function(context) {
   console.log('══════════════════════════════════════════════');
   console.log('⚠️  ONLY replaces named splash colors');
   console.log('⚠️  Includes Cordova cdv_* color names');
+  console.log('⚠️  Supports new Cordova template files (cdv_*.xml)');
   console.log('⚠️  Does NOT replace by hex value');
   console.log('⚠️  Status bar and other colors preserved');
   
